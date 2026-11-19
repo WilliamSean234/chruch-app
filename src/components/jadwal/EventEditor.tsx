@@ -292,7 +292,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
             <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#D0D3E8] bg-[#FAFAFF] px-5 py-3.5">
               <span className="min-w-0 flex-1 text-sm font-semibold text-[#3A3F58]">
                 Hari ini juga ada <Link href={`/jadwal/${d.pair.id}`} className="font-extrabold text-[var(--primary-ink)] underline">{d.pair.title}</Link>
-                {d.pair.filled > 0 ? ` (${d.pair.filled} kursi terisi). Personelnya biasanya sama.` : " (belum ada personel)."}
+                {d.pair.filled > 0 ? ` (${d.pair.filled} kursi terisi).` : " (belum ada personel)."} Mengisi atau mengosongkan kursi di sini otomatis diikuti di sana, selama kursinya masih sama. Kursi yang sudah dibedakan tidak ikut berubah.
               </span>
               {d.pair.filled > 0 && (
                 <button type="button" className={`${btnGhost} whitespace-nowrap`} disabled={busy} onClick={copyFromPair}>

@@ -5,7 +5,7 @@ import { personConflicts, promoteOrphanOverrides, rangesOverlap, releaseBookings
 import { ebmOutsideWarning, judgePair, teamKind, type OutsideSeat } from "./seatRules";
 import { isEditable } from "./eventStatusFlow";
 import { audit } from "./audit";
-import { getEvent } from "./events";
+import { findPairEvent, getEvent } from "./events";
 import { can, requirePermission, requireTeamAccess, type AuthUser } from "./rbac";
 import { nameKey } from "./names";
 
@@ -80,7 +80,7 @@ const withoutAllowed = (found: PersonConflict[], allowed: Set<string>) => found.
  * Isi atau kosongkan satu kursi.
  * Bentrok = diblokir (409 PERSON_CONFLICT). Hanya Superadmin yang boleh menembus dengan alasan, dan itu dicatat di audit log.
  */
-export async function assignPerson(u: AuthUser, eventId: string, assignmentId: string, body: z.infer<typeof assignBody>) {
+export async function assignPerson(u: AuthUser, eventId: string, assignmentId: string, body: z.infer<typeof assignBody>, opts: { mirror?: boolean } = {}) {
   const seat = await loadSeat(u, eventId, assignmentId);
   if (!isEditable(seat.event.status)) throw conflict("Acara yang sudah dibatalkan tidak bisa diubah.");
 
@@ -90,7 +90,8 @@ export async function assignPerson(u: AuthUser, eventId: string, assignmentId: s
       await tx.eventAssignment.update({ where: { id: assignmentId }, data: { personId: null } });
       if (seat.personId) await promoteOrphanOverrides(tx, u.tenantId, seat.personId, eventId);
     });
-    return { event: await getEvent(u.tenantId, eventId), warnings: [] as string[] };
+    const mirrored = opts.mirror === false ? [] : await mirrorToPair(u, seat, null);
+    return { event: await getEvent(u.tenantId, eventId), warnings: mirrored };
   }
 
   const [person, ranges, capable] = await Promise.all([
@@ -149,7 +150,31 @@ export async function assignPerson(u: AuthUser, eventId: string, assignmentId: s
   const warnings: string[] = [...verdict.notes];
   if (!capable) warnings.push(`${person.name} belum tercatat bisa ${seat.ministry.name}.`);
   if (verdict.ebmWarning) warnings.push(verdict.ebmWarning);
+  if (opts.mirror !== false) warnings.push(...(await mirrorToPair(u, seat, person)));
   return { event: await getEvent(u.tenantId, eventId), warnings };
+}
+
+/**
+ * Ibadah Minggu 1 dan 2 berpersonel sama: bila kursi di salah satunya diubah, kursi yang sama di pasangannya (hari yang sama)
+ * ikut berubah, selama kursi itu masih sama dengan sebelum diubah (sama-sama kosong atau sama orangnya). Kursi yang sudah
+ * sengaja dibedakan tidak disentuh, jadi tiap acara tetap bisa diedit sendiri. Yang ditolak aturan biasa (bentrok, aturan EBM)
+ * dilewati dan dilaporkan, tidak menggagalkan perubahan utama. Mengembalikan catatan untuk pengguna.
+ */
+async function mirrorToPair(u: AuthUser, seat: Awaited<ReturnType<typeof loadSeat>>, person: { id: string; name: string } | null): Promise<string[]> {
+  const before = seat.personId; // isi kursi ini sebelum diubah
+  if ((person?.id ?? null) === before) return [];
+  const pair = await findPairEvent(u.tenantId, seat.event);
+  if (!pair || !isEditable(pair.status)) return [];
+  const twin = pair.assignments.find((a) => a.ministryId === seat.ministryId && a.slotNo === seat.slotNo);
+  if (!twin || twin.personId !== before) return []; // tidak ada kursi kembar, atau sudah dibedakan
+  try {
+    await assignPerson(u, pair.id, twin.id, { personId: person?.id ?? null }, { mirror: false });
+  } catch (err) {
+    if (err instanceof ApiError) return [`Tidak ikut diubah di ${pair.title} (${seat.ministry.name}): ${err.message}`];
+    throw err;
+  }
+  await audit({ tenantId: u.tenantId, userId: u.userId, action: "assignment.set", entity: "EventAssignment", entityId: twin.id, payload: { eventId: pair.id, personId: person?.id ?? null, mirroredFrom: seat.id } });
+  return [person ? `${person.name} juga diisi di ${pair.title}.` : `Kursi ${seat.ministry.name} juga dikosongkan di ${pair.title}.`];
 }
 
 /**
@@ -246,7 +271,7 @@ export async function copyPersonnel(u: AuthUser, targetEventId: string, sourceEv
     if (!src) continue;
     const label = target.assignments.filter((x) => x.ministryId === seat.ministryId).length > 1 ? `${seat.ministry.name} ${seat.slotNo}` : seat.ministry.name;
     try {
-      const r = await assignPerson(u, targetEventId, seat.id, { personId: src.personId });
+      const r = await assignPerson(u, targetEventId, seat.id, { personId: src.personId }, { mirror: false });
       filled++;
       for (const w of r.warnings) if (!w.includes("belum tercatat bisa")) notes.add(w);
     } catch (e) {

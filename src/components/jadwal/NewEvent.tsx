@@ -103,7 +103,7 @@ export default function NewEvent() {
           {tpl?.pair && (
             <label className="mt-3 flex items-start gap-2 rounded-xl border border-[#D0D3E8] bg-[#FAFAFF] px-3.5 py-3 text-sm font-semibold">
               <input type="checkbox" className="mt-0.5" checked={withPair} onChange={(e) => setWithPair(e.target.checked)} />
-              <span>Buat juga {tpl.pair.name} di hari yang sama<span className="block text-xs font-medium text-[var(--ink-2)]">Personelnya biasanya sama. Setelah dibuat, kursinya bisa diisi dari yang satunya, atau diubah satu per satu.</span></span>
+              <span>Buat juga {tpl.pair.name} di hari yang sama<span className="block text-xs font-medium text-[var(--ink-2)]">Personelnya otomatis sama: orang yang kamu isi di salah satunya ikut terisi di yang satunya. Kursi tetap bisa diubah satu per satu, dan yang sudah berbeda tidak ikut berubah lagi.</span></span>
             </label>
           )}
           <label className="mt-3 flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={range} onChange={(e) => setRange(e.target.checked)} /> Buat banyak sekaligus (rentang tanggal, hanya tanggal yang cocok pola template)</label>

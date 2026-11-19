@@ -65,18 +65,22 @@ async function load(tenantId: string, id: string) {
   if (!e) throw notFound("Acara");
   return e;
 }
-/** Acara pasangan di hari yang sama (Ibadah Minggu 1 dan 2): untuk tombol "Isi dari ..." di halaman acara. */
-async function pairOf(tenantId: string, e: EventFull) {
+/** Acara pasangan di hari yang sama (Ibadah Minggu 1 dan 2), lengkap dengan kursinya. Null bila tidak ada. */
+export async function findPairEvent(tenantId: string, e: { id: string; templateId: string | null; startsAt: Date }) {
   if (!e.templateId) return null;
   const mine = await prisma.eventTemplate.findFirst({ where: { id: e.templateId, tenantId }, select: { name: true } });
   if (!mine) return null;
   const day = localParts(e.startsAt).date;
   const same = await prisma.event.findMany({
     where: { tenantId, deletedAt: null, kind: "IBADAH", status: { not: "CANCELLED" }, id: { not: e.id }, templateId: { not: null }, startsAt: { gte: zonedToUtc(day, "00:00"), lte: zonedToUtc(day, "23:59") } },
-    include: { template: { select: { name: true } }, assignments: { select: { personId: true } } },
+    include: { template: { select: { name: true } }, assignments: { select: { id: true, ministryId: true, slotNo: true, personId: true } } },
     orderBy: { startsAt: "asc" },
   });
-  const hit = same.find((x) => x.template && isSundayPair(mine.name, x.template.name));
+  return same.find((x) => x.template && isSundayPair(mine.name, x.template.name)) ?? null;
+}
+/** Untuk tombol "Isi dari ..." dan keterangan di halaman acara. */
+async function pairOf(tenantId: string, e: EventFull) {
+  const hit = await findPairEvent(tenantId, e);
   return hit ? { id: hit.id, number: hit.number, title: hit.title, startsAt: hit.startsAt.toISOString(), filled: hit.assignments.filter((a) => a.personId).length } : null;
 }
 
