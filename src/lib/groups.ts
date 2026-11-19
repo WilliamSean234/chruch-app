@@ -127,6 +127,11 @@ export async function listGroups(u: AuthUser) {
   return rows.map((g) => ({ id: g.id, name: g.name, quorumMin: g.quorumMin, memberCount: g._count.members, positionCount: g._count.positions }));
 }
 
+/** Nama semua kelompok, untuk saringan di tabel Orang. Pemanggil WAJIB memastikan penggunanya berhak (person.write). */
+export async function listGroupOptions(tenantId: string) {
+  return prisma.meetingGroup.findMany({ where: { tenantId, deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } });
+}
+
 /** Rincian satu kelompok (jabatan + anggota). Hanya Superadmin atau anggota kelompok itu. */
 export async function getGroup(u: AuthUser, id: string) {
   const g = await findGroup(u, id);
@@ -314,7 +319,7 @@ export type MembershipChip = { groupId: string; groupName: string; positions: st
 
 /**
  * Kelompok yang diikuti beberapa orang beserta jabatannya di tiap kelompok (untuk daftar Orang dan Akun).
- * Pemanggil WAJIB memastikan penggunanya Superadmin: keanggotaan kelompok tidak untuk umum.
+ * Pemanggil WAJIB memastikan penggunanya berhak mengelola data orang (person.write): keanggotaan kelompok tidak untuk umum.
  */
 export async function membershipsOf(tenantId: string, personIds: string[]) {
   const out = new Map<string, MembershipChip[]>();

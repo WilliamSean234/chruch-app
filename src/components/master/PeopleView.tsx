@@ -44,7 +44,7 @@ function RoleChips({ account }: { account: PersonDto["account"] }) {
 }
 const isPlainPosition = (name: string) => name.trim().toLowerCase() === "jemaat";
 
-export default function PeopleView({ scope, canAccount, canMaster, isSuper }: { scope: string[] | null; canAccount: boolean; canMaster: boolean; isSuper: boolean }) {
+export default function PeopleView({ scope, canAccount, canMaster, isSuper, canGroups }: { scope: string[] | null; canAccount: boolean; canMaster: boolean; isSuper: boolean; canGroups: boolean }) {
   const [lookups, setLookups] = useState<Lookups | null>(null);
   const [q, setQ] = useState("");
   const [ministryId, setMinistryId] = useState("");
@@ -72,7 +72,7 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper }: { 
   }, []);
   useEffect(() => { void loadLookups(); }, [loadLookups]);
   // kelompok rapat: keanggotaannya hanya terlihat oleh Superadmin
-  useEffect(() => { if (isSuper) void callApi("GET", "/api/v1/groups").then((r) => { if (r.ok) setGroups(r.data.items as Opt[]); }); }, [isSuper]);
+  useEffect(() => { if (canGroups) void callApi("GET", "/api/v1/groups?untuk=orang").then((r) => { if (r.ok) setGroups(r.data.items as Opt[]); }); }, [canGroups]);
 
   const search = useDebounced(q.trim());
   const dAgeMin = useDebounced(ageMin, 500);
@@ -114,8 +114,8 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper }: { 
   }, []);
   const cols = useMemo(() => [
     { h: "Nama", w: 230 }, { h: "Posisi", w: 190 }, { h: "Usia", w: 70 }, { h: "JK", w: 60 }, { h: "Pelayanan", w: 220 }, { h: "CG", w: 170 },
-    ...(canAccount ? [{ h: "Role", w: 180 }] : []), ...(isSuper ? [{ h: "Kelompok & jabatan", w: 240 }] : []),
-  ], [canAccount, isSuper]);
+    ...(canAccount ? [{ h: "Role", w: 180 }] : []), ...(canGroups ? [{ h: "Kelompok & jabatan", w: 240 }] : []),
+  ], [canAccount, canGroups]);
   const tableW = `max(100%, ${cols.reduce((a, c) => a + c.w, 0)}px)`;
   const thCls = "px-4 py-3.5 text-left text-[11.5px] font-extrabold uppercase tracking-[0.07em] text-[var(--ink-2)]";
 
@@ -134,7 +134,7 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper }: { 
               <option value="NONE">Belum punya CG</option>
               {lookups?.cgs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </FSelect>
-            {isSuper && (
+            {canGroups && (
               <FSelect label="Kelompok" value={groupId} onChange={setGroupId} allLabel="Semua kelompok" width="w-48">
                 <option value="NONE">Tidak di kelompok mana pun</option>
                 {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
@@ -217,7 +217,7 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper }: { 
                           </span>
                         </td>
                         {canAccount && <td className="px-4 py-3"><RoleChips account={p.account} /></td>}
-                        {isSuper && <td className="px-4 py-3"><MembershipChips items={p.memberships} /></td>}
+                        {canGroups && <td className="px-4 py-3"><MembershipChips items={p.memberships} /></td>}
                       </tr>
                     );
                   })}

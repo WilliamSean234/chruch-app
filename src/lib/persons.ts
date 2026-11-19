@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "./prisma";
 import { ApiError, badRequest, conflict, notFound } from "./errors";
 import { ageFrom, nameKey } from "./names";
-import { isSuperadmin, requirePermission, requireTeamAccess, teamScope, type AuthUser } from "./rbac";
+import { can, requirePermission, requireTeamAccess, teamScope, type AuthUser } from "./rbac";
 import { membershipsOf } from "./groups";
 import { syncEbmGroup } from "./ebmGroup";
 import { pageOf, resolvePaging, type PagingInput } from "./paging";
@@ -106,13 +106,14 @@ const bornOnOrBefore = (years: number) => { const d = new Date(); return new Dat
 export type PersonListQuery = PagingInput & {
   search?: string; ministryId?: string; communityId?: string; teamTypeId?: string; positionId?: string; cgGroupId?: string; role?: string;
   gender?: "L" | "P"; origin?: "DALAM" | "LUAR"; ageMin?: number; ageMax?: number;
-  groupId?: string; // kelompok rapat (atau NONE = tidak di kelompok mana pun); hanya Superadmin
+  groupId?: string; // kelompok rapat (atau NONE = tidak di kelompok mana pun); untuk yang berhak mengelola data orang
 };
 
 export async function listPersons(u: AuthUser, q: PersonListQuery) {
   const pg = resolvePaging(q);
   if (q.role) requirePermission(u, "person.write"); // peran akun tidak untuk umum
-  if (q.groupId && !isSuperadmin(u)) throw new ApiError(403, "FORBIDDEN", "Keanggotaan kelompok hanya bisa dilihat Superadmin.");
+  const seesGroups = can(u, "person.write"); // yang boleh melihat tabel Orang juga melihat kelompok dan jabatannya
+  if (q.groupId && !seesGroups) throw new ApiError(403, "FORBIDDEN", "Anda tidak berhak memfilter kelompok.");
   const scope = teamScope(u);
   if (q.teamTypeId && scope !== null && !scope.includes(q.teamTypeId)) {
     throw new ApiError(403, "FORBIDDEN_TEAM", "Anda hanya boleh memfilter tim yang Anda kelola.");
@@ -141,8 +142,8 @@ export async function listPersons(u: AuthUser, q: PersonListQuery) {
     prisma.person.count({ where }),
     prisma.person.findMany({ where, include, orderBy: { nameKey: "asc" }, skip: pg.skip, take: pg.take }),
   ]);
-  // kelompok + jabatan hanya disertakan untuk Superadmin
-  const mem = isSuperadmin(u) ? await membershipsOf(u.tenantId, rows.map((r) => r.id)) : null;
+  // kelompok + jabatan disertakan untuk yang berhak mengelola data orang
+  const mem = seesGroups ? await membershipsOf(u.tenantId, rows.map((r) => r.id)) : null;
   return pageOf(rows.map((r) => ({ ...toDto(r), ...(mem ? { memberships: mem.get(r.id) ?? [] } : {}) })), total, pg);
 }
 

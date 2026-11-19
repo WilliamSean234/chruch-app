@@ -9,7 +9,7 @@ export default async function OrangPage() {
   if (!can(u, "person.write")) redirect("/");
   return (
     <AppShell active="orang" title="Orang & pelayanan" subtitle="Daftar jemaat dan pelayanan yang bisa mereka isi" actions={<NewPersonButton />}>
-      <PeopleView scope={teamScope(u)} canAccount={can(u, "user.manage")} canMaster={can(u, "master.write")} isSuper={isSuperadmin(u)} />
+      <PeopleView scope={teamScope(u)} canAccount={can(u, "user.manage")} canMaster={can(u, "master.write")} isSuper={isSuperadmin(u)} canGroups={can(u, "person.write")} />
     </AppShell>
   );
 }
