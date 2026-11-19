@@ -36,6 +36,27 @@ model User {
   @@unique([tenantId, email])
 }
 
+/// Permintaan daftar akun dari halaman /daftar. Belum jadi akun: admin menyetujui dan menautkannya ke data Orang.
+/// Kata sandi disimpan sebagai hash dan dibuang begitu permintaan diputuskan.
+model RegistrationRequest {
+  id           String    @id @default(uuid())
+  tenantId     String
+  name         String // nama yang diketik pendaftar; bisa berbeda dari data Orang
+  email        String
+  passwordHash String?
+  status       String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  ip           String? // pembatas jumlah permintaan per alamat
+  createdAt    DateTime  @default(now())
+  decidedAt    DateTime?
+  decidedById  String?
+  personId     String? // orang yang ditautkan saat disetujui
+  rejectReason String?
+
+  @@index([tenantId, status, createdAt])
+  @@index([ip, createdAt])
+  @@index([tenantId, email])
+}
+
 /// Pembatas percobaan login (lihat lib/throttle.ts). Kunci: ipemail:, email:, atau ip:.
 model LoginThrottle {
   key         String    @id

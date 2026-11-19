@@ -11,7 +11,7 @@ type Options = { categories: { key: string; label: string }[]; users: { id: stri
 const stamp = (iso: string) => new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
 const TONE: Record<string, { bg: string; fg: string }> = {
   event: { bg: "#E6F0FA", fg: "#1D4F8C" }, meeting: { bg: "#F8E6DD", fg: "#7A3A1E" }, group: { bg: "#F8E6DD", fg: "#7A3A1E" }, person: { bg: "#E3F3E7", fg: "#1B6B34" },
-  user: { bg: "#EEF0FD", fg: "#3037A8" }, booking: { bg: "#FBE4E4", fg: "#9B1C1C" }, attendance: { bg: "#FBF0D9", fg: "#6F4304" }, import: { bg: "#ECEEF4", fg: "#565B76" },
+  user: { bg: "#EEF0FD", fg: "#3037A8" }, registration: { bg: "#EEF0FD", fg: "#3037A8" }, booking: { bg: "#FBE4E4", fg: "#9B1C1C" }, attendance: { bg: "#FBF0D9", fg: "#6F4304" }, import: { bg: "#ECEEF4", fg: "#565B76" },
 };
 const toneOf = (action: string) => TONE[action.split(".")[0]] ?? TONE.import;
 

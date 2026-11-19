@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 
@@ -47,8 +48,14 @@ export default function LoginPage() {
           <label className="flex flex-col gap-1.5 text-[13px] font-bold">Kata sandi
             <input name="password" type="password" required autoComplete="current-password" className="h-12 rounded-xl border border-[var(--line)] px-4 text-[15px] font-medium" />
           </label>
-          {error && <p role="alert" className="text-sm font-semibold text-[#9B1C1C]">{error}</p>}
+          {error && (
+            <div role="alert" className="flex flex-col gap-1">
+              <p className="text-sm font-semibold text-[#9B1C1C]">{error}</p>
+              {error.startsWith("Email atau") && <p className="text-xs font-medium text-[var(--ink-2)]">Baru mendaftar? Akun baru bisa dipakai setelah disetujui admin.</p>}
+            </div>
+          )}
           <button disabled={busy} className="mt-2 h-12 rounded-xl bg-[var(--primary)] text-[15px] font-bold text-white hover:brightness-110 disabled:opacity-60">{busy ? "Memeriksa…" : "Masuk"}</button>
+          <p className="mt-1 text-center text-[13px] font-medium text-[var(--ink-2)]">Belum punya akun? <Link href="/daftar" className="font-bold text-[var(--primary-ink)] underline underline-offset-2">Daftar</Link></p>
         </form>
       </div>
     </main>

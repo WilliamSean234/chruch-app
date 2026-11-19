@@ -40,6 +40,16 @@ Arahkan `.env` sementara ke database produksi (`DATABASE_URL`, `DIRECT_URL`, `SE
 npm run db:seed
 ```
 
+Lalu perbarui hak peran bawaan (aman diulang, hanya menambah hak yang kurang, tidak mengurangi apa pun):
+
+```
+npm run db:fix-roles
+```
+
+Hak disimpan di token login, jadi setiap pengguna perlu **keluar lalu masuk lagi** setelah perintah ini agar hak barunya berlaku (misalnya tombol Isi kehadiran).
+
+Data awal bisa juga diisi lewat **Pengaturan → Impor Excel**: unduh template, isi sheet Orang, Akun, Acara, serta KelompokRapat, JabatanKelompok, AnggotaKelompok, dan Rapat. Unggahan boleh diulang karena data yang sudah ada dilewati.
+
 Jangan jalankan `db:seed:dummy`, `db:seed:groups`, atau `db:seed:meetings` di produksi. Setelah selesai, kembalikan `.env` ke database percobaan agar tidak salah sasaran.
 
 ## 6. Pemeriksaan setelah deploy
@@ -47,6 +57,8 @@ Jangan jalankan `db:seed:dummy`, `db:seed:groups`, atau `db:seed:meetings` di pr
 - [ ] `https://DOMAIN/api/health` menjawab `{"status":"ok"}`.
 - [ ] Masuk sebagai Superadmin, ganti kata sandi, lalu isi **Pengaturan → Profil gereja**.
 - [ ] Tambah ruangan, orang, dan satu template; buat satu jadwal lalu terbitkan.
+- [ ] Setelah `db:fix-roles`, masuk ulang sebagai Penjadwal: tombol **Isi kehadiran** muncul di detail acara pada Kalender.
+- [ ] Coba impor `contoh-data-gereja.xlsx` di database percobaan (bukan produksi): semua sheet harus lolos tanpa baris bermasalah.
 - [ ] Coba bentrok: dua acara di ruangan dan jam yang sama harus ditolak.
 - [ ] Buat satu akun Pelayan biasa: pastikan ia **tidak** melihat rapat dan hanya melihat jadwalnya di **Jadwal saya**.
 - [ ] Buat satu kelompok dan rapat; pastikan notulen hanya terbaca anggota kelompok (Superadmin tidak bisa membaca isinya).

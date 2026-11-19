@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { signIn, signOut } from "next-auth/react";
 import { callApi, errMsg } from "@/components/jadwal/api";
+import PasswordRules from "@/components/ui/PasswordRules";
+import { PASSWORD_MIN } from "@/lib/passwordRules";
 
 const input = "h-12 rounded-xl border border-[var(--line)] px-4 text-[15px] font-medium";
 
@@ -11,6 +13,8 @@ const input = "h-12 rounded-xl border border-[var(--line)] px-4 text-[15px] font
 export default function ChangePasswordForm({ email, forced }: { email: string; forced: boolean }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [nextPw, setNextPw] = useState("");
+  const [againPw, setAgainPw] = useState("");
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -18,7 +22,7 @@ export default function ChangePasswordForm({ email, forced }: { email: string; f
     const cur = String(f.get("current") ?? "");
     const next = String(f.get("next") ?? "");
     const again = String(f.get("again") ?? "");
-    if (next.length < 8) return setError("Kata sandi baru minimal 8 karakter.");
+    if (next.length < PASSWORD_MIN) return setError(`Kata sandi baru minimal ${PASSWORD_MIN} karakter.`);
     if (next !== again) return setError("Kata sandi baru dan konfirmasinya tidak sama.");
     if (next === cur) return setError("Kata sandi baru harus berbeda dari yang lama.");
     setBusy(true); setError("");
@@ -49,12 +53,12 @@ export default function ChangePasswordForm({ email, forced }: { email: string; f
             <input name="current" type="password" required autoComplete="current-password" className={input} />
           </label>
           <label className="flex flex-col gap-1.5 text-[13px] font-bold">Kata sandi baru
-            <input name="next" type="password" required minLength={8} autoComplete="new-password" className={input} />
-            <span className="text-xs font-medium text-[var(--ink-2)]">Minimal 8 karakter</span>
+            <input name="next" type="password" required autoComplete="new-password" className={input} value={nextPw} onChange={(e) => setNextPw(e.target.value)} />
           </label>
           <label className="flex flex-col gap-1.5 text-[13px] font-bold">Ulangi kata sandi baru
-            <input name="again" type="password" required minLength={8} autoComplete="new-password" className={input} />
+            <input name="again" type="password" required autoComplete="new-password" className={input} value={againPw} onChange={(e) => setAgainPw(e.target.value)} />
           </label>
+          <PasswordRules value={nextPw} confirm={againPw} />
           {error && <p role="alert" className="text-sm font-semibold text-[#9B1C1C]">{error}</p>}
           <button disabled={busy} className="mt-2 h-12 rounded-xl bg-[var(--primary)] text-[15px] font-bold text-white hover:brightness-110 disabled:opacity-60">{busy ? "Menyimpan…" : "Simpan kata sandi"}</button>
           {forced ? (

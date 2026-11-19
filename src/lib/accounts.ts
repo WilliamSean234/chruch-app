@@ -16,7 +16,11 @@ export const accountBody = z.object({
 });
 
 /** Buat akun login dan hubungkan ke Person. Satu orang paling banyak satu akun. */
-export async function createAccountForPerson(actor: AuthUser, personId: string, b: z.infer<typeof accountBody>) {
+export async function createAccountForPerson(
+  actor: AuthUser, personId: string, b: z.infer<typeof accountBody>,
+  /** Persetujuan permintaan daftar: kata sandi sudah dipilih sendiri oleh pendaftar (hash dibawa dari permintaan), jadi tidak wajib diganti. */
+  own?: { passwordHash: string },
+) {
   if (b.roleCodes.includes("SUPERADMIN") && !isSuperadmin(actor)) throw forbidden("Hanya Superadmin yang boleh membuat Superadmin.");
   if (b.roleCodes.includes("ADMIN_TIM") && !b.teamTypeId) throw badRequest("Pilih tim yang dikelola untuk Admin Tim.");
 
@@ -30,14 +34,14 @@ export async function createAccountForPerson(actor: AuthUser, personId: string, 
   const roles = await prisma.role.findMany({ where: { tenantId: actor.tenantId, code: { in: b.roleCodes } } });
   if (roles.length !== new Set(b.roleCodes).size) throw badRequest("Role tidak ditemukan. Jalankan seed terlebih dahulu.");
 
-  const passwordHash = await bcrypt.hash(b.password, 10);
+  const passwordHash = own?.passwordHash ?? (await bcrypt.hash(b.password, 10));
   try {
     const user = await prisma.user.create({
       data: {
         tenantId: actor.tenantId,
         email: b.email,
         passwordHash,
-        mustChangePassword: true, // kata sandi awal dari admin: wajib diganti saat login pertama
+        mustChangePassword: !own, // kata sandi awal dari admin: wajib diganti saat login pertama
         personId,
         roles: { create: roles.map((r) => ({ roleId: r.id, teamTypeId: r.code === "ADMIN_TIM" ? b.teamTypeId! : null })) },
       },

@@ -16,7 +16,7 @@ export const CATEGORIES: { key: string; label: string; prefixes: string[] }[] = 
   { key: "meeting", label: "Rapat", prefixes: ["meeting."] },
   { key: "group", label: "Kelompok rapat", prefixes: ["group."] },
   { key: "person", label: "Orang dan pelayanan", prefixes: ["person.", "ministry.", "team.", "cg."] },
-  { key: "account", label: "Akun", prefixes: ["user."] },
+  { key: "account", label: "Akun", prefixes: ["user.", "registration."] },
   { key: "booking", label: "Ruangan dan bentrok", prefixes: ["booking."] },
   { key: "attendance", label: "Kehadiran ibadah", prefixes: ["attendance."] },
   { key: "import", label: "Impor data", prefixes: ["import."] },
@@ -41,6 +41,7 @@ const LABELS: Record<string, string> = {
   "rehearsal.create": "Membuat sesi latihan", "rehearsal.update": "Mengubah sesi latihan", "rehearsal.delete": "Menghapus sesi latihan", "rehearsal.required": "Mengatur latihan wajib", "rehearsal.required.bulk": "Mengatur latihan wajib sekaligus",
   "team.create": "Membuat tim", "team.update": "Mengubah tim", "team.delete": "Menghapus tim",
   "template.create": "Membuat template", "template.update": "Mengubah template", "template.delete": "Menghapus template", "template.generate": "Membuat jadwal dari template",
+  "registration.submit": "Permintaan daftar akun masuk", "registration.approve": "Menyetujui permintaan daftar", "registration.reject": "Menolak permintaan daftar",
   "user.create": "Membuat akun", "user.update": "Mengubah akun", "user.deactivate": "Menonaktifkan akun", "user.password.change": "Mengganti kata sandi",
 };
 export const actionLabel = (a: string) => LABELS[a] ?? a;
