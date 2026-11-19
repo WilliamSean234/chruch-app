@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import LookupManager, { type LookupKind } from "./LookupManager";
 import MinistryManager from "./MinistryManager";
 import Modal from "./Modal";
 import PersonForm, { type CgOpt, type Lookups, type Opt, type PersonDto, type Team } from "./PersonForm";
 import { btnGhost, btnPrimary, callApi, errMsg } from "@/components/jadwal/api";
-import { Alert, FilterBar, FNumber, FSearch, FSelect, listCard } from "@/components/ui/Filters";
+import { Alert, FilterBar, FNumber, FSearch, FSelect } from "@/components/ui/Filters";
 import MembershipChips from "@/components/ui/MembershipChips";
 import Pager from "@/components/ui/Pager";
 import { useDebounced, usePagedList } from "@/components/ui/usePagedList";
@@ -98,11 +98,33 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper }: { 
     return m;
   }, [lookups]);
 
+  // Header tabel menempel tepat di bawah bar filter (tingginya berubah saat "Filter lainnya" dibuka), dan hanya selama tabelnya masih terlihat.
+  const barRef = useRef<HTMLDivElement>(null);
+  const headScroll = useRef<HTMLDivElement>(null);
+  const [headTop, setHeadTop] = useState(0);
+  useEffect(() => {
+    const el = barRef.current?.firstElementChild as HTMLElement | null;
+    if (!el) return;
+    const calc = () => setHeadTop(Math.round((parseFloat(getComputedStyle(el).top) || 0) + el.getBoundingClientRect().height));
+    calc();
+    const ro = new ResizeObserver(calc);
+    ro.observe(el);
+    window.addEventListener("resize", calc);
+    return () => { ro.disconnect(); window.removeEventListener("resize", calc); };
+  }, []);
+  const cols = useMemo(() => [
+    { h: "Nama", w: 230 }, { h: "Posisi", w: 190 }, { h: "Usia", w: 70 }, { h: "JK", w: 60 }, { h: "Pelayanan", w: 220 }, { h: "CG", w: 170 },
+    ...(canAccount ? [{ h: "Role", w: 180 }] : []), ...(isSuper ? [{ h: "Kelompok & jabatan", w: 240 }] : []),
+  ], [canAccount, isSuper]);
+  const tableW = `max(100%, ${cols.reduce((a, c) => a + c.w, 0)}px)`;
+  const thCls = "px-4 py-3.5 text-left text-[11.5px] font-extrabold uppercase tracking-[0.07em] text-[var(--ink-2)]";
+
   const selected = useMemo(() => items?.find((p) => p.id === selId) ?? items?.[0] ?? null, [items, selId]);
 
   return (
     <div className="flex flex-col gap-5">
       {/* Cari dan filter */}
+      <div ref={barRef} className="contents">
       <FilterBar active={dirty} onReset={resetFilters}
         moreCount={[commId, cgId, groupId, gender, origin, ageMin || ageMax, roleF].filter(Boolean).length}
         more={
@@ -138,20 +160,30 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper }: { 
         </FSelect>
         <FSelect label="Posisi" value={positionId} onChange={setPositionId} allLabel="Semua posisi" options={lookups?.positions.map((p) => ({ value: p.id, label: p.name }))} />
       </FilterBar>
+      </div>
       {error && <Alert>{error}</Alert>}
 
       <div className="flex flex-wrap items-start gap-5">
         {/* Tabel */}
-        <section className={`min-w-0 flex-[3_1_560px] ${listCard}`} aria-busy={list.loading}>
+        <section className="min-w-0 flex-[3_1_560px] overflow-clip rounded-[20px] border border-[var(--line)] bg-white" aria-busy={list.loading}>
           {!items && !error && <p className="p-6 text-sm text-[var(--ink-2)]">Memuat…</p>}
           {items && items.length === 0 && <p className="p-10 text-center text-sm font-semibold text-[var(--ink-2)]">{dirty ? "Tidak ada orang yang cocok dengan filter ini." : "Belum ada orang."}</p>}
           {items && items.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className={`w-full ${isSuper ? (canAccount ? "min-w-[980px]" : "min-w-[860px]") : canAccount ? "min-w-[760px]" : "min-w-[640px]"} border-collapse text-left text-sm`}>
-                <thead>
-                  <tr className="text-[11.5px] font-extrabold uppercase tracking-[0.07em] text-[var(--ink-2)]">
-                    {["Nama", "Posisi", "Usia", "JK", "Pelayanan", "CG", ...(canAccount ? ["Role"] : []), ...(isSuper ? ["Kelompok & jabatan"] : [])].map((h) => <th key={h} scope="col" className="px-4 py-3.5">{h}</th>)}
-                  </tr>
+            <div className="relative">
+              {/* Header yang menempel: salinan visual, ikut bergeser saat tabel digeser ke samping; hilang bersama tabelnya */}
+              <div className="sticky z-10 overflow-hidden border-b border-[var(--line-2)] bg-white" style={{ top: headTop }} aria-hidden="true">
+                <div ref={headScroll} style={{ width: tableW }}>
+                  <table className="w-full table-fixed border-collapse">
+                    <colgroup>{cols.map((c) => <col key={c.h} style={{ width: c.w }} />)}</colgroup>
+                    <thead><tr>{cols.map((c) => <th key={c.h} className={thCls}>{c.h}</th>)}</tr></thead>
+                  </table>
+                </div>
+              </div>
+            <div className="overflow-x-auto" onScroll={(e) => { if (headScroll.current) headScroll.current.style.transform = `translateX(${-e.currentTarget.scrollLeft}px)`; }}>
+              <table className="table-fixed border-collapse text-left text-sm" style={{ width: tableW }}>
+                <colgroup>{cols.map((c) => <col key={c.h} style={{ width: c.w }} />)}</colgroup>
+                <thead className="sr-only">
+                  <tr>{cols.map((c) => <th key={c.h} scope="col">{c.h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {items.map((p) => {
@@ -191,6 +223,7 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper }: { 
                   })}
                 </tbody>
               </table>
+            </div>
             </div>
           )}
           {items && <Pager page={list.page} pageSize={list.pageSize} total={total} onPage={list.setPage} onPageSize={list.setPageSize} noun="orang" />}
