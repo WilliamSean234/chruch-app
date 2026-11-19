@@ -1,3 +1,4 @@
+import { pendingCount } from "@/lib/registrations";
 import Link from "next/link";
 import { getChurchProfile } from "@/lib/church";
 import { redirect } from "next/navigation";
@@ -46,11 +47,20 @@ export async function currentUser(): Promise<AuthUser> {
   return { userId: u.userId, tenantId: u.tenantId, personId: u.personId ?? null, roles: u.roles, permissions: u.permissions };
 }
 
+/** Gelembung angka kecil untuk penanda di menu. */
+export function NavBadge({ n, className = "" }: { n: number; className?: string }) {
+  if (n <= 0) return null;
+  return <span className={`grid h-5 min-w-5 place-items-center rounded-full bg-[#B8860B] px-1.5 text-[11px] font-extrabold text-white ${className}`} aria-label={`${n} menunggu`}>{n > 99 ? "99+" : n}</span>;
+}
+
 /** Menu yang boleh dilihat pengguna ini (dipakai juga oleh halaman Profil di HP). */
 export async function visibleNav(user: AuthUser) {
   const inGroup = isSuperadmin(user) ? true : await isInAnyGroup(user);
   const scheduler = can(user, "event.write") || can(user, "master.write") ? true : await canScheduleInAnyGroup(user);
-  return NAV.filter((n) => n.show(user, inGroup, scheduler)).map((n) => ({ key: n.key, label: n.label, href: n.href, ready: n.ready, icon: ICONS[n.key] }));
+  const items = NAV.filter((n) => n.show(user, inGroup, scheduler));
+  // Penanda angka di menu Pengaturan: jumlah permintaan daftar akun yang menunggu persetujuan.
+  const pending = items.some((n) => n.key === "pengaturan") ? await pendingCount(user.tenantId).catch(() => 0) : 0;
+  return items.map((n) => ({ key: n.key, label: n.label, href: n.href, ready: n.ready, icon: ICONS[n.key], badge: n.key === "pengaturan" ? pending : 0 }));
 }
 
 /** Tab bawah di HP: hanya yang paling sering dipakai; sisanya ada di halaman Profil. */
@@ -90,7 +100,7 @@ export default async function AppShell({ active, title, subtitle, actions, back,
             const on = n.key === active;
             const cls = `flex h-11 items-center gap-3 rounded-xl px-3 text-[14.5px] ${on ? "bg-[var(--primary-soft)] font-bold text-[var(--primary-ink)]" : "font-semibold text-[var(--ink-2)]"}`;
             return n.ready ? (
-              <Link key={n.key} href={n.href} className={`${cls} ${on ? "" : "hover:bg-[#ecedf8]"}`} aria-current={on ? "page" : undefined}>{n.icon}{n.label}</Link>
+              <Link key={n.key} href={n.href} className={`${cls} ${on ? "" : "hover:bg-[#ecedf8]"}`} aria-current={on ? "page" : undefined}>{n.icon}{n.label}<NavBadge n={n.badge} className="ml-auto" /></Link>
             ) : (
               <span key={n.key} className={`${cls} opacity-45`} title="Segera hadir">{n.icon}{n.label}</span>
             );
@@ -137,12 +147,12 @@ export default async function AppShell({ active, title, subtitle, actions, back,
 
       {!hideTabs && (
         <nav aria-label="Menu" className="fixed inset-x-0 bottom-0 z-40 flex border-t border-[var(--line)] bg-white px-3 pb-[env(safe-area-inset-bottom)] md:hidden">
-          {[...nav.filter((n) => TAB_KEYS.includes(n.key)), { key: "profil" as NavKey, label: "Profil", href: "/profil", ready: true, icon: ICONS.profil }].map((n) => {
+          {[...nav.filter((n) => TAB_KEYS.includes(n.key)), { key: "profil" as NavKey, label: "Profil", href: "/profil", ready: true, icon: ICONS.profil, badge: nav.find((x) => x.key === "pengaturan")?.badge ?? 0 }].map((n) => {
             const on = n.key === active || (n.key === "profil" && !TAB_KEYS.includes(active));
             return (
               <Link key={n.key} href={n.href} aria-current={on ? "page" : undefined}
                 className={`flex h-[68px] flex-1 flex-col items-center justify-center gap-1 text-[11.5px] ${on ? "font-extrabold text-[var(--primary-ink)]" : "font-bold text-[var(--ink-2)]"}`}>
-                {n.icon}{n.label}
+                <span className="relative">{n.icon}{n.badge > 0 && <span className="absolute -right-1 -top-0.5 size-2.5 rounded-full bg-[#B8860B] ring-2 ring-white" aria-label={`${n.badge} permintaan menunggu`} />}</span>{n.label}
               </Link>
             );
           })}

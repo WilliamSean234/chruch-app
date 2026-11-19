@@ -1,5 +1,5 @@
 import Link from "next/link";
-import AppShell, { currentUser, visibleNav } from "@/components/AppShell";
+import AppShell, { currentUser, NavBadge, visibleNav } from "@/components/AppShell";
 import { auth, signOut } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { isSuperadmin } from "@/lib/rbac";
@@ -37,7 +37,7 @@ export default async function ProfilPage() {
           <div className="overflow-hidden rounded-[20px] border border-[var(--line)] bg-white">
             {more.map((n) => (
               <Link key={n.key} href={n.href} className="flex h-14 items-center gap-3.5 border-b border-[var(--line-2)] px-4 text-[15px] font-bold last:border-b-0 hover:bg-[var(--bg)]">
-                <span className="text-[var(--primary-ink)]">{n.icon}</span>{n.label}<span className="ml-auto text-[var(--ink-2)]" aria-hidden="true">›</span>
+                <span className="text-[var(--primary-ink)]">{n.icon}</span>{n.label}<NavBadge n={n.badge} className="ml-auto" /><span className={`${n.badge > 0 ? "" : "ml-auto "}text-[var(--ink-2)]`} aria-hidden="true">›</span>
               </Link>
             ))}
           </div>
