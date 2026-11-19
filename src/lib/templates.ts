@@ -6,6 +6,7 @@ import { addMinutes, DATE_RE, eachDate, matchesPattern, TIME_RE, zonedToUtc } fr
 import { assertRoomUsable, bookRoom, roomConflict, translateOverlap } from "./booking";
 import { nextDocNumber } from "./docNumber";
 import type { AuthUser } from "./rbac";
+import { isSundayPair } from "./seatRules";
 
 export const templateBody = z
   .object({
@@ -68,7 +69,11 @@ async function checkRefs(tenantId: string, b: TemplateInput) {
 
 export async function listTemplates(tenantId: string) {
   const rows = await prisma.eventTemplate.findMany({ where: { tenantId, deletedAt: null }, include, orderBy: { name: "asc" } });
-  return rows.map(toDto);
+  // Ibadah Minggu 1 dan 2 berpasangan: personelnya selalu sama, jadi bisa dibuat sekaligus.
+  return rows.map((t) => {
+    const pair = rows.find((o) => o.id !== t.id && isSundayPair(t.name, o.name));
+    return { ...toDto(t), pair: pair ? { id: pair.id, name: pair.name } : null };
+  });
 }
 
 export async function createTemplate(tenantId: string, b: TemplateInput) {
@@ -120,7 +125,7 @@ export async function deleteTemplate(tenantId: string, id: string) {
 }
 
 export const generateBody = z
-  .object({ from: z.string().regex(DATE_RE), to: z.string().regex(DATE_RE), ignorePattern: z.boolean().optional() })
+  .object({ from: z.string().regex(DATE_RE), to: z.string().regex(DATE_RE), ignorePattern: z.boolean().optional(), withPair: z.boolean().optional() })
   .superRefine((v, ctx) => {
     if (v.ignorePattern && v.from !== v.to) ctx.addIssue({ code: "custom", path: ["ignorePattern"], message: "Di luar pola hanya untuk satu tanggal." });
     if (v.to < v.from) ctx.addIssue({ code: "custom", path: ["to"], message: "Tanggal akhir harus setelah tanggal awal." });
@@ -138,50 +143,82 @@ const longDate = (iso: string) => new Intl.DateTimeFormat("id-ID", { timeZone: "
  * Buat acara DRAFT dari template untuk setiap tanggal yang cocok pola. Kursi dibuat kosong.
  * Tanggal yang sudah punya acara dari template ini dilewati; tanggal yang ruangannya bentrok dilewati dan dilaporkan.
  */
+type TplWithSlots = Prisma.EventTemplateGetPayload<{ include: { slots: { include: { ministry: true } } } }>;
+type Created = { id: string; number: string; date: string };
+type Skipped = { date: string; reason: string };
+
+/** Buat satu acara DRAFT dari template pada satu tanggal. Mengembalikan acara yang dibuat, atau alasan dilewati. */
+async function createOnDate(u: AuthUser, t: TplWithSlots, iso: string): Promise<{ created?: Created; skipped?: Skipped }> {
+  const teamIds = [...new Set(t.slots.map((s) => s.ministry.teamTypeId))];
+  const startsAt = zonedToUtc(iso, t.startTime);
+  const endsAt = addMinutes(startsAt, t.durationMin);
+
+  if (await prisma.event.findFirst({ where: { tenantId: u.tenantId, templateId: t.id, startsAt, deletedAt: null } })) {
+    return { skipped: { date: iso, reason: "Acara dari template ini sudah ada." } };
+  }
+  try {
+    const busy = await roomConflict(u.tenantId, t.roomId, startsAt, endsAt);
+    if (busy) throw conflict(`Ruangan sudah dipakai: ${busy.join("; ")}.`);
+    const number = await nextDocNumber(u.tenantId, "EV", startsAt);
+    const ev = await translateOverlap(() =>
+      prisma.$transaction(async (tx) => {
+        const e = await tx.event.create({
+          data: {
+            tenantId: u.tenantId, number, templateId: t.id, title: t.name, startsAt, endsAt, roomId: t.roomId, status: "DRAFT",
+            attendanceMode: t.attendanceModeDefault, createdById: u.userId,
+            teams: { create: teamIds.map((teamTypeId) => ({ teamTypeId })) },
+            assignments: {
+              create: t.slots.map((s, i) => ({ tenantId: u.tenantId, teamTypeId: s.ministry.teamTypeId, ministryId: s.ministryId, slotNo: s.slotNo, rehearsalRequired: s.rehearsalRequired, sortOrder: i })),
+            },
+          },
+        });
+        await bookRoom(tx, { tenantId: u.tenantId, roomId: t.roomId, startsAt, endsAt, sourceType: "EVENT", sourceId: e.id });
+        return e;
+      }),
+    );
+    return { created: { id: ev.id, number: ev.number, date: iso } };
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 409) return { skipped: { date: iso, reason: e.message } };
+    throw e;
+  }
+}
+
+/**
+ * Buat acara DRAFT dari template untuk setiap tanggal yang cocok pola. Kursi dibuat kosong.
+ * Tanggal yang sudah punya acara dari template ini dilewati; tanggal yang ruangannya bentrok dilewati dan dilaporkan.
+ * `withPair`: untuk Ibadah Minggu 1 / 2, buat juga acara pasangannya di tanggal yang sama (di luar pola, karena harinya sudah pasti sama).
+ */
 export async function generateFromTemplate(u: AuthUser, templateId: string, range: z.infer<typeof generateBody>) {
   const t = await prisma.eventTemplate.findFirst({ where: { id: templateId, tenantId: u.tenantId, deletedAt: null }, include: { slots: { include: { ministry: true } } } });
   if (!t) throw notFound("Template");
   await assertRoomUsable(u.tenantId, t.roomId);
 
-  const teamIds = [...new Set(t.slots.map((s) => s.ministry.teamTypeId))];
-  const created: { id: string; number: string; date: string }[] = [];
-  const skipped: { date: string; reason: string }[] = [];
+  const created: Created[] = [];
+  const skipped: Skipped[] = [];
+  const dates: string[] = [];
   let matched = 0;
 
   for (const d of eachDate(range.from, range.to)) {
     if (!range.ignorePattern && !matchesPattern(t, d)) continue;
     matched++;
-    const startsAt = zonedToUtc(d.iso, t.startTime);
-    const endsAt = addMinutes(startsAt, t.durationMin);
+    dates.push(d.iso);
+    const r = await createOnDate(u, t, d.iso);
+    if (r.created) created.push(r.created);
+    if (r.skipped) skipped.push(r.skipped);
+  }
 
-    if (await prisma.event.findFirst({ where: { tenantId: u.tenantId, templateId: t.id, startsAt, deletedAt: null } })) {
-      skipped.push({ date: d.iso, reason: "Acara dari template ini sudah ada." });
-      continue;
-    }
-    try {
-      const busy = await roomConflict(u.tenantId, t.roomId, startsAt, endsAt);
-      if (busy) throw conflict(`Ruangan sudah dipakai: ${busy.join("; ")}.`);
-      const number = await nextDocNumber(u.tenantId, "EV", startsAt);
-      const ev = await translateOverlap(() =>
-        prisma.$transaction(async (tx) => {
-          const e = await tx.event.create({
-            data: {
-              tenantId: u.tenantId, number, templateId: t.id, title: t.name, startsAt, endsAt, roomId: t.roomId, status: "DRAFT",
-              attendanceMode: t.attendanceModeDefault, createdById: u.userId,
-              teams: { create: teamIds.map((teamTypeId) => ({ teamTypeId })) },
-              assignments: {
-                create: t.slots.map((s, i) => ({ tenantId: u.tenantId, teamTypeId: s.ministry.teamTypeId, ministryId: s.ministryId, slotNo: s.slotNo, rehearsalRequired: s.rehearsalRequired, sortOrder: i })),
-              },
-            },
-          });
-          await bookRoom(tx, { tenantId: u.tenantId, roomId: t.roomId, startsAt, endsAt, sourceType: "EVENT", sourceId: e.id });
-          return e;
-        }),
-      );
-      created.push({ id: ev.id, number: ev.number, date: d.iso });
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 409) skipped.push({ date: d.iso, reason: e.message });
-      else throw e;
+  let pair: { template: string; created: Created[]; skipped: Skipped[] } | undefined;
+  if (range.withPair && dates.length) {
+    const all = await prisma.eventTemplate.findMany({ where: { tenantId: u.tenantId, deletedAt: null }, include: { slots: { include: { ministry: true } } } });
+    const other = all.find((o) => o.id !== t.id && isSundayPair(t.name, o.name));
+    if (other) {
+      await assertRoomUsable(u.tenantId, other.roomId);
+      pair = { template: other.name, created: [], skipped: [] };
+      for (const iso of dates) {
+        const r = await createOnDate(u, other, iso);
+        if (r.created) pair.created.push(r.created);
+        if (r.skipped) pair.skipped.push(r.skipped);
+      }
     }
   }
 
@@ -202,5 +239,5 @@ export async function generateFromTemplate(u: AuthUser, templateId: string, rang
       suggestions,
     };
   }
-  return { template: t.name, created, skipped, mismatch, pattern: patternText(t) };
+  return { template: t.name, created, skipped, mismatch, pattern: patternText(t), pair };
 }

@@ -6,7 +6,7 @@ import { initials } from "@/lib/ui";
 import NewPersonInline from "@/components/master/NewPersonInline";
 
 type Service = { team: string; items: { name: string; current: boolean }[] };
-type Cand = { id: string; name: string; services: Service[]; capable: boolean; isCurrent: boolean; conflicts: string[] };
+type Cand = { id: string; name: string; services: Service[]; capable: boolean; isCurrent: boolean; conflicts: string[]; notes?: string[] };
 
 /** Saran orang untuk satu kursi: tersedia / tidak tersedia pada jam acara (dan jam latihan bila wajib). */
 export default function SeatPicker({ eventId, seatId, seatLabel, timeLabel, canAddPerson, onPick, onClose }: {
@@ -45,7 +45,8 @@ export default function SeatPicker({ eventId, seatId, seatLabel, timeLabel, canA
         <span className={`grid size-9 flex-none place-items-center rounded-full text-xs font-bold ${busy ? "bg-[#ECEEF4] text-[#8B90AA]" : "bg-[var(--primary-soft)] text-[var(--primary-ink)]"}`} aria-hidden="true">{initials(c.name)}</span>
         <span className="flex min-w-0 flex-1 flex-col leading-tight">
           <span className={`truncate text-sm font-bold ${busy ? "text-[#8B90AA]" : ""}`}>{c.name}</span>
-          <span className={`truncate text-xs ${busy ? "text-[#B05A1C]" : "text-[var(--ink-2)]"}`}>{sub(c, busy)}</span>
+          <span className={`${busy ? "line-clamp-3" : "truncate"} text-xs ${busy ? "text-[#B05A1C]" : "text-[var(--ink-2)]"}`} title={busy ? c.conflicts[0] : undefined}>{sub(c, busy)}</span>
+          {!busy && c.notes && c.notes.length > 0 && <span className="text-xs font-semibold text-[#6F4304]">{c.notes.join(" ")}</span>}
           <button type="button" onClick={() => setOpen(open === c.id ? null : c.id)} aria-expanded={open === c.id}
             className="mt-1 w-fit rounded-md text-xs font-bold text-[var(--primary-ink)] hover:underline">
             Pelayanan ({total(c)}) {open === c.id ? "▴" : "▾"}

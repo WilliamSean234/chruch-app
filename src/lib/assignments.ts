@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { prisma } from "./prisma";
-import { ApiError, conflict, notFound } from "./errors";
-import { personConflicts, rangesOverlap, releaseBookings, translateOverlap, type Range } from "./booking";
+import { ApiError, badRequest, conflict, notFound } from "./errors";
+import { personConflicts, promoteOrphanOverrides, rangesOverlap, releaseBookings, translateOverlap, type PersonConflict, type Range } from "./booking";
+import { ebmOutsideWarning, judgePair, teamKind, type OutsideSeat } from "./seatRules";
 import { isEditable } from "./eventStatusFlow";
 import { audit } from "./audit";
 import { getEvent } from "./events";
@@ -14,7 +15,7 @@ export const assignBody = z.object({
 });
 
 async function loadSeat(u: AuthUser, eventId: string, assignmentId: string) {
-  const seat = await prisma.eventAssignment.findFirst({ where: { id: assignmentId, eventId, tenantId: u.tenantId }, include: { ministry: true, event: true } });
+  const seat = await prisma.eventAssignment.findFirst({ where: { id: assignmentId, eventId, tenantId: u.tenantId }, include: { ministry: { include: { teamType: true } }, event: true } });
   if (!seat) throw notFound("Kursi");
   requireTeamAccess(u, seat.teamTypeId); // Admin Tim hanya tim miliknya
   return seat;
@@ -32,6 +33,49 @@ async function seatRanges(seat: { eventId: string; rehearsalRequired: boolean; e
   return ranges;
 }
 
+/** Siapa saja anggota EBM (punya pelayanan di tim EBM) di antara orang-orang ini. */
+async function ebmPeople(tenantId: string, personIds: string[]) {
+  if (!personIds.length) return new Set<string>();
+  const rows = await prisma.personMinistry.findMany({
+    where: { personId: { in: personIds }, ministry: { deletedAt: null, teamType: { tenantId, deletedAt: null } } },
+    select: { personId: true, ministry: { select: { teamType: { select: { name: true } } } } },
+  });
+  return new Set(rows.filter((r) => teamKind(r.ministry.teamType.name) === "EBM").map((r) => r.personId));
+}
+
+type EventSeat = { id: string; personId: string | null; ministry: { name: string; teamType: { name: string } }; person: { name: string } | null };
+/** Semua kursi berorang di acara ini, kecuali kursi yang sedang diisi. */
+const eventSeats = (eventId: string, exceptId: string) =>
+  prisma.eventAssignment.findMany({
+    where: { eventId, personId: { not: null }, id: { not: exceptId } },
+    select: { id: true, personId: true, ministry: { select: { name: true, teamType: { select: { name: true } } } }, person: { select: { name: true } } },
+  }) as Promise<EventSeat[]>;
+
+/**
+ * Menilai orang ini untuk kursi ini terhadap kursi-kursi lain di acara yang sama:
+ * - `blocked`: pesan bila dilarang (EBM tidak boleh merangkap Usher/pemusik),
+ * - `allowedSeatIds`: kursi lain miliknya yang boleh dirangkap (PIC dan Usher), beserta catatannya,
+ * - `ebmWarning`: peringatan bila sudah ada anggota EBM lain di luar EBM.
+ */
+function judgeAgainstEvent(seat: { id: string; ministry: { name: string; teamType: { name: string } } }, person: { id: string; name: string }, others: EventSeat[], ebm: Set<string>) {
+  const mine = { teamName: seat.ministry.teamType.name, ministryName: seat.ministry.name };
+  const allowedSeatIds = new Set<string>();
+  const notes: string[] = [];
+  let blocked: string | null = null;
+  for (const o of others.filter((x) => x.personId === person.id)) {
+    const v = judgePair(mine, { teamName: o.ministry.teamType.name, ministryName: o.ministry.name }, person.name);
+    if (v.kind === "BLOCKED") blocked = blocked ?? v.message;
+    else if (v.kind === "ALLOWED") { allowedSeatIds.add(o.id); notes.push(v.note); }
+  }
+  const outside: OutsideSeat[] = others
+    .filter((o) => o.personId && ebm.has(o.personId))
+    .map((o) => ({ personId: o.personId!, name: o.person!.name, ministryName: o.ministry.name, teamName: o.ministry.teamType.name }));
+  const ebmWarning = ebmOutsideWarning({ personId: person.id, personIsEbm: ebm.has(person.id), seatTeamName: mine.teamName, others: outside });
+  return { blocked, allowedSeatIds, notes, ebmWarning };
+}
+
+const withoutAllowed = (found: PersonConflict[], allowed: Set<string>) => found.filter((c) => !(c.assignmentId && allowed.has(c.assignmentId)));
+
 /**
  * Isi atau kosongkan satu kursi.
  * Bentrok = diblokir (409 PERSON_CONFLICT). Hanya Superadmin yang boleh menembus dengan alasan, dan itu dicatat di audit log.
@@ -44,6 +88,7 @@ export async function assignPerson(u: AuthUser, eventId: string, assignmentId: s
     await prisma.$transaction(async (tx) => {
       await releaseBookings(tx, { assignmentId });
       await tx.eventAssignment.update({ where: { id: assignmentId }, data: { personId: null } });
+      if (seat.personId) await promoteOrphanOverrides(tx, u.tenantId, seat.personId, eventId);
     });
     return { event: await getEvent(u.tenantId, eventId), warnings: [] as string[] };
   }
@@ -56,7 +101,15 @@ export async function assignPerson(u: AuthUser, eventId: string, assignmentId: s
   if (!person) throw notFound("Orang");
   if (seat.personId === person.id) return { event: await getEvent(u.tenantId, eventId), warnings: [] as string[] };
 
-  const found = (await personConflicts(u.tenantId, [person.id], ranges, { excludeAssignmentId: assignmentId, currentEventId: eventId })).get(person.id) ?? [];
+  const others = await eventSeats(eventId, assignmentId);
+  const ebm = await ebmPeople(u.tenantId, [person.id, ...others.map((o) => o.personId!)]);
+  const verdict = judgeAgainstEvent(seat, person, others, ebm);
+  if (verdict.blocked) {
+    throw new ApiError(409, "SEAT_RULE", verdict.blocked, { canOverride: false }); // aturan merangkap: tidak bisa ditembus override
+  }
+
+  const foundAll = (await personConflicts(u.tenantId, [person.id], ranges, { excludeAssignmentId: assignmentId, currentEventId: eventId })).get(person.id) ?? [];
+  const found = withoutAllowed(foundAll, verdict.allowedSeatIds); // merangkap yang dibolehkan bukan bentrok
 
   if (found.length) {
     if (!body.override) {
@@ -77,9 +130,11 @@ export async function assignPerson(u: AuthUser, eventId: string, assignmentId: s
           data: ranges.map((r) => ({
             tenantId: u.tenantId, resourceType: "PERSON", resourceId: person.id, startsAt: r.startsAt, endsAt: r.endsAt,
             sourceType: r.sourceType, sourceId: r.sourceId, assignmentId,
-            isOverride: found.some((c) => rangesOverlap(c, r)), // hanya jam yang memang bentrok yang ditandai override
+            // jam yang bentrok (termasuk dengan kursi lain miliknya yang dibolehkan, mis. PIC dan Usher) ditandai override
+            isOverride: foundAll.some((c) => rangesOverlap(c, r)),
           })),
         });
+        if (seat.personId && seat.personId !== person.id) await promoteOrphanOverrides(tx, u.tenantId, seat.personId, eventId); // orang yang digantikan
       }),
     `${person.name} baru saja dijadwalkan di tempat lain pada jam itu. Muat ulang lalu coba lagi.`,
   );
@@ -91,8 +146,9 @@ export async function assignPerson(u: AuthUser, eventId: string, assignmentId: s
     });
   }
 
-  const warnings: string[] = [];
+  const warnings: string[] = [...verdict.notes];
   if (!capable) warnings.push(`${person.name} belum tercatat bisa ${seat.ministry.name}.`);
+  if (verdict.ebmWarning) warnings.push(verdict.ebmWarning);
   return { event: await getEvent(u.tenantId, eventId), warnings };
 }
 
@@ -129,18 +185,65 @@ export async function suggestForSeat(u: AuthUser, eventId: string, assignmentId:
     take: 200,
   });
   const conflicts = await personConflicts(u.tenantId, people.map((p) => p.id), ranges, { excludeAssignmentId: assignmentId, currentEventId: eventId });
+  const others = await eventSeats(eventId, assignmentId);
+  const ebm = await ebmPeople(u.tenantId, [...people.map((p) => p.id), ...others.map((o) => o.personId!)]);
 
-  const rows = people.map((p) => ({
-    id: p.id, name: p.name, title: p.title,
-    services: servicesOf(p.ministries.map((m) => m.ministry), seat.ministryId),
-    capable: p.ministries.some((m) => m.ministryId === seat.ministryId),
-    isCurrent: seat.personId === p.id,
-    conflicts: (conflicts.get(p.id) ?? []).map((c) => c.label),
-  }));
+  const rows = people.map((p) => {
+    const v = judgeAgainstEvent(seat, p, others, ebm);
+    const list = withoutAllowed(conflicts.get(p.id) ?? [], v.allowedSeatIds).filter((c) => !(v.blocked && c.sameEvent));
+    return {
+      id: p.id, name: p.name, title: p.title,
+      services: servicesOf(p.ministries.map((m) => m.ministry), seat.ministryId),
+      capable: p.ministries.some((m) => m.ministryId === seat.ministryId),
+      isCurrent: seat.personId === p.id,
+      conflicts: [...(v.blocked ? [v.blocked] : []), ...list.map((c) => c.label)],
+      notes: [...v.notes, ...(v.ebmWarning ? [v.ebmWarning] : [])], // catatan, bukan larangan
+    };
+  });
   const sortCapableFirst = (a: (typeof rows)[number], b: (typeof rows)[number]) => Number(b.capable) - Number(a.capable);
   return {
     seat: { id: seat.id, ministryId: seat.ministryId, ministry: seat.ministry.name, slotNo: seat.slotNo, rehearsalRequired: seat.rehearsalRequired },
     available: rows.filter((r) => r.conflicts.length === 0).sort(sortCapableFirst),
     unavailable: rows.filter((r) => r.conflicts.length > 0).sort(sortCapableFirst),
   };
+}
+
+// ───────── Salin personel dari acara lain (mis. Ibadah Minggu 1 ke Ibadah Minggu 2) ─────────
+
+export const copyBody = z.object({ sourceEventId: z.string().uuid() });
+
+/**
+ * Isi kursi yang masih kosong di acara ini dengan orang dari kursi yang sama (posisi dan nomor kursi) di acara sumber.
+ * Kursi yang sudah berorang tidak disentuh. Tiap kursi melewati pemeriksaan biasa (bentrok, aturan EBM, merangkap);
+ * yang ditolak dilewati dan dilaporkan, sisanya tetap terisi. Sesudahnya tiap kursi tetap bisa diubah satu per satu.
+ */
+export async function copyPersonnel(u: AuthUser, targetEventId: string, sourceEventId: string) {
+  if (targetEventId === sourceEventId) throw badRequest("Pilih acara lain sebagai sumber.");
+  const where = (id: string) => ({ id, tenantId: u.tenantId, deletedAt: null, kind: "IBADAH" });
+  const [target, source] = await Promise.all([
+    prisma.event.findFirst({ where: where(targetEventId), include: { assignments: { include: { ministry: true }, orderBy: [{ sortOrder: "asc" }, { slotNo: "asc" }] } } }),
+    prisma.event.findFirst({ where: where(sourceEventId), include: { assignments: { include: { person: true } } } }),
+  ]);
+  if (!target || !source) throw notFound("Acara");
+  if (!isEditable(target.status)) throw conflict("Acara yang sudah dibatalkan tidak bisa diubah.");
+
+  const from = new Map(source.assignments.filter((a) => a.personId).map((a) => [`${a.ministryId}:${a.slotNo}`, a]));
+  let filled = 0;
+  const skipped: { label: string; person: string; reason: string }[] = [];
+  const notes = new Set<string>();
+  for (const seat of target.assignments) {
+    if (seat.personId) continue;
+    const src = from.get(`${seat.ministryId}:${seat.slotNo}`);
+    if (!src) continue;
+    const label = target.assignments.filter((x) => x.ministryId === seat.ministryId).length > 1 ? `${seat.ministry.name} ${seat.slotNo}` : seat.ministry.name;
+    try {
+      const r = await assignPerson(u, targetEventId, seat.id, { personId: src.personId });
+      filled++;
+      for (const w of r.warnings) if (!w.includes("belum tercatat bisa")) notes.add(w);
+    } catch (e) {
+      if (e instanceof ApiError) skipped.push({ label, person: src.person!.name, reason: e.message });
+      else throw e;
+    }
+  }
+  return { filled, skipped, notes: [...notes], event: await getEvent(u.tenantId, targetEventId) };
 }

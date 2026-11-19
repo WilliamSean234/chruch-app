@@ -18,6 +18,8 @@ type Detail = {
   createdBy: string | null; createdAt: string;
   id: string; number: string; title: string; status: string; attendanceMode: string; startsAt: string; endsAt: string; durationMin: number;
   room: { id: string; name: string }; teams: { teamTypeId: string; name: string }[]; seats: Seat[];
+  /** Ibadah pasangan di hari yang sama (Minggu 1 dan 2): personelnya biasanya sama. */
+  pair: { id: string; number: string; title: string; startsAt: string; filled: number } | null;
 };
 type Reh = { sessions: { id: string; seq: number; startsAt: string; endsAt: string; room: { id: string; name: string }; note: string | null }[]; participants: { assignmentId: string; rehearsalRequired: boolean }[] };
 type TeamFull = { id: string; name: string; ministries: { id: string; name: string }[] };
@@ -80,7 +82,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
     const canOv = r.data?.error?.details?.canOverride && perms.override && retry;
     setBanner({
       kind: "error",
-      title: code === "PERSON_CONFLICT" || code === "REHEARSAL_CONFLICT" ? "Tidak bisa dijadwalkan" : "Gagal",
+      title: code === "PERSON_CONFLICT" || code === "REHEARSAL_CONFLICT" || code === "SEAT_RULE" ? "Tidak bisa dijadwalkan" : "Gagal",
       message: errMsg(r.data),
       override: canOv ? retry : undefined,
     });
@@ -116,6 +118,26 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
     if (!r.ok) return setBanner({ kind: "error", title: "Gagal", message: errMsg(r.data) });
     const blocked = r.data.blocked as { label: string; person: string | null; reason: string }[];
     setBanner(blocked.length ? { kind: "info", title: `${blocked.length} kursi tidak diubah karena bentrok`, message: blocked.map((b) => `${b.label}${b.person ? ` (${b.person})` : ""}: ${b.reason}`).join(" ") } : null);
+    await load();
+  }
+
+  /** Isi kursi kosong dengan personel ibadah pasangannya. Kursi yang sudah terisi tidak diubah. */
+  async function copyFromPair() {
+    if (!d?.pair) return;
+    const from = d.pair;
+    if (!(await askConfirm(`Isi kursi yang masih kosong di acara ini dengan personel dari ${from.title}? Kursi yang sudah terisi tidak diubah, dan tiap kursi tetap bisa diubah satu per satu.`))) return;
+    setBusy(true);
+    const r = await callApi("POST", `/api/v1/events/${eventId}/copy-personnel`, { sourceEventId: from.id });
+    setBusy(false);
+    if (!r.ok) return setBanner({ kind: "error", title: "Gagal menyalin", message: errMsg(r.data) });
+    const skipped = r.data.skipped as { label: string; person: string; reason: string }[];
+    const notes = r.data.notes as string[];
+    const lines = [...skipped.map((x) => `${x.label} (${x.person}): ${x.reason}`), ...notes];
+    setBanner({
+      kind: "info",
+      title: r.data.filled === 0 && skipped.length === 0 ? "Tidak ada kursi yang perlu diisi" : `${r.data.filled} kursi terisi dari ${from.title}${skipped.length ? `, ${skipped.length} dilewati` : ""}`,
+      message: lines.length ? lines.join(" ") : "Selesai. Kursi yang sudah terisi tidak diubah.",
+    });
     await load();
   }
 
@@ -265,6 +287,21 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
               {perms.editEvent && editable && <button className={`${btnPrimary} max-md:hidden`} disabled={busy} onClick={saveInfo}>Simpan perubahan</button>}
             </div>
           </section>
+
+          {d.pair && editable && perms.assign && (
+            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#D0D3E8] bg-[#FAFAFF] px-5 py-3.5">
+              <span className="min-w-0 flex-1 text-sm font-semibold text-[#3A3F58]">
+                Hari ini juga ada <Link href={`/jadwal/${d.pair.id}`} className="font-extrabold text-[var(--primary-ink)] underline">{d.pair.title}</Link>
+                {d.pair.filled > 0 ? ` (${d.pair.filled} kursi terisi). Personelnya biasanya sama.` : " (belum ada personel)."}
+              </span>
+              {d.pair.filled > 0 && (
+                <button type="button" className={`${btnGhost} whitespace-nowrap`} disabled={busy} onClick={copyFromPair}>
+                  <span className="max-md:hidden">Isi dari {d.pair.title}</span>
+                  <span className="md:hidden">Isi dari {d.pair.title.replace(/^ibadah\s+/i, "")}</span>
+                </button>
+              )}
+            </div>
+          )}
 
           {sections.map((t) => {
             const allReq = t.seats.length > 0 && t.seats.every((s) => s.rehearsalRequired);

@@ -20,6 +20,7 @@
     "db:seed:meetings": "tsx prisma/seed-meetings-dummy.ts",
     "db:ping": "tsx scripts/db-ping.ts",
     "db:fix-roles": "tsx scripts/fix-roles.ts",
+    "db:sync-ebm": "tsx scripts/sync-ebm.ts",
     "vercel-build": "prisma generate && prisma migrate deploy && next build"
   },
   "prisma": {

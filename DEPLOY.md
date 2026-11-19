@@ -59,12 +59,15 @@ Jangan jalankan `db:seed:dummy`, `db:seed:groups`, atau `db:seed:meetings` di pr
 - [ ] Tambah ruangan, orang, dan satu template; buat satu jadwal lalu terbitkan.
 - [ ] Setelah `db:fix-roles`, masuk ulang sebagai Penjadwal: tombol **Isi kehadiran** muncul di detail acara pada Kalender.
 - [ ] Coba impor `contoh-data-gereja.xlsx` di database percobaan (bukan produksi): semua sheet harus lolos tanpa baris bermasalah.
+- [ ] Buka `/daftar` dari HP: isi form (email salah harus ditolak, syarat kata sandi berubah hijau), lalu di **Pengaturan → Permintaan daftar** setujui dengan menautkan ke orang yang sudah ada, dan masuk dengan akun itu.
 - [ ] Coba bentrok: dua acara di ruangan dan jam yang sama harus ditolak.
 - [ ] Buat satu akun Pelayan biasa: pastikan ia **tidak** melihat rapat dan hanya melihat jadwalnya di **Jadwal saya**.
 - [ ] Buat satu kelompok dan rapat; pastikan notulen hanya terbaca anggota kelompok (Superadmin tidak bisa membaca isinya).
 - [ ] Buka dari HP: Jadwal saya, isi kehadiran, bagikan notulen ke WhatsApp sebagai gambar.
 
 ## 7. Operasional
+
+- **Pendaftaran akun:** halaman `/daftar` terbuka untuk umum, tetapi hanya membuat *permintaan*. Akun baru ada setelah admin menyetujuinya di Pengaturan → Permintaan daftar. Pembatas: 5 permintaan per alamat per jam dan 300 permintaan menunggu sekaligus.
 
 - **Cadangan:** Neon menyimpan riwayat untuk pemulihan ke titik waktu; cek lama retensi paket Anda, dan uji sekali cara memulihkannya sebelum dibutuhkan.
 - **Pemantau:** arahkan UptimeRobot (atau sejenisnya) ke `/api/health`.

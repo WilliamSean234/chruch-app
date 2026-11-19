@@ -72,7 +72,7 @@ export async function translateOverlap<T>(fn: () => Promise<T>, message = "Jadwa
 }
 
 export type Range = { startsAt: Date; endsAt: Date };
-export type PersonConflict = { label: string; startsAt: Date; endsAt: Date; sameEvent: boolean };
+export type PersonConflict = { label: string; startsAt: Date; endsAt: Date; sameEvent: boolean; assignmentId: string | null };
 
 const overlaps = (a: Range, b: Range) => a.startsAt < b.endsAt && a.endsAt > b.startsAt;
 export const rangesOverlap = overlaps;
@@ -125,8 +125,33 @@ export async function personConflicts(
         : `${a?.event.title ?? "Acara lain"} sebagai ${a?.ministry.name ?? "petugas"} (${fmt(r.startsAt)}–${fmt(r.endsAt).slice(-5)})`;
     }
     const list = out.get(r.resourceId) ?? [];
-    list.push({ label, startsAt: r.startsAt, endsAt: r.endsAt, sameEvent });
+    list.push({ label, startsAt: r.startsAt, endsAt: r.endsAt, sameEvent, assignmentId: r.assignmentId });
     out.set(r.resourceId, list);
   }
   return out;
+}
+
+/**
+ * Orang yang merangkap dua kursi di acara yang sama (mis. PIC dan Usher) punya dua baris pemakaian yang beririsan:
+ * baris kursi kedua ditandai override supaya tidak bentrok dengan dirinya sendiri. Bila kursi pertama dilepas, baris
+ * yang tersisa harus kembali menjadi baris biasa, kalau tidak orang itu tidak akan terdeteksi bentrok di tempat lain.
+ * Baris yang memang override karena bentrok dengan acara lain dibiarkan.
+ */
+export async function promoteOrphanOverrides(tx: Tx, tenantId: string, personId: string, eventId: string) {
+  const seats = await tx.eventAssignment.findMany({ where: { eventId, personId }, select: { id: true } });
+  if (!seats.length) return;
+  const rows = await tx.booking.findMany({
+    where: { tenantId, resourceType: "PERSON", resourceId: personId, deletedAt: null, assignmentId: { in: seats.map((s) => s.id) } },
+    orderBy: { createdAt: "asc" },
+  });
+  const bySource = new Map<string, typeof rows>();
+  for (const r of rows) bySource.set(`${r.sourceType}:${r.sourceId}`, [...(bySource.get(`${r.sourceType}:${r.sourceId}`) ?? []), r]);
+  for (const group of bySource.values()) {
+    if (group.some((r) => !r.isOverride)) continue;
+    const r = group[0]!;
+    const clash = await tx.booking.count({
+      where: { tenantId, resourceType: "PERSON", resourceId: personId, deletedAt: null, isOverride: false, id: { not: r.id }, startsAt: { lt: r.endsAt }, endsAt: { gt: r.startsAt } },
+    });
+    if (clash === 0) await tx.booking.update({ where: { id: r.id }, data: { isOverride: false } });
+  }
 }

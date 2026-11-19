@@ -5,6 +5,7 @@ import { ApiError, badRequest, conflict, notFound } from "./errors";
 import { ageFrom, nameKey } from "./names";
 import { isSuperadmin, requirePermission, requireTeamAccess, teamScope, type AuthUser } from "./rbac";
 import { membershipsOf } from "./groups";
+import { syncEbmGroup } from "./ebmGroup";
 import { pageOf, resolvePaging, type PagingInput } from "./paging";
 
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Format tanggal YYYY-MM-DD");
@@ -156,7 +157,8 @@ export async function createPerson(u: AuthUser, b: PersonInput) {
   const key = nameKey(b.name);
   await checkDuplicate(u.tenantId, key, b);
   await checkMinistryScope(u, u.tenantId, b.ministryIds);
-  const p = await prisma.person.create({
+  const p = await prisma.$transaction(async (tx) => {
+    const created = await tx.person.create({
     data: {
       tenantId: u.tenantId,
       name: b.name,
@@ -172,6 +174,10 @@ export async function createPerson(u: AuthUser, b: PersonInput) {
       ministries: { create: [...new Set(b.ministryIds)].map((ministryId) => ({ ministryId })) },
     },
     include,
+    });
+    // yang melayani di EBM otomatis masuk kelompok EBM
+    await syncEbmGroup(tx, u.tenantId, { only: [created.id], rejoin: true, userId: u.userId });
+    return created;
   });
   return toDto(p);
 }
@@ -191,7 +197,7 @@ export async function updatePerson(u: AuthUser, id: string, b: PersonInput) {
   const p = await prisma.$transaction(async (tx) => {
     await tx.personCommunity.deleteMany({ where: { personId: id } });
     await tx.personMinistry.deleteMany({ where: { personId: id, ministryId: { in: [...before].filter((x) => !after.has(x)) } } });
-    return tx.person.update({
+    const updated = await tx.person.update({
       where: { id },
       data: {
         name: b.name,
@@ -208,6 +214,8 @@ export async function updatePerson(u: AuthUser, id: string, b: PersonInput) {
       },
       include,
     });
+    if ([...after].some((x) => !before.has(x))) await syncEbmGroup(tx, u.tenantId, { only: [id], rejoin: true, userId: u.userId }); // baru ditambahkan ke satu posisi
+    return updated;
   });
   return toDto(p);
 }

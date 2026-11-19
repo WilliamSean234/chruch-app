@@ -8,7 +8,7 @@ import { btnGhost, btnPrimary, callApi, card, errMsg, inputCls } from "./api";
 import { ymd } from "@/lib/ui";
 import RoomOptions from "@/components/ui/RoomOptions";
 
-type Tpl = { id: string; name: string; weekday: number; recurrence: string; ordinal: number | null; startTime: string; durationMin: number; room: { name: string } };
+type Tpl = { id: string; name: string; weekday: number; recurrence: string; ordinal: number | null; startTime: string; durationMin: number; room: { name: string }; pair: { id: string; name: string } | null };
 type Team = { id: string; name: string };
 type Room = { id: string; name: string; floor?: number | null; isActive: boolean };
 const DAYS = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
@@ -24,9 +24,12 @@ export default function NewEvent() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [result, setResult] = useState<{ created: { id: string; number: string; date: string }[]; skipped: { date: string; reason: string }[]; mismatch?: { message: string; suggestions: string[] } } | null>(null);
+  type Made = { id: string; number: string; date: string };
+  type Skip = { date: string; reason: string };
+  const [result, setResult] = useState<{ created: Made[]; skipped: Skip[]; mismatch?: { message: string; suggestions: string[] }; pair?: { template: string; created: Made[]; skipped: Skip[] } } | null>(null);
 
   const [tplId, setTplId] = useState("");
+  const [withPair, setWithPair] = useState(true); // Ibadah Minggu 1/2: buat sekaligus pasangannya
   const [range, setRange] = useState(false);
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
@@ -40,12 +43,14 @@ export default function NewEvent() {
     callApi("GET", "/api/v1/lookups/rooms").then((r) => { if (r.ok) { setRooms(r.data.items); setK((x) => ({ ...x, roomId: r.data.items.find((m: Room) => m.isActive)?.id ?? "" })); } });
   }, []);
 
+  const tpl = tpls.find((t) => t.id === tplId);
+
   async function generate(opt: { date?: string; ignorePattern?: boolean } = {}) {
     const f0 = opt.date ?? from;
     const t0 = opt.date ? opt.date : range ? to : from;
     if (opt.date) { setFrom(opt.date); setTo(opt.date); setRange(false); }
     setBusy(true); setError(""); setResult(null);
-    const r = await callApi("POST", `/api/v1/templates/${tplId}/generate`, { from: f0, to: t0, ignorePattern: opt.ignorePattern || undefined });
+    const r = await callApi("POST", `/api/v1/templates/${tplId}/generate`, { from: f0, to: t0, ignorePattern: opt.ignorePattern || undefined, withPair: (tpl?.pair && withPair) || undefined });
     setBusy(false);
     if (!r.ok) return setError(errMsg(r.data));
     setResult(r.data);
@@ -69,7 +74,6 @@ export default function NewEvent() {
   }
 
   const tab_ = (on: boolean) => `h-[38px] rounded-[9px] px-4 text-[13.5px] font-bold ${on ? "bg-white text-[var(--primary-ink)] shadow-sm" : "text-[var(--ink-2)]"}`;
-  const tpl = tpls.find((t) => t.id === tplId);
 
   return (
     <div className="flex max-w-3xl flex-col gap-5">
@@ -96,6 +100,12 @@ export default function NewEvent() {
             <label className="flex flex-col gap-1.5 text-[13px] font-bold">{range ? "Dari tanggal" : "Tanggal"}<input type="date" className={inputCls} value={from} onChange={(e) => { setFrom(e.target.value); if (!range) setTo(e.target.value); }} /></label>
             {range && <label className="flex flex-col gap-1.5 text-[13px] font-bold">Sampai tanggal<input type="date" className={inputCls} value={to} onChange={(e) => setTo(e.target.value)} /></label>}
           </div>
+          {tpl?.pair && (
+            <label className="mt-3 flex items-start gap-2 rounded-xl border border-[#D0D3E8] bg-[#FAFAFF] px-3.5 py-3 text-sm font-semibold">
+              <input type="checkbox" className="mt-0.5" checked={withPair} onChange={(e) => setWithPair(e.target.checked)} />
+              <span>Buat juga {tpl.pair.name} di hari yang sama<span className="block text-xs font-medium text-[var(--ink-2)]">Personelnya biasanya sama. Setelah dibuat, kursinya bisa diisi dari yang satunya, atau diubah satu per satu.</span></span>
+            </label>
+          )}
           <label className="mt-3 flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={range} onChange={(e) => setRange(e.target.checked)} /> Buat banyak sekaligus (rentang tanggal, hanya tanggal yang cocok pola template)</label>
           <div className="mt-5 max-md:hidden"><button className={btnPrimary} disabled={busy || !tplId} onClick={() => generate()}>{busy ? "Membuat…" : range ? "Buat jadwal" : "Buat dan buka"}</button></div>
           {result && (
@@ -116,6 +126,13 @@ export default function NewEvent() {
                   <span className="font-bold">{result.created.length > 0 ? `${result.created.length} jadwal dibuat${result.skipped.length ? `, ${result.skipped.length} dilewati` : ""}.` : "Tidak ada jadwal baru yang dibuat."}</span>
                   {result.created.map((c) => <Link key={c.id} href={`/jadwal/${c.id}`} className="font-semibold text-[var(--primary-ink)] underline">{longDate(c.date)} · {c.number}</Link>)}
                   {result.skipped.map((x) => <span key={x.date} className="font-medium text-[#6F4304]">{longDate(x.date)}: {x.reason}</span>)}
+                  {result.pair && (
+                    <>
+                      <span className="mt-1 font-bold">{result.pair.template}: {result.pair.created.length > 0 ? `${result.pair.created.length} jadwal dibuat${result.pair.skipped.length ? `, ${result.pair.skipped.length} dilewati` : ""}.` : "tidak ada jadwal baru."}</span>
+                      {result.pair.created.map((c) => <Link key={c.id} href={`/jadwal/${c.id}`} className="font-semibold text-[var(--primary-ink)] underline">{longDate(c.date)} · {c.number}</Link>)}
+                      {result.pair.skipped.map((x) => <span key={x.date} className="font-medium text-[#6F4304]">{longDate(x.date)}: {x.reason}</span>)}
+                    </>
+                  )}
                 </div>
               )}
             </div>

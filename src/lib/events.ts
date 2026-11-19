@@ -3,7 +3,8 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { badRequest, conflict, notFound } from "./errors";
 import { addMinutes, DATE_RE, localParts, TIME_RE, zonedToUtc } from "./time";
-import { assertRoomFree, assertRoomUsable, bookRoom, releaseBookings, translateOverlap } from "./booking";
+import { assertRoomFree, assertRoomUsable, bookRoom, promoteOrphanOverrides, releaseBookings, translateOverlap } from "./booking";
+import { isSundayPair } from "./seatRules";
 import { nextDocNumber } from "./docNumber";
 import { creatorNames } from "./creators";
 import { assertTransition, isEditable } from "./eventStatusFlow";
@@ -64,10 +65,25 @@ async function load(tenantId: string, id: string) {
   if (!e) throw notFound("Acara");
   return e;
 }
+/** Acara pasangan di hari yang sama (Ibadah Minggu 1 dan 2): untuk tombol "Isi dari ..." di halaman acara. */
+async function pairOf(tenantId: string, e: EventFull) {
+  if (!e.templateId) return null;
+  const mine = await prisma.eventTemplate.findFirst({ where: { id: e.templateId, tenantId }, select: { name: true } });
+  if (!mine) return null;
+  const day = localParts(e.startsAt).date;
+  const same = await prisma.event.findMany({
+    where: { tenantId, deletedAt: null, kind: "IBADAH", status: { not: "CANCELLED" }, id: { not: e.id }, templateId: { not: null }, startsAt: { gte: zonedToUtc(day, "00:00"), lte: zonedToUtc(day, "23:59") } },
+    include: { template: { select: { name: true } }, assignments: { select: { personId: true } } },
+    orderBy: { startsAt: "asc" },
+  });
+  const hit = same.find((x) => x.template && isSundayPair(mine.name, x.template.name));
+  return hit ? { id: hit.id, number: hit.number, title: hit.title, startsAt: hit.startsAt.toISOString(), filled: hit.assignments.filter((a) => a.personId).length } : null;
+}
+
 export const getEvent = async (tenantId: string, id: string) => {
   const e = await load(tenantId, id);
-  const names = await creatorNames([e.createdById]);
-  return { ...toDto(e), createdBy: (e.createdById && names.get(e.createdById)) || null, createdAt: e.createdAt.toISOString() };
+  const [names, pair] = await Promise.all([creatorNames([e.createdById]), pairOf(tenantId, e)]);
+  return { ...toDto(e), createdBy: (e.createdById && names.get(e.createdById)) || null, createdAt: e.createdAt.toISOString(), pair };
 };
 
 async function loadEditable(tenantId: string, id: string) {
@@ -217,11 +233,12 @@ export async function addTeam(u: AuthUser, eventId: string, teamTypeId: string) 
 /** Hapus tim dari acara beserta semua kursinya; pemakaian orang di kursi itu dilepas. */
 export async function removeTeam(u: AuthUser, eventId: string, teamTypeId: string) {
   await loadEditable(u.tenantId, eventId);
-  const seats = await prisma.eventAssignment.findMany({ where: { eventId, teamTypeId }, select: { id: true } });
+  const seats = await prisma.eventAssignment.findMany({ where: { eventId, teamTypeId }, select: { id: true, personId: true } });
   await prisma.$transaction(async (tx) => {
     if (seats.length) await releaseBookings(tx, { assignmentId: { in: seats.map((s) => s.id) } });
     await tx.eventAssignment.deleteMany({ where: { eventId, teamTypeId } });
     await tx.eventTeam.deleteMany({ where: { eventId, teamTypeId } });
+    for (const pid of new Set(seats.map((s) => s.personId).filter((x): x is string => !!x))) await promoteOrphanOverrides(tx, u.tenantId, pid, eventId);
   });
   return getEvent(u.tenantId, eventId);
 }
@@ -253,6 +270,7 @@ export async function removeSeat(u: AuthUser, eventId: string, assignmentId: str
   await prisma.$transaction(async (tx) => {
     await releaseBookings(tx, { assignmentId });
     await tx.eventAssignment.delete({ where: { id: assignmentId } });
+    if (seat.personId) await promoteOrphanOverrides(tx, u.tenantId, seat.personId, eventId);
   });
   return getEvent(u.tenantId, eventId);
 }

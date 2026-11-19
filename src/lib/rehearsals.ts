@@ -2,9 +2,10 @@ import { z } from "zod";
 import { prisma } from "./prisma";
 import { ApiError, conflict, notFound } from "./errors";
 import { addMinutes, DATE_RE, localParts, TIME_RE, zonedToUtc } from "./time";
-import { assertRoomFree, assertRoomUsable, bookRoom, personConflicts, rangesOverlap, releaseBookings, translateOverlap, type PersonConflict, type Range } from "./booking";
+import { assertRoomFree, assertRoomUsable, bookRoom, personConflicts, promoteOrphanOverrides, rangesOverlap, releaseBookings, translateOverlap, type PersonConflict, type Range } from "./booking";
 import { isEditable } from "./eventStatusFlow";
 import { audit } from "./audit";
+import { judgePair } from "./seatRules";
 import { can, requirePermission, requireTeamAccess, teamScope, type AuthUser } from "./rbac";
 
 const overrideSchema = z.object({ reason: z.string().trim().min(5, "Alasan override minimal 5 karakter").max(300) }).optional();
@@ -50,7 +51,13 @@ export async function listRehearsals(tenantId: string, eventId: string) {
 
 async function requiredPeople(eventId: string) {
   const seats = await prisma.eventAssignment.findMany({ where: { eventId, personId: { not: null }, rehearsalRequired: true }, include: { person: true, ministry: true } });
-  return seats.map((s) => ({ assignmentId: s.id, personId: s.personId!, name: s.person!.name, ministry: s.ministry.name }));
+  // Orang yang merangkap dua kursi (mis. PIC dan Usher) hanya satu baris biasa; baris kursi berikutnya ditandai override supaya tidak bentrok dengan dirinya.
+  const seen = new Set<string>();
+  return seats.map((s) => {
+    const dup = seen.has(s.personId!);
+    seen.add(s.personId!);
+    return { assignmentId: s.id, personId: s.personId!, name: s.person!.name, ministry: s.ministry.name, dup };
+  });
 }
 
 function conflictError(people: { personId: string; name: string }[], map: Map<string, PersonConflict[]>, u: AuthUser, what: string) {
@@ -86,7 +93,7 @@ export async function createRehearsal(u: AuthUser, eventId: string, b: z.infer<t
         if (people.length) {
           await tx.booking.createMany({
             data: people.map((p) => ({
-              tenantId: u.tenantId, resourceType: "PERSON", resourceId: p.personId, startsAt, endsAt, sourceType: "REHEARSAL", sourceId: r.id, assignmentId: p.assignmentId, isOverride: conf.has(p.personId),
+              tenantId: u.tenantId, resourceType: "PERSON", resourceId: p.personId, startsAt, endsAt, sourceType: "REHEARSAL", sourceId: r.id, assignmentId: p.assignmentId, isOverride: conf.has(p.personId) || p.dup,
             })),
           });
         }
@@ -165,16 +172,21 @@ export async function deleteRehearsal(u: AuthUser, eventId: string, rid: string)
 /** Aktif/nonaktifkan "wajib latihan" untuk satu kursi. Mengaktifkan akan mengunci jam semua sesi latihan untuk orangnya. */
 export async function setSeatRequired(u: AuthUser, eventId: string, assignmentId: string, required: boolean, ov?: { reason: string }) {
   await loadEvent(u.tenantId, eventId);
-  const seat = await prisma.eventAssignment.findFirst({ where: { id: assignmentId, eventId, tenantId: u.tenantId }, include: { person: true } });
+  const seat = await prisma.eventAssignment.findFirst({ where: { id: assignmentId, eventId, tenantId: u.tenantId }, include: { person: true, ministry: { include: { teamType: true } } } });
   if (!seat) throw notFound("Kursi");
   requireTeamAccess(u, seat.teamTypeId);
   if (seat.rehearsalRequired === required) return { changed: false };
 
   const sessions = await prisma.rehearsalSession.findMany({ where: { eventId, deletedAt: null } });
   let found: PersonConflict[] = [];
+  let foundAll: PersonConflict[] = [];
   if (required && seat.personId && sessions.length) {
     const ranges: Range[] = sessions.map((s) => ({ startsAt: s.startsAt, endsAt: s.endsAt }));
-    found = (await personConflicts(u.tenantId, [seat.personId], ranges, { excludeAssignmentId: assignmentId, currentEventId: eventId })).get(seat.personId) ?? [];
+    foundAll = (await personConflicts(u.tenantId, [seat.personId], ranges, { excludeAssignmentId: assignmentId, currentEventId: eventId })).get(seat.personId) ?? [];
+    // kursi lain milik orang yang sama yang boleh dirangkap (PIC dan Usher) bukan bentrok
+    const mine = await prisma.eventAssignment.findMany({ where: { eventId, personId: seat.personId, id: { not: assignmentId } }, include: { ministry: { include: { teamType: true } } } });
+    const allowed = new Set(mine.filter((o) => judgePair({ teamName: seat.ministry.teamType.name, ministryName: seat.ministry.name }, { teamName: o.ministry.teamType.name, ministryName: o.ministry.name }, seat.person!.name).kind === "ALLOWED").map((o) => o.id));
+    found = foundAll.filter((c) => !(c.assignmentId && allowed.has(c.assignmentId)));
     if (found.length) {
       if (!ov) {
         throw new ApiError(409, "REHEARSAL_CONFLICT", `${seat.person!.name} bentrok dengan latihan: ${found.map((c) => c.label).join(", ")}.`, {
@@ -194,11 +206,12 @@ export async function setSeatRequired(u: AuthUser, eventId: string, assignmentId
           await tx.booking.createMany({
             data: sessions.map((s) => ({
               tenantId: u.tenantId, resourceType: "PERSON", resourceId: seat.personId!, startsAt: s.startsAt, endsAt: s.endsAt, sourceType: "REHEARSAL", sourceId: s.id, assignmentId,
-              isOverride: found.some((c) => rangesOverlap(c, s)),
+              isOverride: foundAll.some((c) => rangesOverlap(c, s)),
             })),
           });
         } else {
           await releaseBookings(tx, { assignmentId, sourceType: "REHEARSAL" });
+          await promoteOrphanOverrides(tx, u.tenantId, seat.personId, eventId);
         }
       }),
     `${seat.person?.name ?? "Orang ini"} bentrok dengan salah satu jam latihan.`,
