@@ -6,6 +6,14 @@ export const hm = (d: Date | string) => new Intl.DateTimeFormat("id-ID", { timeZ
 export const dayLong = (d: Date | string) => new Intl.DateTimeFormat("id-ID", { timeZone: TZ, weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date(d));
 export const dayShort = (d: Date | string) => new Intl.DateTimeFormat("id-ID", { timeZone: TZ, weekday: "short", day: "numeric", month: "short" }).format(new Date(d));
 
+/** Tanggal 1 sampai tanggal terakhir bulan dari `iso` (YYYY-MM-DD): isian awal semua filter "Dari – Sampai". */
+export function monthRange(iso: string) {
+  const y = Number(iso.slice(0, 4)), m = Number(iso.slice(5, 7));
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const mm = String(m).padStart(2, "0");
+  return { from: `${y}-${mm}-01`, to: `${y}-${mm}-${String(last).padStart(2, "0")}` };
+}
+
 export const MONTHS = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 export const WEEKDAYS = ["MIN", "SEN", "SEL", "RAB", "KAM", "JUM", "SAB"];
 

@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { FDate, FilterBar, FSearch, FSelect, listCard } from "@/components/ui/Filters";
+import { FDateRange, FilterBar, FSearch, FSelect, listCard } from "@/components/ui/Filters";
 import Pager from "@/components/ui/Pager";
 import { useClientPaging } from "@/components/ui/usePagedList";
-import { hm, REHEARSAL_TONE, toneFor, TZ, ymd } from "@/lib/ui";
+import { hm, monthRange, REHEARSAL_TONE, toneFor, TZ, ymd } from "@/lib/ui";
 
 export type ScheduleRow = {
   key: string; kind: "SERVICE" | "REHEARSAL"; eventId: string; title: string; startsAt: string; endsAt: string; room: string;
@@ -38,8 +38,9 @@ export default function MySchedule({ rows, note, nowIso }: { rows: ScheduleRow[]
   const [kind, setKind] = useState("");
   const [when, setWhen] = useState(""); // "" = mendatang
   const [role, setRole] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const def = useMemo(() => monthRange(ymd(nowIso)), [nowIso]);
+  const [from, setFrom] = useState(def.from);
+  const [to, setTo] = useState(def.to);
 
   const roles = useMemo(() => [...new Set(rows.map((r) => r.role))].sort().map((v) => ({ value: v, label: v })), [rows]);
 
@@ -65,9 +66,10 @@ export default function MySchedule({ rows, note, nowIso }: { rows: ScheduleRow[]
   }, [rows, q, kind, when, role, from, to, now]);
 
   const pg = useClientPaging(list);
-  const moreCount = [when, role, from, to].filter(Boolean).length;
-  const filtered = !!(q || kind || moreCount);
-  const reset = () => { setQ(""); setKind(""); setWhen(""); setRole(""); setFrom(""); setTo(""); };
+  const moreCount = [when, role].filter(Boolean).length;
+  const dateExtra = (from !== def.from ? 1 : 0) + (to !== def.to ? 1 : 0);
+  const filtered = !!(q || kind || moreCount || dateExtra);
+  const reset = () => { setQ(""); setKind(""); setWhen(""); setRole(""); setFrom(def.from); setTo(def.to); };
   const heading = when === "past" ? "SUDAH LEWAT" : when === "all" ? "SEMUA JADWAL" : "MENDATANG";
 
   if (note) {
@@ -100,15 +102,15 @@ export default function MySchedule({ rows, note, nowIso }: { rows: ScheduleRow[]
         </section>
       )}
 
-      <FilterBar active={filtered} onReset={reset} moreCount={moreCount}
+      <FilterBar active={filtered} onReset={reset} moreCount={moreCount} mobileExtraCount={dateExtra}
         more={<>
           <FSelect label="Waktu" value={when} onChange={setWhen} allLabel="Mendatang" options={[{ value: "past", label: "Sudah lewat (7 hari)" }, { value: "all", label: "Semua" }]} />
           <FSelect label="Peran" value={role} onChange={setRole} options={roles} />
-          <FDate label="Dari tanggal" value={from} onChange={setFrom} />
-          <FDate label="Sampai tanggal" value={to} onChange={setTo} />
+          <FDateRange where="more" fromLabel="Dari tanggal" toLabel="Sampai tanggal" from={from} to={to} onFrom={setFrom} onTo={setTo} />
         </>}>
         <FSearch value={q} onChange={setQ} placeholder="Acara, peran, atau ruangan" />
         <FSelect label="Jenis" value={kind} onChange={setKind} options={[{ value: "SERVICE", label: "Pelayanan" }, { value: "REHEARSAL", label: "Latihan" }]} />
+        <FDateRange where="main" fromLabel="Dari tanggal" toLabel="Sampai tanggal" from={from} to={to} onFrom={setFrom} onTo={setTo} />
       </FilterBar>
 
       <div className="flex items-center gap-2.5"><span className="text-xs font-extrabold tracking-[0.07em] text-[#8A6119]">{heading}</span><span className="h-px flex-1 bg-[#E8E4D6]" /></div>
@@ -116,7 +118,7 @@ export default function MySchedule({ rows, note, nowIso }: { rows: ScheduleRow[]
       <div className={listCard}>
         {pg.slice.length === 0 ? (
           <p className="px-5 py-10 text-center text-sm font-semibold text-[var(--ink-2)]">
-            {filtered ? "Tidak ada jadwal yang cocok dengan filter." : rows.length === 0 ? "Belum ada jadwal pelayanan untukmu dalam 90 hari ke depan." : "Tidak ada jadwal mendatang."}
+            {filtered ? "Tidak ada jadwal yang cocok dengan filter." : rows.length === 0 ? "Belum ada jadwal pelayanan untukmu dalam 90 hari ke depan." : "Tidak ada jadwal pada rentang tanggal ini."}
           </p>
         ) : (
           <ul className="m-0 list-none p-0">

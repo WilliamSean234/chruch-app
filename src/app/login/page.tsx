@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { signIn } from "next-auth/react";
+import BrandMark from "@/components/ui/BrandMark";
 
 export default function LoginPage() {
   const [error, setError] = useState("");
@@ -30,10 +31,7 @@ export default function LoginPage() {
       </svg>
       <div className="relative w-full max-w-sm rounded-[24px] border border-[var(--line)] bg-white p-8 shadow-[0_20px_60px_-30px_rgba(48,55,168,0.35)]">
         <div className="mb-6 flex items-center gap-3">
-          <svg width="34" height="40" viewBox="0 0 34 40" fill="none" aria-hidden="true">
-            <path d="M2 40V17C2 8 8.5 2 17 2s15 6 15 15v23z" fill="#3037A8" />
-            <path d="M17 12v18M10.5 18h13" stroke="#E7C27A" strokeWidth="2.4" strokeLinecap="round" />
-          </svg>
+          <BrandMark />
           <div className="flex flex-col leading-[1.15]">
             <span className="text-[19px] font-extrabold tracking-tight">Pelayanan</span>
             <span className="text-[13px] font-medium text-[var(--ink-2)]">Penjadwalan gereja</span>

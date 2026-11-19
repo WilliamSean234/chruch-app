@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { Fragment, useState } from "react";
-import { FDate, FilterBar, FSearch, FSelect, listCard, Alert } from "@/components/ui/Filters";
+import { FDateRange, FilterBar, FSearch, FSelect, listCard, Alert } from "@/components/ui/Filters";
 import Pager from "@/components/ui/Pager";
 import RoomOptions from "@/components/ui/RoomOptions";
 import { useDebounced, usePagedList } from "@/components/ui/usePagedList";
-import { dayShort, floorText, hm, REHEARSAL_TONE, STATUS_LABEL, toneFor, ymd } from "@/lib/ui";
+import { dayShort, floorText, hm, monthRange, REHEARSAL_TONE, STATUS_LABEL, toneFor, ymd } from "@/lib/ui";
 
 type Rehearsal = { id: string; seq: number; startsAt: string; endsAt: string; room: { id: string; name: string; floor: number | null }; note: string | null };
 type Row = {
@@ -15,7 +15,6 @@ type Row = {
 };
 type Options = { templates: { id: string; name: string }[]; rooms: { id: string; name: string; floor: number | null }[] };
 
-const addDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 const dot = (t: string) => t.replace(":", ".");
 
 function Chevron({ open }: { open: boolean }) {
@@ -28,8 +27,9 @@ function Chevron({ open }: { open: boolean }) {
 
 export default function EventList() {
   const today = ymd(new Date());
-  const [from, setFrom] = useState(addDays(today, -7));
-  const [to, setTo] = useState(addDays(today, 60));
+  const def = monthRange(today);
+  const [from, setFrom] = useState(def.from);
+  const [to, setTo] = useState(def.to);
   const [q, setQ] = useState("");
   const [templateId, setTemplateId] = useState("");
   const [roomId, setRoomId] = useState("");
@@ -46,14 +46,15 @@ export default function EventList() {
 
   const list = usePagedList<Row, { options: Options }>("/api/v1/events/list", { from, to, search, templateId, roomId, status, rehearsal, order });
   const opts = list.data?.options;
-  const dirty = !!(q || templateId || roomId || status || rehearsal || order !== "asc" || from !== addDays(today, -7) || to !== addDays(today, 60));
-  const reset = () => { setQ(""); setTemplateId(""); setRoomId(""); setStatus(""); setRehearsal(""); setOrder("asc"); setFrom(addDays(today, -7)); setTo(addDays(today, 60)); };
+  const dirty = !!(q || templateId || roomId || status || rehearsal || order !== "asc" || from !== def.from || to !== def.to);
+  const reset = () => { setQ(""); setTemplateId(""); setRoomId(""); setStatus(""); setRehearsal(""); setOrder("asc"); setFrom(def.from); setTo(def.to); };
 
   return (
     <div className="flex flex-col gap-4">
-      <FilterBar active={dirty} onReset={reset} moreCount={(roomId ? 1 : 0) + (rehearsal ? 1 : 0) + (order !== "asc" ? 1 : 0)}
+      <FilterBar active={dirty} onReset={reset} moreCount={(roomId ? 1 : 0) + (rehearsal ? 1 : 0) + (order !== "asc" ? 1 : 0)} mobileExtraCount={(from !== def.from ? 1 : 0) + (to !== def.to ? 1 : 0)}
         more={
           <>
+            <FDateRange where="more" from={from} to={to} onFrom={setFrom} onTo={setTo} />
             <FSelect label="Ruangan" value={roomId} onChange={setRoomId} allLabel="Semua ruangan"><RoomOptions rooms={opts?.rooms ?? []} /></FSelect>
             <FSelect label="Sesi latihan" value={rehearsal} onChange={setRehearsal} allLabel="Semua" width="w-44"
               options={[{ value: "YES", label: "Sudah ada latihan" }, { value: "NO", label: "Belum ada latihan" }]} />
@@ -61,8 +62,7 @@ export default function EventList() {
           </>
         }>
         <FSearch value={q} onChange={setQ} placeholder="Judul atau nomor acara" />
-        <FDate label="Dari" value={from} onChange={setFrom} />
-        <FDate label="Sampai" value={to} onChange={setTo} />
+        <FDateRange where="main" from={from} to={to} onFrom={setFrom} onTo={setTo} />
         <FSelect label="Jenis ibadah" value={templateId} onChange={setTemplateId} allLabel="Semua ibadah" width="w-52">
           {opts?.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           <option value="NONE">Acara satu kali (tanpa template)</option>

@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { can, isSuperadmin, type AuthUser } from "@/lib/rbac";
 import { canScheduleInAnyGroup, isInAnyGroup } from "@/lib/groups";
 import { initials, ROLE_LABEL } from "@/lib/ui";
+import BrandMark from "@/components/ui/BrandMark";
 
 export type NavKey = "saya" | "profil" | "kalender" | "jadwal" | "rapat" | "kelompok" | "template" | "orang" | "ruangan" | "pengaturan";
 
@@ -86,10 +87,7 @@ export default async function AppShell({ active, title, subtitle, actions, back,
     <div className="flex min-h-screen flex-wrap bg-[var(--bg)]">
       <aside className="relative hidden w-full flex-none flex-col gap-7 overflow-hidden border-r border-[var(--line)] bg-white px-[18px] pb-6 pt-7 md:sticky md:top-0 md:flex md:h-screen md:w-60 md:self-start">
         <div className="flex items-center gap-3 px-2">
-          <svg width="34" height="40" viewBox="0 0 34 40" fill="none" aria-hidden="true">
-            <path d="M2 40V17C2 8 8.5 2 17 2s15 6 15 15v23z" fill="#3037A8" />
-            <path d="M17 12v18M10.5 18h13" stroke="#E7C27A" strokeWidth="2.4" strokeLinecap="round" />
-          </svg>
+          <BrandMark />
           <div className="flex flex-col leading-[1.15]">
             <span className="line-clamp-2 text-[17px] font-extrabold tracking-tight">{church?.name ?? "Pelayanan"}</span>
             <span className="text-xs font-medium text-[var(--ink-2)]">{church?.tagline ?? "Penjadwalan gereja"}</span>

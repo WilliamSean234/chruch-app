@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { FDate, FilterBar, FSearch, FSelect, listCard, Alert } from "@/components/ui/Filters";
+import { FDateRange, FilterBar, FSearch, FSelect, listCard, Alert } from "@/components/ui/Filters";
 import Pager from "@/components/ui/Pager";
 import RoomOptions from "@/components/ui/RoomOptions";
 import { useDebounced, usePagedList } from "@/components/ui/usePagedList";
-import { floorText, hm, MONTHS, WEEKDAYS, ymd } from "@/lib/ui";
+import { floorText, hm, MONTHS, monthRange, WEEKDAYS, ymd } from "@/lib/ui";
 
 type Item = {
   id: string; number: string; status: string; startsAt: string; endsAt: string; room: { id: string; name: string; floor: number | null }; group: { id: string; name: string };
@@ -22,20 +22,22 @@ export default function MeetingList() {
   const [roomId, setRoomId] = useState("");
   const [status, setStatus] = useState("");
   const [mine, setMine] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const def = monthRange(ymd(new Date()));
+  const [from, setFrom] = useState(def.from);
+  const [to, setTo] = useState(def.to);
   const search = useDebounced(q.trim());
 
   const list = usePagedList<Item, { options: Options }>("/api/v1/meetings/list", { when, search, groupId, roomId, status, mine, from, to });
   const opts = list.data?.options;
-  const dirty = !!(q || groupId || roomId || status || mine || from || to);
-  const reset = () => { setQ(""); setGroupId(""); setRoomId(""); setStatus(""); setMine(""); setFrom(""); setTo(""); };
+  const dateChanged = from !== def.from || to !== def.to;
+  const dirty = !!(q || groupId || roomId || status || mine || dateChanged);
+  const reset = () => { setQ(""); setGroupId(""); setRoomId(""); setStatus(""); setMine(""); setFrom(def.from); setTo(def.to); };
   const seg = (on: boolean) => `h-[38px] rounded-[9px] px-4 text-[13.5px] font-bold ${on ? "bg-white text-[var(--primary-ink)] shadow-sm" : "text-[var(--ink-2)]"}`;
-  const empty = dirty ? "Tidak ada rapat yang cocok dengan filter ini." : when === "next" ? "Belum ada rapat yang dijadwalkan." : when === "past" ? "Belum ada rapat yang sudah lewat." : "Belum ada rapat.";
+  const empty = dirty ? "Tidak ada rapat yang cocok dengan filter ini." : when === "next" ? "Tidak ada rapat yang akan datang pada rentang tanggal ini." : when === "past" ? "Tidak ada rapat yang sudah lewat pada rentang tanggal ini." : "Tidak ada rapat pada rentang tanggal ini.";
 
   return (
     <div className="flex flex-col gap-4">
-      <FilterBar active={dirty} onReset={reset} moreCount={[from, to, roomId, status].filter(Boolean).length}
+      <FilterBar active={dirty} onReset={reset} moreCount={[roomId, status].filter(Boolean).length} mobileExtraCount={(from !== def.from ? 1 : 0) + (to !== def.to ? 1 : 0)}
         lead={
           <div className="flex gap-0.5 self-start rounded-xl bg-[#e7e9f3] p-1" role="group" aria-label="Waktu rapat">
           <button type="button" onClick={() => setWhen("next")} className={seg(when === "next")}>Akan datang</button>
@@ -45,8 +47,7 @@ export default function MeetingList() {
         }
         more={
           <>
-            <FDate label="Dari" value={from} onChange={setFrom} />
-            <FDate label="Sampai" value={to} onChange={setTo} />
+            <FDateRange where="more" from={from} to={to} onFrom={setFrom} onTo={setTo} />
             <FSelect label="Ruangan" value={roomId} onChange={setRoomId} allLabel="Semua ruangan"><RoomOptions rooms={opts?.rooms ?? []} /></FSelect>
             <FSelect label="Status" value={status} onChange={setStatus} allLabel="Semua status" width="w-40" options={[{ value: "PUBLISHED", label: "Berlaku" }, { value: "CANCELLED", label: "Dibatalkan" }]} />
           </>
@@ -54,6 +55,7 @@ export default function MeetingList() {
         <FSearch value={q} onChange={setQ} placeholder="Kelompok, topik, ruangan, atau nomor" />
         <FSelect label="Kelompok" value={groupId} onChange={setGroupId} allLabel="Semua kelompok" width="w-52" options={opts?.groups.map((g) => ({ value: g.id, label: g.name }))} />
         <FSelect label="Keanggotaan" value={mine} onChange={setMine} allLabel="Semua rapat" width="w-44" options={[{ value: "true", label: "Kelompok saya" }]} />
+        <FDateRange where="main" from={from} to={to} onFrom={setFrom} onTo={setTo} />
       </FilterBar>
 
       {list.error && <Alert>{list.error}</Alert>}
