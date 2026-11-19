@@ -383,7 +383,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
         </div>
 
         {/* Kanan */}
-        <aside className="lg:sticky lg:top-[calc(var(--header-h)+16px)] lg:max-h-[calc(100vh-var(--header-h)-32px)] lg:self-start lg:overflow-y-auto flex min-w-[300px] max-w-[400px] flex-[1_1_320px] flex-col gap-5">
+        <aside className="lg:sticky lg:top-[calc(var(--header-h)+16px)] lg:max-h-[calc(100vh-var(--header-h)-32px)] lg:self-start lg:overflow-y-auto flex min-w-[300px] max-md:min-w-0 max-w-[400px] flex-[1_1_320px] flex-col gap-5">
           <section className={card}>
             <SectionTitle>Cek jadwal</SectionTitle>
             <div className={`mt-4 flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-sm font-bold ${filled === total && total > 0 ? "bg-[#E3F3E7] text-[#1B6B34]" : "bg-[#FBEFD6] text-[#6F4304]"}`}>

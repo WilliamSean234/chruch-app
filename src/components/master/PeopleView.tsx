@@ -284,7 +284,7 @@ function PersonDetail({ person: p, canAccount, teams, cgs, scope, onEdit, onChan
   );
 
   return (
-    <aside className="flex min-w-[300px] max-w-[400px] flex-[1_1_320px] flex-col gap-4 rounded-[20px] border border-[var(--line)] bg-white p-[22px] lg:sticky lg:top-[calc(var(--header-h)+16px)] lg:max-h-[calc(100vh-var(--header-h)-32px)] lg:self-start lg:overflow-y-auto">
+    <aside className="flex min-w-[300px] max-md:min-w-0 max-w-[400px] flex-[1_1_320px] flex-col gap-4 rounded-[20px] border border-[var(--line)] bg-white p-[22px] lg:sticky lg:top-[calc(var(--header-h)+16px)] lg:max-h-[calc(100vh-var(--header-h)-32px)] lg:self-start lg:overflow-y-auto">
       <div className="flex items-center gap-4">
         <span className="grid size-[68px] flex-none place-items-center rounded-[18px] bg-[var(--primary-soft)] text-3xl font-extrabold text-[var(--primary-ink)]" aria-hidden="true">{initials(p.name).slice(0, 1)}</span>
         <div className="flex min-w-0 flex-col gap-1.5">

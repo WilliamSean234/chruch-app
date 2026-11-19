@@ -168,7 +168,7 @@ export default function MeetingMinutes({ meeting: m, minutes, churchName }: { me
           ))}
         </section>
 
-        <aside className="flex min-w-[300px] max-w-[400px] flex-[1_1_320px] flex-col gap-5">
+        <aside className="flex min-w-[300px] max-md:min-w-0 max-w-[400px] flex-[1_1_320px] flex-col gap-5">
           <AttendanceSide m={m} />
 
           <div className={card}>

@@ -41,3 +41,43 @@ select:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
+
+/* ───────── HP: input tanggal/jam, dan halaman tidak boleh melebar ─────────
+   Di iOS Safari, input date/time memakai tampilan bawaan yang punya lebar minimum sendiri dan mengabaikan
+   w-full: ia keluar dari kolom/kartu, menimpa kolom di sebelahnya, dan melebarkan seluruh halaman (Safari lalu
+   memperkecil halaman sehingga muncul ruang kosong di kanan). Tampilan bawaan dimatikan supaya lebar mengikuti
+   kolomnya. Berlaku untuk semua halaman yang memakai input tanggal/jam. */
+@media (max-width: 767.98px) {
+  input[type="date"],
+  input[type="time"],
+  input[type="datetime-local"],
+  input[type="month"],
+  input[type="week"] {
+    -webkit-appearance: none;
+    appearance: none;
+    display: block;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+  }
+}
+/* teks tanggal/jam rata kiri seperti kolom isian lain (iOS memusatkannya) */
+input[type="date"]::-webkit-date-and-time-value,
+input[type="time"]::-webkit-date-and-time-value,
+input[type="datetime-local"]::-webkit-date-and-time-value {
+  text-align: left;
+  min-width: 0;
+}
+input[type="date"]::-webkit-datetime-edit,
+input[type="time"]::-webkit-datetime-edit {
+  padding: 0;
+}
+/* jaring pengaman: tidak ada elemen yang boleh membuat halaman bergeser ke samping */
+@supports (overflow: clip) {
+  html,
+  body {
+    overflow-x: clip;
+  }
+}

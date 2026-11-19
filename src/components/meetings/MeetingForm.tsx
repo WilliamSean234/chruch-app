@@ -229,7 +229,7 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
               </select>
               {group && <span className="text-xs font-medium text-[var(--ink-2)]">{group.isMember ? "Anda anggota kelompok ini." : "Dibuat atas nama kelompok. Isi rapat tetap tidak terbaca oleh Anda."}</span>}
             </label>
-            <label className="flex min-w-[300px] flex-[2_1_300px] flex-col gap-1.5 text-[13px] font-bold">Judul atau topik rapat
+            <label className="flex min-w-[300px] max-md:min-w-0 flex-[2_1_300px] flex-col gap-1.5 text-[13px] font-bold">Judul atau topik rapat
               <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} placeholder="Mis. Evaluasi pelayanan Oktober" className={inputCls} />
             </label>
           </div>
@@ -411,7 +411,7 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
             {links.map((l, i) => (
               <div key={i} className="flex flex-wrap gap-3">
                 <input aria-label="Judul tautan" placeholder="Judul, mis. Bahan evaluasi" value={l.title} onChange={(e) => setLinks(links.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))} className={`${inputCls} min-w-[200px] flex-[1_1_200px]`} />
-                <input aria-label="Alamat tautan" placeholder="https://drive.google.com/…" value={l.url} onChange={(e) => setLinks(links.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)))} className={`${inputCls} min-w-[280px] flex-[2_1_280px]`} />
+                <input aria-label="Alamat tautan" placeholder="https://drive.google.com/…" value={l.url} onChange={(e) => setLinks(links.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)))} className={`${inputCls} min-w-[280px] max-md:min-w-0 flex-[2_1_280px]`} />
                 {links.length > 1 && <button type="button" onClick={() => setLinks(links.filter((_, j) => j !== i))} aria-label="Hapus baris tautan" className="h-11 rounded-xl px-3 text-sm font-bold text-[var(--ink-2)] hover:bg-[var(--bg)]">✕</button>}
               </div>
             ))}
@@ -429,7 +429,7 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
         </div>
       </section>
 
-      <aside className="flex min-w-[300px] max-w-[400px] flex-[1_1_320px] flex-col gap-5">
+      <aside className="flex min-w-[300px] max-md:min-w-0 max-w-[400px] flex-[1_1_320px] flex-col gap-5">
         <div className="flex flex-col gap-4 rounded-[20px] border border-[var(--line)] bg-white p-[22px]">
           <div className="flex flex-col gap-1"><span className={eyebrow}>DILIHAT ORANG DI LUAR KELOMPOK</span><span className="text-[12.5px] font-medium text-[var(--ink-2)]">Begini rapat ini muncul di kalender mereka.</span></div>
           <div className="flex min-h-[34px] items-center gap-1.5 rounded-lg bg-[#f8e6dd] px-2.5 py-1 text-[12.5px] font-bold leading-tight text-[#7a3a1e]">

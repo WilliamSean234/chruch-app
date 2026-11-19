@@ -95,7 +95,7 @@ export default function TemplateManager() {
       {items && (
         <div className="flex flex-wrap items-start gap-5">
           {/* Daftar template */}
-          <section className="flex min-w-[280px] max-w-[340px] flex-[1_1_300px] flex-col gap-3 lg:sticky lg:top-[calc(var(--header-h)+16px)]">
+          <section className="flex min-w-[280px] max-md:min-w-0 max-w-[340px] flex-[1_1_300px] flex-col gap-3 lg:sticky lg:top-[calc(var(--header-h)+16px)]">
             {items.map((t, i) => {
               const p = PAL[i % PAL.length]; const on = sel === t.id;
               return (

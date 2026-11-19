@@ -50,7 +50,7 @@ export default function ChurchProfilePanel({ initial }: { initial: ChurchProfile
           <Field label="Telepon (tidak wajib)"><input value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={40} className={inputCls} placeholder="031-…" /></Field>
         </section>
 
-        <aside className="flex min-w-[300px] max-w-[400px] flex-[1_1_320px] flex-col gap-3 rounded-[20px] border border-[var(--line)] bg-white p-[22px]">
+        <aside className="flex min-w-[300px] max-md:min-w-0 max-w-[400px] flex-[1_1_320px] flex-col gap-3 rounded-[20px] border border-[var(--line)] bg-white p-[22px]">
           <div className="flex items-center gap-2.5"><span className={eyebrow}>PRATINJAU KOP</span><span className="h-px flex-1 bg-[#e8e4d6]" /></div>
           <div className="flex flex-col items-center gap-1 rounded-xl border border-[var(--line)] px-4 py-5 text-center">
             <span className="text-[17px] font-extrabold">{name.trim() || "Nama gereja"}</span>

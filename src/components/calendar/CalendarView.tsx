@@ -389,7 +389,7 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
         </div>
         </div>
 
-        <aside ref={asideRef} className={`${sheet ? "" : "max-md:hidden"} lg:sticky lg:top-[calc(var(--header-h)+16px)] lg:max-h-[calc(100vh-var(--header-h)-32px)] lg:self-start lg:overflow-y-auto flex min-w-[300px] max-w-[400px] flex-[1_1_320px] flex-col gap-[18px] rounded-[20px] border border-[var(--line)] bg-white p-[22px] max-md:order-3 max-md:w-full max-md:min-w-0 max-md:max-w-none max-md:scroll-mt-28`} aria-live="polite">
+        <aside ref={asideRef} className={`${sheet ? "" : "max-md:hidden"} lg:sticky lg:top-[calc(var(--header-h)+16px)] lg:max-h-[calc(100vh-var(--header-h)-32px)] lg:self-start lg:overflow-y-auto flex min-w-[300px] max-md:min-w-0 max-w-[400px] flex-[1_1_320px] flex-col gap-[18px] rounded-[20px] border border-[var(--line)] bg-white p-[22px] max-md:order-3 max-md:w-full max-md:min-w-0 max-md:max-w-none max-md:scroll-mt-28`} aria-live="polite">
           <button type="button" onClick={() => setSheet(false)} className="-mb-2 flex h-9 items-center gap-1.5 self-end rounded-lg px-2.5 text-[13px] font-bold text-[var(--primary-ink)] hover:bg-[var(--primary-soft)] md:hidden">Tutup ✕</button>
           {selMeeting ? (
             <MeetingPanel id={selMeeting} onClose={() => setSelMeeting(null)} />
