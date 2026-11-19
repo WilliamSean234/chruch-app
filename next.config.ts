@@ -7,6 +7,14 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // Service worker harus selalu diambil ulang supaya pembaruan aplikasi sampai ke HP.
+        source: "/sw.js",
+        headers: [
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          { key: "Service-Worker-Allowed", value: "/" },
+        ],
+      },
+      {
         source: "/:path*",
         headers: [
           // CSP bagian aman: tidak membatasi skrip/gaya (Next.js memakai skrip sebaris), tetapi menutup bingkai, <base>, <object>, dan tujuan form.
