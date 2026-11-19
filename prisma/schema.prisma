@@ -1,0 +1,565 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ───────── Tenant, akun, RBAC ─────────
+model Tenant {
+  id        String    @id @default(uuid())
+  name      String
+  tagline   String? // baris kecil di bawah nama gereja (bawaan: "Penjadwalan gereja")
+  address   String?
+  phone     String?
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+}
+
+model User {
+  id           String     @id @default(uuid())
+  tenantId     String
+  email        String
+  passwordHash String // bcryptjs, salt 10
+  personId     String?    @unique // akun pelayan terhubung ke Person
+  isActive     Boolean    @default(true)
+  mustChangePassword Boolean @default(false) // true = wajib ganti kata sandi saat login berikutnya (akun baru / direset admin)
+  passwordChangedAt  DateTime?
+  createdAt    DateTime   @default(now())
+  deletedAt    DateTime?
+  person       Person?    @relation(fields: [personId], references: [id])
+  roles        UserRole[]
+
+  @@unique([tenantId, email])
+}
+
+/// Pembatas percobaan login (lihat lib/throttle.ts). Kunci: ipemail:, email:, atau ip:.
+model LoginThrottle {
+  key         String    @id
+  failures    Int       @default(0)
+  windowStart DateTime  @default(now())
+  lockedUntil DateTime?
+  updatedAt   DateTime  @updatedAt
+}
+
+model Role {
+  id           String           @id @default(uuid())
+  tenantId     String
+  code         String // SUPERADMIN | PENJADWAL | ADMIN_TIM | PELAYAN
+  name         String
+  isSuperadmin Boolean          @default(false) // bypass semua permission
+  permissions  RolePermission[]
+  users        UserRole[]
+
+  @@unique([tenantId, code])
+}
+
+model Permission {
+  id    String           @id @default(uuid())
+  code  String           @unique // mis. event.write, assignment.write, booking.override
+  roles RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+
+  @@id([roleId, permissionId])
+}
+
+model UserRole {
+  id         String    @id @default(uuid())
+  userId     String
+  roleId     String
+  teamTypeId String? // scope untuk ADMIN_TIM; null = semua tim
+  user       User      @relation(fields: [userId], references: [id])
+  role       Role      @relation(fields: [roleId], references: [id])
+  teamType   TeamType? @relation(fields: [teamTypeId], references: [id])
+
+  @@unique([userId, roleId, teamTypeId])
+}
+
+// ───────── Master orang (semua daftar dinamis) ─────────
+model PersonPosition { // jemaat, pembina pemuda, pendeta, ...
+  id        String    @id @default(uuid())
+  tenantId  String
+  name      String
+  sortOrder Int       @default(0)
+  deletedAt DateTime?
+  people    Person[]
+
+  @@unique([tenantId, name])
+}
+
+model CgGroup {
+  id        String    @id @default(uuid())
+  tenantId  String
+  name      String
+  deletedAt DateTime?
+  people    Person[]
+  leaders   CgLeader[] // satu CG boleh punya lebih dari satu leader
+
+  @@unique([tenantId, name])
+}
+
+model CgLeader {
+  cgGroupId String
+  personId  String
+  cgGroup   CgGroup @relation(fields: [cgGroupId], references: [id])
+  person    Person  @relation(fields: [personId], references: [id])
+
+  @@id([cgGroupId, personId])
+}
+
+model Community { // pemuda, young couple, anak-anak, ...
+  id        String            @id @default(uuid())
+  tenantId  String
+  name      String
+  deletedAt DateTime?
+  members   PersonCommunity[]
+  templates EventTemplate[]
+
+  @@unique([tenantId, name])
+}
+
+model Person {
+  id           String            @id @default(uuid())
+  tenantId     String
+  name         String
+  nameKey      String // huruf kecil tanpa gelar; cegah nama dobel
+  title        String? // Pdt., Ps., dst.
+  birthDate    DateTime?         @db.Date // usia dihitung dari sini
+  gender       String // L | P
+  positionId   String
+  cgGroupId    String?
+  origin       String            @default("DALAM") // DALAM | LUAR
+  originChurch String? // wajib bila origin = LUAR
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  deletedAt    DateTime?
+  position     PersonPosition    @relation(fields: [positionId], references: [id])
+  cgGroup      CgGroup?          @relation(fields: [cgGroupId], references: [id])
+  user         User?
+  communities  PersonCommunity[]
+  ministries   PersonMinistry[]
+  cgLeaderOf   CgLeader[]
+  assignments  EventAssignment[]
+  attendances  EventAttendance[]
+  groupMemberships GroupMember[]
+  meetingParticipations MeetingParticipant[]
+
+  @@index([tenantId, nameKey])
+}
+
+model PersonCommunity {
+  personId    String
+  communityId String
+  person      Person    @relation(fields: [personId], references: [id])
+  community   Community @relation(fields: [communityId], references: [id])
+
+  @@id([personId, communityId])
+}
+
+// ───────── Tim, posisi, ruangan ─────────
+model TeamType { // pemusik, EBM, usher, pimpinan ibadah, + tim dinamis
+  id         String      @id @default(uuid())
+  tenantId   String
+  name       String
+  isCore     Boolean     @default(false) // tim paten dari seed
+  sortOrder  Int         @default(0)
+  deletedAt  DateTime?
+  ministries Ministry[]
+  eventTeams EventTeam[]
+  adminRoles UserRole[]
+
+  @@unique([tenantId, name])
+}
+
+model Ministry { // keyboard, drum, singer, LCD, PIC, liturgos, ...
+  id                       String              @id @default(uuid())
+  tenantId                 String
+  teamTypeId               String
+  name                     String
+  rehearsalRequiredDefault Boolean             @default(false)
+  sortOrder                Int                 @default(0)
+  deletedAt                DateTime?
+  teamType                 TeamType            @relation(fields: [teamTypeId], references: [id])
+  people                   PersonMinistry[]
+  assignments              EventAssignment[]
+  templateSlots            EventTemplateSlot[]
+
+  @@unique([tenantId, teamTypeId, name])
+}
+
+model PersonMinistry { // sumber suggestion posisi
+  personId   String
+  ministryId String
+  person     Person   @relation(fields: [personId], references: [id])
+  ministry   Ministry @relation(fields: [ministryId], references: [id])
+
+  @@id([personId, ministryId])
+}
+
+model Room {
+  id         String             @id @default(uuid())
+  tenantId   String
+  name       String // kode ruangan, mis. 401A
+  floor      Int? // lantai (mis. 4 untuk 401A); kosong = belum diisi
+  isActive   Boolean            @default(true)
+  deletedAt  DateTime?
+  events     Event[]
+  templates  EventTemplate[]
+  rehearsals RehearsalSession[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, floor])
+}
+
+// ───────── Template acara (hanya Superadmin) ─────────
+model EventTemplate {
+  id                    String              @id @default(uuid())
+  tenantId              String
+  name                  String // Ibadah Minggu I, Ibadah Mandarin, Fellowship Pemuda, ...
+  weekday               Int // 0 = Minggu ... 6 = Sabtu
+  recurrence            String              @default("WEEKLY") // WEEKLY | MONTHLY_NTH
+  ordinal               Int? // MONTHLY_NTH: 1..4 = hari ke-n dalam bulan, 5 = yang terakhir
+  startTime             String // "07:00"
+  durationMin           Int                 @default(120)
+  roomId                String
+  attendanceModeDefault String              @default("COUNT") // COUNT | NAMES
+  attendanceCommunityId String? // filter daftar nama kehadiran (mis. Pemuda)
+  deletedAt             DateTime?
+  room                  Room                @relation(fields: [roomId], references: [id])
+  attendanceCommunity   Community?          @relation(fields: [attendanceCommunityId], references: [id])
+  slots                 EventTemplateSlot[]
+  events                Event[]
+
+  @@unique([tenantId, name])
+}
+
+model EventTemplateSlot {
+  id                String        @id @default(uuid())
+  templateId        String
+  ministryId        String
+  slotNo            Int           @default(1)
+  rehearsalRequired Boolean       @default(false)
+  template          EventTemplate @relation(fields: [templateId], references: [id])
+  ministry          Ministry      @relation(fields: [ministryId], references: [id])
+
+  @@unique([templateId, ministryId, slotNo])
+}
+
+// ───────── Jadwal ─────────
+model Event { // header; nomor EV-YYYYMM-0001
+  id           String             @id @default(uuid())
+  tenantId     String
+  number       String
+  templateId   String?
+  title        String
+  startsAt     DateTime           @db.Timestamptz(3)
+  endsAt       DateTime           @db.Timestamptz(3)
+  roomId       String
+  status       String             @default("DRAFT") // DRAFT | PUBLISHED | CANCELLED
+  attendanceMode String           @default("COUNT") // COUNT = jumlah saja | NAMES = per nama
+  publishedAt  DateTime?
+  cancelReason String?
+  createdById  String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  deletedAt    DateTime?
+  template     EventTemplate?     @relation(fields: [templateId], references: [id])
+  room         Room               @relation(fields: [roomId], references: [id])
+  teams        EventTeam[]
+  assignments  EventAssignment[]
+  rehearsals   RehearsalSession[]
+  attendances  EventAttendance[]
+  attendanceSummary EventAttendanceSummary?
+  // Rapat kelompok memakai tabel yang sama supaya pemakaian ruangan satu buku (tidak bisa bentrok).
+  kind          String             @default("IBADAH") // IBADAH | RAPAT
+  groupId       String? // wajib bila kind = RAPAT
+  showTopic     Boolean            @default(false) // judul rapat ikut tampil di kalender umum
+  showAttendees Boolean            @default(false) // daftar peserta ikut tampil di kalender umum
+  group         MeetingGroup?      @relation(fields: [groupId], references: [id])
+  seriesId      String? // rapat yang dibuat dari satu pengulangan
+  seriesIndex   Int? // urutan tanggal dalam seri (1 = pertama; bisa ada nomor yang terlewati bila ruangan bentrok)
+  series        MeetingSeries?     @relation(fields: [seriesId], references: [id])
+  links         MeetingLink[]
+  participants  MeetingParticipant[]
+  minutes       MeetingMinutes?
+
+  @@unique([tenantId, number])
+  @@index([tenantId, startsAt])
+  @@index([tenantId, kind, startsAt])
+  @@index([seriesId])
+}
+
+model EventTeam { // tim yang aktif di acara ini (bisa ditambah kapan pun)
+  id         String   @id @default(uuid())
+  eventId    String
+  teamTypeId String
+  event      Event    @relation(fields: [eventId], references: [id])
+  teamType   TeamType @relation(fields: [teamTypeId], references: [id])
+
+  @@unique([eventId, teamTypeId])
+}
+
+model EventAssignment { // satu baris = satu kursi
+  id                String   @id @default(uuid())
+  tenantId          String
+  eventId           String
+  teamTypeId        String
+  ministryId        String
+  slotNo            Int      @default(1) // dua gitar = slotNo 1 dan 2
+  personId          String? // kosong = belum diisi
+  rehearsalRequired Boolean  @default(false)
+  sortOrder         Int      @default(0)
+  event             Event    @relation(fields: [eventId], references: [id])
+  ministry          Ministry @relation(fields: [ministryId], references: [id])
+  person            Person?  @relation(fields: [personId], references: [id])
+
+  @@unique([eventId, ministryId, slotNo])
+  @@index([tenantId, personId])
+}
+
+model RehearsalSession { // peserta = semua orang yang terjadwal di acara
+  id        String    @id @default(uuid())
+  tenantId  String
+  eventId   String
+  seq       Int // latihan ke-n
+  startsAt  DateTime  @db.Timestamptz(3)
+  endsAt    DateTime  @db.Timestamptz(3)
+  roomId    String
+  note      String?
+  deletedAt DateTime?
+  event     Event     @relation(fields: [eventId], references: [id])
+  room      Room      @relation(fields: [roomId], references: [id])
+
+  @@unique([eventId, seq])
+}
+
+// ───────── Kehadiran (jemaat/peserta, bukan pelayan) ─────────
+model EventAttendanceSummary { // mode COUNT: satu angka per acara
+  id           String   @id @default(uuid())
+  tenantId     String
+  eventId      String   @unique
+  total        Int
+  note         String?
+  recordedById String?
+  recordedAt   DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  event        Event    @relation(fields: [eventId], references: [id])
+}
+
+model EventAttendance { // mode NAMES: satu baris per orang
+  id           String   @id @default(uuid())
+  tenantId     String
+  eventId      String
+  personId     String // tamu baru dibuat dulu sebagai Person
+  checkedInAt  DateTime @default(now())
+  recordedById String?
+  event        Event    @relation(fields: [eventId], references: [id])
+  person       Person   @relation(fields: [personId], references: [id])
+
+  @@unique([eventId, personId])
+  @@index([tenantId, personId])
+}
+
+// ───────── Ledger pemakaian orang & ruangan ─────────
+model Booking {
+  id           String    @id @default(uuid())
+  tenantId     String
+  resourceType String // PERSON | ROOM
+  resourceId   String
+  startsAt     DateTime  @db.Timestamptz(3)
+  endsAt       DateTime  @db.Timestamptz(3)
+  sourceType   String // EVENT | REHEARSAL
+  sourceId     String
+  assignmentId String?
+  createdAt    DateTime  @default(now())
+  deletedAt    DateTime? // dilepas saat batal / ganti orang
+  isOverride   Boolean   @default(false) // override Superadmin; di luar constraint
+
+  @@index([tenantId, resourceType, resourceId, startsAt])
+  @@index([sourceType, sourceId])
+}
+
+// ───────── Pendukung ─────────
+model DocSequence { // penomoran per bulan per tenant, retry P2002
+  id       String @id @default(uuid())
+  tenantId String
+  kind     String // EV
+  period   String // 202611
+  last     Int    @default(0)
+
+  @@unique([tenantId, kind, period])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String?
+  action    String // event.publish, booking.override, ...
+  entity    String
+  entityId  String
+  reason    String? // wajib untuk override bentrok
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, entity, entityId])
+}
+
+model IdempotencyKey {
+  id        String   @id @default(uuid())
+  tenantId  String
+  key       String
+  route     String
+  response  Json?
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, key])
+}
+
+// ───────── Kelompok rapat (Majelis, Pengurus Pemuda, Tim EBM, ...) ─────────
+// Bukan CgGroup (kelompok sel jemaat). Isi rapat hanya terbaca oleh anggota kelompok; Superadmin pun tidak.
+model MeetingGroup {
+  id        String            @id @default(uuid())
+  tenantId  String
+  name      String
+  quorumMin Int? // persen kehadiran minimal supaya rapat sah (1..100); kosong = tanpa kuorum
+  sortOrder Int               @default(0)
+  createdAt DateTime          @default(now())
+  deletedAt DateTime?
+  positions GroupPosition[]
+  members   GroupMember[]
+  meetings  Event[]
+
+  @@unique([tenantId, name])
+}
+
+model GroupPosition { // jabatan dinamis per kelompok + haknya; hak orang yang merangkap = gabungan
+  id               String              @id @default(uuid())
+  groupId          String
+  name             String
+  sortOrder        Int                 @default(0)
+  canSchedule      Boolean             @default(false) // membuat/mengubah rapat kelompok & meminjam ruangan
+  canWriteMinutes  Boolean             @default(false) // menulis notulen
+  canFinalize      Boolean             @default(false) // memfinalkan notulen
+  canManageMembers Boolean             @default(false) // mengatur anggota & jabatan anggota
+  deletedAt        DateTime?
+  group            MeetingGroup        @relation(fields: [groupId], references: [id])
+  members          GroupMemberPosition[]
+
+  @@unique([groupId, name])
+}
+
+model GroupMember {
+  id        String                @id @default(uuid())
+  groupId   String
+  personId  String
+  joinedAt  DateTime              @default(now())
+  leftAt    DateTime? // keluar = tidak bisa membaca lagi, riwayat tetap ada
+  group     MeetingGroup          @relation(fields: [groupId], references: [id])
+  person    Person                @relation(fields: [personId], references: [id])
+  positions GroupMemberPosition[]
+
+  @@unique([groupId, personId])
+  @@index([personId])
+}
+
+model GroupMemberPosition {
+  memberId   String
+  positionId String
+  member     GroupMember   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  position   GroupPosition @relation(fields: [positionId], references: [id])
+
+  @@id([memberId, positionId])
+}
+
+model MeetingLink { // lampiran rapat: tautan saja (Drive, dst.); hanya terbaca oleh anggota kelompok
+  id          String    @id @default(uuid())
+  eventId     String
+  title       String
+  url         String
+  createdById String?
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime?
+  event       Event     @relation(fields: [eventId], references: [id])
+
+  @@index([eventId])
+}
+
+model MeetingParticipant { // undangan dan kehadiran rapat: anggota kelompok (personId) atau tamu (guestName)
+  id          String    @id @default(uuid())
+  eventId     String
+  personId    String? // anggota kelompok; null = tamu
+  guestName   String? // nama tamu (hanya bila personId null)
+  status      String    @default("INVITED") // INVITED | PRESENT | EXCUSED | ABSENT
+  note        String?
+  respondedAt DateTime? // kapan kehadiran dicatat
+  createdById String?
+  createdAt   DateTime  @default(now())
+  event       Event     @relation(fields: [eventId], references: [id])
+  person      Person?   @relation(fields: [personId], references: [id])
+
+  @@unique([eventId, personId])
+  @@index([eventId])
+  @@index([personId])
+}
+
+model MeetingMinutes { // notulen satu rapat; hanya terbaca oleh anggota kelompok. Isi di sini = versi yang sedang berjalan.
+  id            String    @id @default(uuid())
+  eventId       String    @unique
+  status        String    @default("DRAFT") // DRAFT | FINAL (Final = terkunci; mengubahnya = revisi baru)
+  version       Int       @default(1) // nomor versi berjalan; naik setiap revisi
+  agenda        String    @default("")
+  discussion    String    @default("") // pembahasan dan tindak lanjut
+  decisions     String    @default("")
+  draftById     String? // penulis draf versi ini
+  draftAt       DateTime  @default(now()) // kapan draf versi ini dimulai
+  reviseReason  String? // alasan revisi (versi 2 dan seterusnya)
+  updatedById   String?
+  updatedAt     DateTime  @updatedAt
+  finalizedById String?
+  finalizedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  event         Event     @relation(fields: [eventId], references: [id])
+  revisions     MeetingMinutesRevision[]
+}
+
+model MeetingMinutesRevision { // arsip setiap versi yang pernah difinalkan; tidak pernah diubah
+  id            String         @id @default(uuid())
+  minutesId     String
+  version       Int
+  agenda        String
+  discussion    String
+  decisions     String
+  reason        String? // alasan revisi yang melahirkan versi ini (null untuk versi 1)
+  authorId      String? // penulis draf
+  draftAt       DateTime
+  finalizedById String?
+  finalizedAt   DateTime
+  minutes       MeetingMinutes @relation(fields: [minutesId], references: [id], onDelete: Cascade)
+
+  @@unique([minutesId, version])
+}
+
+model MeetingSeries { // satu kali pembuatan rapat berulang. Tiap tanggal tetap rapat biasa (Event) yang bisa diubah sendiri-sendiri.
+  id          String   @id @default(uuid())
+  tenantId    String
+  groupId     String
+  pattern     String // WEEKLY | BIWEEKLY | MONTHLY_NTH
+  weekday     Int // 0 = Minggu .. 6 = Sabtu
+  ordinal     Int? // untuk MONTHLY_NTH: minggu ke-1..4, 5 = terakhir
+  total       Int // jumlah tanggal yang direncanakan
+  untilDate   String? // batas akhir bila dipilih berdasarkan tanggal
+  createdById String?
+  createdAt   DateTime @default(now())
+  events      Event[]
+
+  @@index([tenantId, groupId])
+}
