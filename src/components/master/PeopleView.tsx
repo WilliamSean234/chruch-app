@@ -25,6 +25,23 @@ const fullName = (x: { name: string; title?: string | null }) => (x.title && !x.
 // Warna posisi khusus (selain "Jemaat"): tetap per nama posisi, hijau dipakai khusus untuk Leader CG.
 const POS_COLORS = [["#E6E8F8", "#3037A8"], ["#FFF3D6", "#6F4304"], ["#FCE8EC", "#9B1C3A"], ["#DDF3F2", "#0F5E5A"], ["#EFE6FA", "#5B2A9E"]] as const;
 const posColor = (name: string) => POS_COLORS[[...name.toLowerCase()].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % POS_COLORS.length];
+const ROLE_TONE: Record<string, [string, string]> = {
+  SUPERADMIN: ["#FCE8EC", "#9B1C3A"], PENJADWAL: ["#E6E8F8", "#3037A8"], ADMIN_TIM: ["#EFE6FA", "#5B2A9E"], PETUGAS_ABSEN: ["#FFF3D6", "#6F4304"], PELAYAN: ["#E3F4E8", "#1B6B34"],
+};
+const ROLE_ORDER = ["SUPERADMIN", "PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN"];
+
+/** Role akun login: chip per role. Tanpa akun cukup "–"; akun nonaktif diberi tanda. */
+function RoleChips({ account }: { account: PersonDto["account"] }) {
+  if (!account) return <span className="text-[var(--ink-2)]">–</span>;
+  const codes = [...(account.roleCodes ?? [])].sort((a, b) => ROLE_ORDER.indexOf(a) - ROLE_ORDER.indexOf(b));
+  return (
+    <span className="flex flex-wrap items-center gap-1.5">
+      {codes.length === 0 && <span className="whitespace-nowrap rounded-full bg-[#ECEEF4] px-2.5 py-0.5 text-xs font-bold text-[#565B76]">Tanpa role</span>}
+      {codes.map((c) => <span key={c} className="whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-bold" style={{ background: (ROLE_TONE[c] ?? ROLE_TONE.PELAYAN)[0], color: (ROLE_TONE[c] ?? ROLE_TONE.PELAYAN)[1] }}>{ROLE_LABEL[c] ?? c}</span>)}
+      {!account.isActive && <span className="whitespace-nowrap rounded-full border border-[var(--line)] px-2 py-0.5 text-[11px] font-bold text-[var(--ink-2)]">Nonaktif</span>}
+    </span>
+  );
+}
 const isPlainPosition = (name: string) => name.trim().toLowerCase() === "jemaat";
 
 export default function PeopleView({ scope, canAccount, canMaster, isSuper }: { scope: string[] | null; canAccount: boolean; canMaster: boolean; isSuper: boolean }) {
@@ -130,10 +147,10 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper }: { 
           {items && items.length === 0 && <p className="p-10 text-center text-sm font-semibold text-[var(--ink-2)]">{dirty ? "Tidak ada orang yang cocok dengan filter ini." : "Belum ada orang."}</p>}
           {items && items.length > 0 && (
             <div className="overflow-x-auto">
-              <table className={`w-full ${isSuper ? "min-w-[860px]" : "min-w-[640px]"} border-collapse text-left text-sm`}>
+              <table className={`w-full ${isSuper ? (canAccount ? "min-w-[980px]" : "min-w-[860px]") : canAccount ? "min-w-[760px]" : "min-w-[640px]"} border-collapse text-left text-sm`}>
                 <thead>
                   <tr className="text-[11.5px] font-extrabold uppercase tracking-[0.07em] text-[var(--ink-2)]">
-                    {["Nama", "Posisi", "Usia", "JK", "Pelayanan", "CG", ...(isSuper ? ["Kelompok & jabatan"] : [])].map((h) => <th key={h} scope="col" className="px-4 py-3.5">{h}</th>)}
+                    {["Nama", "Posisi", "Usia", "JK", "Pelayanan", "CG", ...(canAccount ? ["Role"] : []), ...(isSuper ? ["Kelompok & jabatan"] : [])].map((h) => <th key={h} scope="col" className="px-4 py-3.5">{h}</th>)}
                   </tr>
                 </thead>
                 <tbody>
@@ -167,6 +184,7 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper }: { 
                             {leaderOf.has(p.id) && <span title={`Leader ${leaderOf.get(p.id)!.join(", ")}`} className="whitespace-nowrap rounded-full bg-[#E3F4E8] px-2.5 py-0.5 text-xs font-bold text-[#1B6B34]">Leader CG</span>}
                           </span>
                         </td>
+                        {canAccount && <td className="px-4 py-3"><RoleChips account={p.account} /></td>}
                         {isSuper && <td className="px-4 py-3"><MembershipChips items={p.memberships} /></td>}
                       </tr>
                     );
@@ -180,7 +198,7 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper }: { 
 
         {/* Detail */}
         {selected && lookups && (
-          <PersonDetail key={selected.id} person={selected} teams={lookups.teams} cgs={lookups.cgs} scope={scope} onEdit={() => setForm({ person: selected })} onChanged={() => void reload()} />
+          <PersonDetail key={selected.id} canAccount={canAccount} person={selected} teams={lookups.teams} cgs={lookups.cgs} scope={scope} onEdit={() => setForm({ person: selected })} onChanged={() => void reload()} />
         )}
       </div>
 
@@ -208,7 +226,7 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper }: { 
 }
 
 /** Kartu ringkasan di kanan: data orang yang dipilih, plus tambah/cabut pelayanan dengan cepat. */
-function PersonDetail({ person: p, teams, cgs, scope, onEdit, onChanged }: { person: PersonDto; teams: Team[]; cgs: CgOpt[]; scope: string[] | null; onEdit: () => void; onChanged: () => void }) {
+function PersonDetail({ person: p, canAccount, teams, cgs, scope, onEdit, onChanged }: { person: PersonDto; canAccount: boolean; teams: Team[]; cgs: CgOpt[]; scope: string[] | null; onEdit: () => void; onChanged: () => void }) {
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -258,6 +276,12 @@ function PersonDetail({ person: p, teams, cgs, scope, onEdit, onChanged }: { per
           </div>
         )}
         {row("Komunitas", p.communities.length ? p.communities.map((c) => c.name).join(", ") : "—")}
+        {canAccount && p.account && (
+          <div className="flex items-start justify-between gap-4 border-b border-[var(--line-2)] py-3 text-sm">
+            <span className="text-[var(--ink-2)]">Role</span>
+            <span className="flex justify-end text-right"><RoleChips account={p.account} /></span>
+          </div>
+        )}
         {row("Akun login", p.account ? (p.account.isActive ? (p.account.mustChangePassword ? "Terhubung · belum ganti sandi" : "Terhubung") : "Nonaktif") : "Belum ada")}
       </div>
 

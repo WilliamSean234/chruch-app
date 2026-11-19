@@ -55,8 +55,8 @@ export function FSelect({ label, value, onChange, options, allLabel = "Semua", c
   label: string; value: string; onChange: (v: string) => void; options?: Opt[]; allLabel?: string; children?: ReactNode; width?: string;
 }) {
   return (
-    <label className={lbl}>{label}
-      <select className={`${inputCls} ${width}`} value={value} onChange={(e) => onChange(e.target.value)}>
+    <label className={`${lbl} max-md:min-w-0 max-md:max-w-full`}>{label}
+      <select className={`${inputCls} ${width} max-md:max-w-full`} value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">{allLabel}</option>
         {options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         {children}
@@ -66,7 +66,7 @@ export function FSelect({ label, value, onChange, options, allLabel = "Semua", c
 }
 
 export function FDate({ label, value, onChange, className = "" }: { label: string; value: string; onChange: (v: string) => void; className?: string }) {
-  return <label className={`${lbl} max-md:min-w-0 max-md:flex-1 ${className}`}>{label}<input type="date" className={`${inputCls} w-44 max-md:w-full`} value={value} onChange={(e) => onChange(e.target.value)} /></label>;
+  return <label className={`${lbl} max-md:min-w-0 max-md:basis-[calc(50%-6px)] ${className}`}>{label}<input type="date" className={`${inputCls} w-44 max-md:min-w-0 max-md:max-w-full max-md:w-full`} value={value} onChange={(e) => onChange(e.target.value)} /></label>;
 }
 
 /**
