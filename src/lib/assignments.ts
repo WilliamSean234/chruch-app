@@ -174,11 +174,20 @@ export async function suggestForSeat(u: AuthUser, eventId: string, assignmentId:
   const seat = await loadSeat(u, eventId, assignmentId);
   const ranges = await seatRanges(seat);
 
+  // Kursi EBM hanya menampilkan anggota EBM (punya pelayanan di tim EBM); orang di luar EBM tidak ditampilkan sama sekali.
+  let ebmOnly: object = {};
+  if (teamKind(seat.ministry.teamType.name) === "EBM") {
+    const teams = await prisma.teamType.findMany({ where: { tenantId: u.tenantId, deletedAt: null }, select: { id: true, name: true } });
+    const ids = teams.filter((t) => teamKind(t.name) === "EBM").map((t) => t.id);
+    ebmOnly = { ministries: { some: { ministry: { deletedAt: null, teamTypeId: { in: ids } } } } };
+  }
+
   const people = await prisma.person.findMany({
     where: {
       tenantId: u.tenantId, deletedAt: null,
+      ...ebmOnly,
       ...(q.search ? { nameKey: { contains: nameKey(q.search) } } : {}),
-      ...(q.includeOthers ? {} : { ministries: { some: { ministryId: seat.ministryId } } }),
+      ...(q.includeOthers ? {} : { AND: [{ ministries: { some: { ministryId: seat.ministryId } } }] }),
     },
     include: { ministries: { select: { ministryId: true, ministry: { select: { id: true, name: true, sortOrder: true, deletedAt: true, teamType: { select: { name: true, sortOrder: true } } } } } } },
     orderBy: { nameKey: "asc" },

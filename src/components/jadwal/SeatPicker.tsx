@@ -28,8 +28,6 @@ export default function SeatPicker({ eventId, seatId, seatLabel, timeLabel, canA
       const r = await callApi("GET", `/api/v1/events/${eventId}/seats/${seatId}/suggestions?includeOthers=${others}${q ? `&search=${encodeURIComponent(q)}` : ""}`);
       if (r.ok) {
         setData(r.data); setError("");
-        // Posisi baru belum punya orang yang tercatat bisa: langsung tampilkan semua orang.
-        if (!others && !q && r.data.available.length + r.data.unavailable.length === 0) setOthers(true);
       } else setError(errMsg(r.data));
     }, 200);
     return () => clearTimeout(t);
@@ -88,7 +86,11 @@ export default function SeatPicker({ eventId, seatId, seatLabel, timeLabel, canA
         <div className="flex max-h-[420px] flex-col gap-3 overflow-y-auto pr-1">
           <div className="flex flex-col gap-1">
             <span className="text-[11.5px] font-extrabold tracking-[0.07em] text-[#1B6B34]">TERSEDIA ({data.available.length}) · {timeLabel}</span>
-            {data.available.length === 0 && <span className="px-2.5 text-sm text-[var(--ink-2)]">Tidak ada yang tersedia.</span>}
+            {data.available.length === 0 && (
+              <span className="px-2.5 text-sm text-[var(--ink-2)]">
+                {!others && data.unavailable.length === 0 ? "Belum ada yang tercatat bisa posisi ini. Centang kotak di atas untuk menampilkan semua orang." : "Tidak ada yang tersedia."}
+              </span>
+            )}
             {(allAvail || searching ? data.available : data.available.slice(0, SHOW)).map((c) => row(c, false))}
             {!allAvail && !searching && data.available.length > SHOW && (
               <button type="button" onClick={() => setAllAvail(true)} className="w-fit rounded-lg px-2.5 py-1.5 text-xs font-bold text-[var(--primary-ink)] hover:bg-white">
