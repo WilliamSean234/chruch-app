@@ -13,13 +13,14 @@ import type { ExportModel, PersonOpt, ExistingService } from "@/lib/teamSchedule
 const MONTHS = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 const SHORT = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 
-export type FormatInfo = { key: string; label: string; title: string; perService: boolean };
-type Col = { key: string; label: string; ministry: string; ministryId: string | null; service?: 1 | 2 | null; slotNo?: number };
-type Row = { date: string; month: number; line: number; names: Record<string, string>; existing: { 1?: ExistingService; 2?: ExistingService } };
+export type FormatInfo = { key: string; label: string; title: string; perService: boolean; pen?: boolean };
+type Col = { key: string; label: string; ministry: string; ministryId: string | null; service?: 1 | 2 | null; slotNo?: number; bandOnly?: boolean };
+type RowAttrs = { band?: "BAND" | "NO_BAND" | null; padus?: string; theme?: string };
+type Row = { date: string; month: number; line: number; names: Record<string, string>; attrs: RowAttrs | null; existing: { 1?: ExistingService; 2?: ExistingService } };
 type NameRow = { key: string; raw: string; count: number; columns: string[]; status: "MATCHED" | "AMBIGUOUS" | "NONE"; personId: string | null; guess: string | null; suggestions: string[] };
 type Extra = { key: string; label: string; suggested: string; exists: boolean; ministryId: string | null };
 type Preview = {
-  teamShort: string; perService: boolean; slots: [number, number] | null; groups: { service: number; label: string; keys: string[] }[] | null;
+  teamShort: string; perService: boolean; pen?: boolean; penSlots?: Record<string, number> | null; slots: [number, number] | null; groups: { service: number; label: string; keys: string[] }[] | null;
   extras: Extra[]; year: number; sheetName: string | null; errors: { line?: number; message: string }[]; warnings: { line?: number; message: string }[];
   columns: Col[]; newMinistries: string[]; services: { n: number; name: string; startTime: string }[]; rows: Row[]; names: NameRow[]; people: PersonOpt[];
 };
@@ -146,8 +147,14 @@ function UploadTab({ fmt, goExport }: { fmt: FormatInfo; goExport: () => void })
     if (ex.status === "CANCELLED") return "batal";
     const cn = cols.filter((c) => !c.service || c.service === n); // kolom milik ibadah ini
     const foreign = ex.seats.some((s) => !cn.some((c) => c.ministryId === s.ministryId && (c.slotNo ?? 1) === s.slotNo));
-    const diff = cn.some((c) => (ex.seats.find((s) => s.ministryId === c.ministryId && s.slotNo === (c.slotNo ?? 1))?.personId ?? null) !== (cells[c.key] ?? null));
-    return foreign || diff ? "ubah" : "sama";
+    const noBand = (row.attrs?.band ?? ex.bandMode) === "NO_BAND";
+    const diff = cn.some((c) => {
+      if (noBand && c.bandOnly) return !!ex.seats.find((s) => s.ministryId === c.ministryId && s.slotNo === (c.slotNo ?? 1))?.personId; // kursi band dihapus
+      return (ex.seats.find((s) => s.ministryId === c.ministryId && s.slotNo === (c.slotNo ?? 1))?.personId ?? null) !== (cells[c.key] ?? null);
+    });
+    const a = row.attrs;
+    const attrDiff = !!a && ((!!a.band && a.band !== ex.bandMode) || (a.theme !== undefined && a.theme.trim() !== (ex.theme ?? "")) || (a.padus !== undefined && a.padus.trim() !== (ex.padus ?? "")));
+    return foreign || diff || attrDiff ? "ubah" : "sama";
   };
 
   const view = useMemo(() => {
@@ -184,7 +191,7 @@ function UploadTab({ fmt, goExport }: { fmt: FormatInfo; goExport: () => void })
       try {
         const r = await fetch(`/api/v1/team-schedule/${FORMAT}/apply`, {
           method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store",
-          body: JSON.stringify({ year: pv.year, date: x.r.date, cells: x.cells, extras: cols.filter((c) => c.key.startsWith("x_")).map((c) => ({ key: c.key, ministry: c.ministry })), ...(pv.slots ? { slots: pv.slots } : {}) }),
+          body: JSON.stringify({ year: pv.year, date: x.r.date, cells: x.cells, extras: cols.filter((c) => c.key.startsWith("x_")).map((c) => ({ key: c.key, ministry: c.ministry })), ...(pv.slots ? { slots: pv.slots } : {}), ...(pv.pen ? { penSlots: pv.penSlots ?? undefined, attrs: x.r.attrs ?? undefined } : {}) }),
         });
         const d = await r.json().catch(() => null);
         if (r.ok) out.push(d as DateResult);
@@ -235,7 +242,7 @@ function UploadTab({ fmt, goExport }: { fmt: FormatInfo; goExport: () => void })
       <section className={card}>
         <h2 className="text-lg font-extrabold">1. Pilih tahun dan file</h2>
         <p className="mt-1 max-w-3xl text-sm font-medium text-[var(--ink-2)]">
-          {fmt.perService ? "Kolom KU1 berlaku untuk Ibadah Minggu I dan KU2 untuk Ibadah Minggu II. Jumlah kursi tiap ibadah mengikuti jumlah kolom di file." : "Satu baris tanggal berlaku untuk Ibadah Minggu I dan II."} Unggahan membuat acara yang belum ada (berstatus draf) dan mengganti petugas tim {fmt.label} di acara yang sudah ada. Bagian acara selain tim {fmt.label} tidak disentuh.
+          {fmt.perService ? "Kolom KU1 berlaku untuk Ibadah Minggu I dan KU2 untuk Ibadah Minggu II. Jumlah kursi tiap ibadah mengikuti jumlah kolom di file." : fmt.pen ? "Satu baris tanggal berlaku untuk Ibadah Minggu I dan II, termasuk Band/No Band, Padus, dan Tema. Kolom pemusik mengikuti file (Gitar 2 atau alat baru ikut terbaca bila kolomnya diberi nama)." : "Satu baris tanggal berlaku untuk Ibadah Minggu I dan II."} Unggahan membuat acara yang belum ada (berstatus draf) dan mengganti petugas tim {fmt.label} di acara yang sudah ada. Bagian acara selain tim {fmt.label} tidak disentuh.
         </p>
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-[13px] font-bold text-[var(--ink-2)]">Tahun
@@ -366,6 +373,7 @@ function UploadTab({ fmt, goExport }: { fmt: FormatInfo; goExport: () => void })
                         {pv.groups
                           ? pv.groups.map((g) => <th key={g.service} colSpan={g.keys.length} className="border-l border-[var(--line)] px-2.5 py-2 text-center font-extrabold">{g.label}</th>)
                           : cols.map((c) => <th key={c.key} className="px-2.5 py-2 font-extrabold">{c.label}</th>)}
+                        {pv.pen && ["Band", "Padus", "Tema"].map((l) => <th key={l} className="border-l border-[var(--line)] px-2.5 py-2 font-extrabold">{l}</th>)}
                       </tr>
                     </thead>
                     <tbody>
@@ -400,6 +408,25 @@ function UploadTab({ fmt, goExport }: { fmt: FormatInfo; goExport: () => void })
                                 </td>
                               );
                             })}
+                            {pv.pen && (() => {
+                              const ex = r.existing[1] ?? r.existing[2];
+                              const a = r.attrs;
+                              const band = a?.band ? (a.band === "NO_BAND" ? "No Band" : "Band") : "";
+                              const oldBand = ex && a?.band && a.band !== ex.bandMode ? (ex.bandMode === "NO_BAND" ? "No Band" : "Band") : null;
+                              const oldPadus = ex && a?.padus !== undefined && a.padus.trim() !== (ex.padus ?? "") && ex.padus ? ex.padus : null;
+                              const oldTheme = ex && a?.theme !== undefined && a.theme.trim() !== (ex.theme ?? "") && ex.theme ? ex.theme : null;
+                              const cell = (v: string, old: string | null, wide?: boolean) => (
+                                <td className={`px-2.5 py-2 align-top ${wide ? "min-w-[220px] whitespace-pre-line" : ""}`}>
+                                  <div className="font-semibold">{v || <span className="text-[#A0A4BC]">—</span>}</div>
+                                  {old && !ex?.past && <div className="text-[11.5px] font-semibold text-[#8A6119]">dulu: {old.length > 80 ? `${old.slice(0, 80)}…` : old}</div>}
+                                </td>
+                              );
+                              return <>
+                                <td className="border-l border-[var(--line)] px-2.5 py-2 align-top"><div className="whitespace-nowrap font-semibold">{band || <span className="text-[#A0A4BC]">—</span>}</div>{oldBand && !ex?.past && <div className="text-[11.5px] font-semibold text-[#8A6119]">dulu: {oldBand}</div>}</td>
+                                {cell(a?.padus ?? "", oldPadus)}
+                                {cell(a?.theme ?? "", oldTheme, true)}
+                              </>;
+                            })()}
                           </tr>
                         );
                       })}
@@ -447,6 +474,24 @@ function UploadTab({ fmt, goExport }: { fmt: FormatInfo; goExport: () => void })
 }
 
 // ───────────────────────── Bagikan ─────────────────────────
+
+/** Header dua baris Penatalayan: baris atas kelompok (Liturgos, Pemusik, …), baris bawah nama kolom; kolom tunggal menempati dua baris. */
+function PenHead({ model }: { model: ExportModel }) {
+  const th = "border-l border-[var(--line)] px-2.5 py-2 text-center font-extrabold";
+  return (
+    <thead>
+      <tr className="bg-[#F3E9CF]">
+        <th rowSpan={2} className="px-2.5 py-2 text-left font-extrabold">TGL</th>
+        {model.groups!.map((g) => g.single
+          ? <th key={g.label} rowSpan={2} className={th}>{g.label}</th>
+          : <th key={g.label} colSpan={g.keys.length} className={th}>{g.label}</th>)}
+      </tr>
+      <tr className="bg-[#F3E9CF]">
+        {model.groups!.filter((g) => !g.single).flatMap((g) => g.keys.map((k, i) => <th key={k} className={`px-2.5 py-1.5 text-center text-[12px] font-bold ${i === 0 ? "border-l border-[var(--line)]" : ""}`}>{model.columns.find((c) => c.key === k)?.label}</th>))}
+      </tr>
+    </thead>
+  );
+}
 
 function ExportTab({ fmt }: { fmt: FormatInfo }) {
   const FORMAT = fmt.key;
@@ -539,12 +584,12 @@ function ExportTab({ fmt }: { fmt: FormatInfo }) {
               <div key={mo.month} className="overflow-x-auto rounded-xl border border-[var(--line)]">
                 <div className="bg-[var(--primary)] px-3 py-2 text-center text-sm font-extrabold text-white">{mo.name} {model.year}</div>
                 <table className="w-full min-w-[720px] border-collapse text-[13px]">
-                  <thead><tr className="bg-[#F3E9CF]"><th className="px-2.5 py-2 text-left font-extrabold">TGL</th>{model.groups ? model.groups.map((g) => <th key={g.label} colSpan={g.keys.length} className="border-l border-[var(--line)] px-2.5 py-2 text-center font-extrabold">{g.label}</th>) : model.columns.map((c) => <th key={c.key} className="px-2.5 py-2 text-left font-extrabold">{c.label}</th>)}</tr></thead>
+                  {model.pen && model.groups ? <PenHead model={model} /> : <thead><tr className="bg-[#F3E9CF]"><th className="px-2.5 py-2 text-left font-extrabold">TGL</th>{model.groups ? model.groups.map((g) => <th key={g.label} colSpan={g.keys.length} className="border-l border-[var(--line)] px-2.5 py-2 text-center font-extrabold">{g.label}</th>) : model.columns.map((c) => <th key={c.key} className="px-2.5 py-2 text-left font-extrabold">{c.label}</th>)}</tr></thead>}
                   <tbody>
                     {mo.rows.map((r, i) => (
                       <tr key={r.date} className={i % 2 ? "bg-[#F6F7FC]" : ""}>
                         <td className="px-2.5 py-2 font-extrabold">{r.day}</td>
-                        {model.columns.map((c) => <td key={c.key} className={`px-2.5 py-2 font-semibold ${model.groups?.some((g) => g.keys[0] === c.key) ? "border-l border-[var(--line)]" : ""} ${r.cells[c.key]?.includes(" / ") ? "bg-[#FFF4D6]" : ""}`}>{r.cells[c.key] || <span className="text-[#A0A4BC]">—</span>}</td>)}
+                        {model.columns.map((c) => <td key={c.key} className={`px-2.5 py-2 font-semibold ${model.groups?.some((g) => g.keys[0] === c.key) ? "border-l border-[var(--line)]" : ""} ${c.key.startsWith("@") && c.key !== "@band" ? "min-w-[200px] whitespace-pre-line align-top" : ""} ${r.cells[c.key]?.includes(" / ") ? "bg-[#FFF4D6]" : ""}`}>{r.cells[c.key] || <span className="text-[#A0A4BC]">—</span>}</td>)}
                       </tr>
                     ))}
                   </tbody>

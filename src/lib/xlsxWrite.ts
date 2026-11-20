@@ -3,7 +3,7 @@
  * teks, angka, gabung sel, lebar kolom, beberapa gaya, dan daftar pilihan (validasi data).
  */
 
-export type XStyle = "plain" | "title" | "head" | "cell" | "center" | "note" | "bold";
+export type XStyle = "plain" | "title" | "head" | "cell" | "center" | "note" | "bold" | "wrap";
 export type XCell = { r: number; c: number; v: string | number; s?: XStyle };
 export type XSheetSpec = {
   name: string;
@@ -14,7 +14,7 @@ export type XSheetSpec = {
   hidden?: boolean;
 };
 
-const STYLE_ID: Record<XStyle, number> = { plain: 0, title: 1, head: 2, cell: 3, center: 4, note: 5, bold: 6 };
+const STYLE_ID: Record<XStyle, number> = { plain: 0, title: 1, head: 2, cell: 3, center: 4, note: 5, bold: 6, wrap: 7 };
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 // karakter kontrol tidak boleh ada di XML
@@ -40,7 +40,7 @@ const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <border><left style="thin"><color rgb="FFB9BCE0"/></left><right style="thin"><color rgb="FFB9BCE0"/></right><top style="thin"><color rgb="FFB9BCE0"/></top><bottom style="thin"><color rgb="FFB9BCE0"/></bottom><diagonal/></border>
 </borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="7">
+<cellXfs count="8">
 <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
 <xf numFmtId="0" fontId="2" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
 <xf numFmtId="0" fontId="1" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
@@ -48,6 +48,7 @@ const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
 <xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="top"/></xf>
 <xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>
 </cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`;

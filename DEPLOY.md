@@ -106,3 +106,11 @@ Tersimpan di tabel `LoginThrottle` (migrasi `login_throttle`), jadi tetap berlak
 - Satu baris tanggal berlaku untuk dua ibadah. Acara yang belum ada dibuat sebagai DRAFT; yang sudah ada hanya diganti petugas tim EBM-nya. Tanggal yang sudah lewat dan acara batal dilewati.
 - Format file diatur di `src/lib/teamFormats.ts`. Tim lain (pemusik, dst.) cukup menambah format baru di sana setelah template-nya ada.
 - **Usher**: kolom dikelompokkan per ibadah (KU1 = Ibadah Minggu I, KU2 = Ibadah Minggu II), tiap kelompok beberapa kursi untuk posisi "Usher". Jumlah kursi mengikuti sel gabungan di file (bawaan 3 dan 4). Tanggal boleh angka hari di bawah judul bulan atau tanggal lengkap ("1 Nov 2026"), jadi satu header untuk setahun juga terbaca. Unggahan menyamakan kursi Usher di template Ibadah Minggu I/II dan acara yang disentuh; warna sel di file tidak dibaca.
+
+## Penatalayan ibadah, Band / No Band, Tema, Padus
+
+- Tim "Pimpinan ibadah" berganti nama menjadi **Penatalayan ibadah** dan **Tim pemusik digabung** ke dalamnya (PIC, Liturgos/WL, Pembicara, Keyboard, Piano, Bass, Gitar, Drum, Singer, dst). Penggabungan dijalankan oleh migrasi `20261120230000_penatalayan_theme_band` saat `prisma migrate deploy` di build Vercel. Aman dijalankan ulang. Bila ada posisi dengan nama sama di dua tim, posisi itu tetap di tim lama; rapikan lewat Orang › Pelayanan.
+- Setelah menarik kode: jalankan `npx prisma generate` di laptop (kolom baru: `Event.theme`, `Event.padus`, `Event.bandMode`, `Ministry.bandOnly`).
+- **Band / No Band**: ibadah baru otomatis Band. "Jadikan No Band" menghapus posisi bertanda *Posisi band* (bass, gitar, drum, kajon) dari acara itu dan melepas orangnya; "Kembalikan ke Band" memulihkan dari template. Tanda *Posisi band* diatur di Orang › Pelayanan.
+- **Tema ibadah** (maks 600 huruf) dan **Padus** (catatan teks, maks 200 huruf) bersifat opsional; diisi di form acara, tampil di detail acara kalender.
+- Admin Tim lama untuk Tim pemusik otomatis dipindah ke Penatalayan ibadah.

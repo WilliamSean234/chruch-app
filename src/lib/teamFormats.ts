@@ -18,6 +18,9 @@ export type FormatColumn = {
   aliases: string[]; // ejaan lain header di file (dinormalkan)
   service?: 1 | 2; // hanya untuk format per ibadah: kolom ini milik Ibadah Minggu I atau II (kosong = kedua ibadah)
   slotNo?: number; // nomor kursi untuk posisi yang punya beberapa kursi (default 1)
+  group?: string; // format Penatalayan: judul kelompok kolom di file ("Pemusik", "Backing Vocal"); kosong = kolom berdiri sendiri
+  bandOnly?: boolean; // posisi band (bass, gitar, drum): tidak dipakai di ibadah No Band
+  base?: string; // format Penatalayan: pengenal posisi dasar (lit, keyboard, gitar, singer, …)
 };
 
 export type ServiceGroup = { service: 1 | 2; label: string; slots: number; aliases: string[] }; // slots = jumlah kursi bawaan
@@ -25,13 +28,18 @@ export type ServiceGroup = { service: 1 | 2; label: string; slots: number; alias
 export type TeamFormat = {
   key: string; // "ebm"
   teamName: string; // nama tim bawaan bila perlu dibuat/dicari
-  teamKind: "EBM" | "USHER"; // pengenal jenis tim (seatRules.teamKind)
+  teamKind: "EBM" | "USHER" | "PIMPINAN"; // pengenal jenis tim (seatRules.teamKind)
   teamShort: string; // untuk teks di layar
   title: string; // untuk judul export
   columns: FormatColumn[];
   groups?: ServiceGroup[]; // hanya format per ibadah
   ministry?: string; // posisi tunggal untuk format per ibadah
+  pen?: boolean; // format Penatalayan: kolom ditentukan file (jumlah kursi per posisi), ditambah Band/No Band, Padus, dan Tema pada acara
+  preserve?: string[]; // nama posisi tim yang tidak disentuh unggahan (mis. Pembicara)
 };
+
+/** Atribut acara dari file Penatalayan. Tidak ada (undefined) = kolomnya tidak ada di file, jadi tidak diubah. */
+export type RowAttrs = { band?: "BAND" | "NO_BAND" | null; padus?: string; theme?: string };
 
 export const MAX_SLOTS = 8;
 
@@ -99,16 +107,18 @@ export type SheetRow = {
   month: number; // 1–12
   line: number; // nomor baris di file
   names: Record<string, string>; // kunci kolom → teks apa adanya (kosong = tidak diisi)
+  attrs?: RowAttrs; // hanya format Penatalayan
 };
 export type ParseIssue = { line?: number; message: string };
 export type ExtraColumn = { key: string; label: string; suggested: string }; // kolom di file yang belum dikenal format
 export type ParseResult = {
   rows: SheetRow[]; errors: ParseIssue[]; warnings: ParseIssue[]; sheetName: string | null; extraColumns: ExtraColumn[];
   slotCounts: [number, number] | null; // format per ibadah: jumlah kursi KU1 dan KU2 yang terbaca di file
+  penSlots?: Record<string, number> | null; // format Penatalayan: jumlah kursi tiap posisi dasar yang terbaca di file
 };
 
 /** Kolom catatan biasa yang tidak ditawarkan sebagai pelayanan baru. */
-const NOT_A_SERVICE = new Set(["KET", "KETERANGAN", "CATATAN", "NOTE", "NOTES", "NO", "NOMOR", "HARI", "BULAN"]);
+export const NOT_A_SERVICE = new Set(["KET", "KETERANGAN", "CATATAN", "NOTE", "NOTES", "NO", "NOMOR", "HARI", "BULAN"]);
 
 /** "SPONSOR" → "Sponsor", "EASY WORSHIP" → "Easy Worship"; singkatan pendek (≤3 huruf) dan yang bercampur huruf kecil dibiarkan. */
 export function suggestMinistryName(label: string): string {
@@ -162,7 +172,7 @@ function monthWord(word: string): number | null {
 }
 
 /**
- * Tanggal lengkap dari teks: "2027-01-03", "3 Jan 2027", "3 Januari 2027", "Minggu, 3 Jan 2027", "03/01/2027" (hari/bulan/tahun).
+ * Tanggal lengkap dari teks: "2027-01-03", "3 Jan 2027", "3-Jan-27", "3 Januari 2027", "Minggu, 3 Jan 2027", "03/01/2027" (hari/bulan/tahun).
  * Hanya membaca bentuknya; sah tidaknya tanggal diperiksa pemanggil.
  */
 export function parseFullDate(raw: string): { y: number; m: number; d: number } | null {
@@ -171,17 +181,17 @@ export function parseFullDate(raw: string): { y: number; m: number; d: number } 
   if (m) return { y: +m[1]!, m: +m[2]!, d: +m[3]! };
   m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(t);
   if (m) return { y: +m[3]!, m: +m[2]!, d: +m[1]! };
-  m = /^(?:[A-Za-z]+\.?,?\s+)?(\d{1,2})[\s./-]+([A-Za-z]+)\.?[\s./,-]+(\d{4})$/.exec(t);
+  m = /^(?:[A-Za-z]+\.?,?\s+)?(\d{1,2})[\s./-]+([A-Za-z]+)\.?[\s./,-]+(\d{2}|\d{4})$/.exec(t);
   if (m) {
     const mo = monthWord(m[2]!);
-    if (mo) return { y: +m[3]!, m: mo, d: +m[1]! };
+    if (mo) return { y: m[3]!.length === 2 ? 2000 + +m[3]! : +m[3]!, m: mo, d: +m[1]! };
   }
   return null;
 }
 
-const isoDate = (y: number, m: number, d: number) => `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-const weekdayOf = (iso: string) => new Date(`${iso}T00:00:00Z`).getUTCDay();
-const validDay = (y: number, m: number, d: number) => {
+export const isoDate = (y: number, m: number, d: number) => `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+export const weekdayOf = (iso: string) => new Date(`${iso}T00:00:00Z`).getUTCDay();
+export const validDay = (y: number, m: number, d: number) => {
   const t = new Date(Date.UTC(y, m - 1, d));
   return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
 };
@@ -197,7 +207,7 @@ const DATE_HEADS = new Set(["TGL", "TANGGAL", "DATE", "TANGGALIBADAH"]);
 
 /** Teks yang tampak seperti tanggal baris jadwal: tanggal lengkap atau angka hari. */
 const dateLike = (raw: string) => !!parseFullDate(raw) || /^\d{1,2}(\.0+)?$/.test(raw);
-const isDateHead = (v: string) => DATE_HEADS.has(normHead(v));
+export const isDateHead = (v: string) => DATE_HEADS.has(normHead(v));
 
 export function parseTeamSheet(sheets: XSheet[], format: TeamFormat, year: number): ParseResult {
   const errors: ParseIssue[] = [];
