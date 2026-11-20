@@ -102,6 +102,18 @@ export const getEvent = async (tenantId: string, id: string) => {
   return { ...toDto(e), createdBy: (e.createdById && names.get(e.createdById)) || null, createdAt: e.createdAt.toISOString(), pair };
 };
 
+/** Kehadiran yang sudah tercatat untuk acara ini (null bila belum ada). Mode "jumlah": angka dan catatan; mode "per nama": jumlah yang hadir. */
+export async function attendanceBrief(eventId: string) {
+  const e = await prisma.event.findUnique({ where: { id: eventId }, select: { attendanceMode: true } });
+  if (!e) return null;
+  if (e.attendanceMode === "COUNT") {
+    const s = await prisma.eventAttendanceSummary.findUnique({ where: { eventId } });
+    return s ? { mode: "COUNT" as const, total: s.total, note: s.note, recordedAt: s.recordedAt.toISOString() } : null;
+  }
+  const count = await prisma.eventAttendance.count({ where: { eventId } });
+  return count > 0 ? { mode: "NAMES" as const, total: count, note: null, recordedAt: null } : null;
+}
+
 async function loadEditable(tenantId: string, id: string) {
   const e = await load(tenantId, id);
   if (!isEditable(e.status)) throw conflict("Acara yang sudah dibatalkan tidak bisa diubah.");

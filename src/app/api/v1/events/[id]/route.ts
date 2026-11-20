@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
-import { handle } from "@/lib/errors";
+import { handle, notFound } from "@/lib/errors";
 import { requireUser } from "@/lib/session";
-import { requirePermission } from "@/lib/rbac";
-import { notFound } from "@/lib/errors";
+import { can, requirePermission } from "@/lib/rbac";
 import { canSeeDrafts } from "@/lib/calendar";
-import { eventUpdateBody, getEvent, updateEvent } from "@/lib/events";
+import { attendanceBrief, eventUpdateBody, getEvent, updateEvent } from "@/lib/events";
 import { audit } from "@/lib/audit";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -14,7 +13,9 @@ export const GET = handle(async (req: Request, { params }: Ctx) => {
   requirePermission(u, "calendar.read");
   const e = await getEvent(u.tenantId, (await params).id);
   if (e.status === "DRAFT" && !canSeeDrafts(u)) throw notFound("Acara"); // draf belum untuk umum
-  return NextResponse.json(e);
+  // jumlah kehadiran hanya untuk yang boleh mencatat atau mengatur acara
+  const attendance = can(u, "attendance.write") || can(u, "event.write") ? await attendanceBrief(e.id) : null;
+  return NextResponse.json({ ...e, attendance });
 });
 
 export const PATCH = handle(async (req: Request, { params }: Ctx) => {

@@ -16,7 +16,7 @@ type Seat = {
 };
 type Detail = {
   createdBy: string | null; createdAt: string;
-  id: string; number: string; title: string; status: string; attendanceMode: string; theme: string | null; padus: string | null; bandMode: "BAND" | "NO_BAND"; startsAt: string; endsAt: string; durationMin: number;
+  id: string; number: string; title: string; status: string; attendanceMode: string; theme: string | null; padus: string | null; bandMode: "BAND" | "NO_BAND"; attendance?: { mode: "COUNT" | "NAMES"; total: number; note: string | null; recordedAt: string | null } | null; startsAt: string; endsAt: string; durationMin: number;
   room: { id: string; name: string }; teams: { teamTypeId: string; name: string }[]; seats: Seat[];
   /** Ibadah pasangan di hari yang sama (Minggu 1 dan 2): personelnya biasanya sama. */
   pair: { id: string; number: string; title: string; startsAt: string; filled: number } | null;
@@ -310,6 +310,23 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
               {perms.editEvent && editable && <button className={`${btnPrimary} max-md:hidden`} disabled={busy} onClick={saveInfo}>Simpan perubahan</button>}
             </div>
           </section>
+
+          {(d.attendance || (d.status === "PUBLISHED" && perms.editEvent)) && (
+            <section className={card}>
+              <div className="flex flex-wrap items-center gap-3">
+                <SectionTitle>Kehadiran</SectionTitle>
+                <span className="flex-1" />
+                {perms.editEvent && d.status === "PUBLISHED" && <Link href={`/hadir/${d.id}`} className={btnGhost}>{d.attendance ? "Ubah kehadiran" : "Isi kehadiran"}</Link>}
+              </div>
+              {d.attendance ? (
+                <p className="mt-2 text-sm font-semibold">
+                  <span className="text-[22px] font-extrabold">{d.attendance.total}</span> orang hadir
+                  {d.attendance.mode === "NAMES" && <span className="text-xs font-medium text-[var(--ink-2)]"> (dicatat per nama)</span>}
+                  {d.attendance.note && <span className="mt-1 block text-xs font-medium text-[var(--ink-2)]">Catatan: {d.attendance.note}</span>}
+                </p>
+              ) : <p className="mt-2 text-sm font-medium text-[var(--ink-2)]">Belum ada kehadiran yang dicatat.</p>}
+            </section>
+          )}
 
           {d.pair && editable && perms.assign && (
             <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#D0D3E8] bg-[#FAFAFF] px-5 py-3.5">
