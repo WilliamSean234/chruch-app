@@ -153,8 +153,9 @@ export async function createOnDate(u: AuthUser, t: TplWithSlots, iso: string): P
   const startsAt = zonedToUtc(iso, t.startTime);
   const endsAt = addMinutes(startsAt, t.durationMin);
 
-  if (await prisma.event.findFirst({ where: { tenantId: u.tenantId, templateId: t.id, startsAt, deletedAt: null } })) {
-    return { skipped: { date: iso, reason: "Acara dari template ini sudah ada." } };
+  const dup = await prisma.event.findFirst({ where: { tenantId: u.tenantId, templateId: t.id, startsAt, deletedAt: null }, select: { status: true, number: true } });
+  if (dup) {
+    return { skipped: { date: iso, reason: dup.status === "CANCELLED" ? `Acara dari template ini sudah ada tetapi dibatalkan (${dup.number}). Buka acaranya di Jadwal acara lalu pilih "Aktifkan kembali".` : "Acara dari template ini sudah ada." } };
   }
   try {
     const busy = await roomConflict(u.tenantId, t.roomId, startsAt, endsAt);

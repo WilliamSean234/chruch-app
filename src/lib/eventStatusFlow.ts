@@ -3,11 +3,11 @@ import { badRequest } from "./errors";
 export const EVENT_STATUS = ["DRAFT", "PUBLISHED", "CANCELLED"] as const;
 export type EventStatus = (typeof EVENT_STATUS)[number];
 
-/** Peralihan status yang diizinkan. CANCELLED adalah status akhir. */
+/** Peralihan status yang diizinkan. Acara batal bisa diaktifkan kembali (kembali ke DRAFT), bila ruangan dan orangnya masih kosong. */
 export const EVENT_TRANSITIONS: Record<EventStatus, EventStatus[]> = {
   DRAFT: ["PUBLISHED", "CANCELLED"],
   PUBLISHED: ["DRAFT", "CANCELLED"], // kembali ke DRAFT = ditarik untuk diubah
-  CANCELLED: [],
+  CANCELLED: ["DRAFT"],
 };
 
 export const canTransition = (from: EventStatus, to: EventStatus) => EVENT_TRANSITIONS[from].includes(to);

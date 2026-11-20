@@ -9,7 +9,10 @@ import { canSeeMeetingSchedule } from "./groups";
 /** Hanya penjadwal yang boleh melihat acara DRAFT; semua orang lain hanya melihat yang sudah diterbitkan. */
 export const canSeeDrafts = (u: AuthUser) => can(u, "event.write");
 
-export type CalendarQuery = { from: string; to: string; mine?: boolean; personId?: string; teamTypeId?: string; status?: string };
+/** Acara batal hanya untuk yang boleh membatalkan/mengaktifkan kembali (izin event.publish), dan hanya bila diminta lewat filter. */
+export const canSeeCancelled = (u: AuthUser) => can(u, "event.publish");
+
+export type CalendarQuery = { from: string; to: string; mine?: boolean; personId?: string; teamTypeId?: string; status?: string; cancelled?: boolean };
 
 export async function listCalendar(u: AuthUser, q: CalendarQuery) {
   // Kalender terbuka untuk semua orang yang masuk: siapa pun boleh mencari jadwal seseorang atau sebuah tim.
@@ -18,6 +21,7 @@ export async function listCalendar(u: AuthUser, q: CalendarQuery) {
   if (q.mine && !u.personId) return { items: [] as never[], rehearsals: [] as never[], meetings: [] as never[], note: "Akun ini belum dihubungkan ke data orang." };
 
   const drafts = canSeeDrafts(u);
+  if (q.status === "CANCELLED" && !canSeeCancelled(u)) return { items: [] as never[], rehearsals: [] as never[], meetings: [] as never[] };
   if (q.status && !drafts && q.status !== "PUBLISHED") return { items: [] as never[], rehearsals: [] as never[], meetings: [] as never[] };
 
   const assignmentFilter: Prisma.EventAssignmentWhereInput = {
@@ -28,7 +32,7 @@ export async function listCalendar(u: AuthUser, q: CalendarQuery) {
     where: {
       tenantId: u.tenantId, deletedAt: null, kind: "IBADAH",
       startsAt: { gte: zonedToUtc(q.from, "00:00"), lte: zonedToUtc(q.to, "23:59") },
-      status: q.status ?? (drafts ? undefined : "PUBLISHED"),
+      status: q.status ?? (drafts ? (q.cancelled && canSeeCancelled(u) ? undefined : { not: "CANCELLED" }) : "PUBLISHED"),
       ...(Object.keys(assignmentFilter).length ? { assignments: { some: assignmentFilter } } : {}),
     },
     include: { room: true, teams: { include: { teamType: true } }, assignments: { include: { ministry: true } } },

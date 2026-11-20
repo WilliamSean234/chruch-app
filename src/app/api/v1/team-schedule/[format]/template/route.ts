@@ -7,9 +7,10 @@ export const runtime = "nodejs";
 export const GET = handle(async (req: Request, ctx: { params: Promise<{ format: string }> }) => {
   const u = await requireUser(req);
   const { format } = await ctx.params;
-  const year = Number(new URL(req.url).searchParams.get("year"));
+  const q = new URL(req.url).searchParams;
+  const year = Number(q.get("year"));
   if (!Number.isInteger(year) || year < 2000 || year > 2100) throw badRequest("Tahun tidak valid.");
-  const buf = await templateWorkbook(u, format, year);
+  const buf = await templateWorkbook(u, format, year, q.get("filled") === "1");
   return new Response(new Uint8Array(buf), {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

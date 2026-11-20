@@ -30,9 +30,10 @@ const RAPAT_TONE = { bg: "#F8E6DD", fg: "#7A3A1E", dot: "#C0562D" };
 
 const nowParts = () => { const [y, m] = ymd(new Date()).split("-").map(Number); return { y, m0: m - 1 }; };
 
-export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId, drop = null, canSeeMeetings = false }: {
+export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId, drop = null, canSeeMeetings = false, canSeeCancelled = false }: {
   /** Boleh melihat rapat? (Penjadwal, Superadmin, anggota kelompok). Kalau tidak: tidak ada rapat dan tidak ada tombolnya. */
   canSeeMeetings?: boolean;
+  canSeeCancelled?: boolean; // filter "Acara batal" (hanya admin)
   canFilter: boolean; canEdit: boolean; hasPerson: boolean; myPersonId: string | null;
   /** Hak untuk menjadwalkan lewat drag & drop (null = tidak boleh). */
   drop?: DropPerms | null;
@@ -57,6 +58,7 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
     setShowMeetings(next);
     if (!next) setSelMeeting(null);
   };
+  const [showCancelled, setShowCancelled] = useState(false); // acara batal disembunyikan kecuali admin menyalakannya
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -105,6 +107,7 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
     if (mine) p.set("mine", "true");
     if (teamId) p.set("teamTypeId", teamId);
     if (person) p.set("personId", person.id);
+    if (canSeeCancelled && showCancelled) p.set("cancelled", "true");
     const r = await fetch(`/api/v1/events?${p}`, { cache: "no-store" });
     if (!r.ok) {
       setError((await r.json().catch(() => null))?.error?.message ?? "Gagal memuat kalender.");
@@ -114,7 +117,7 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
       setEvents(d.items); setRehearsals(d.rehearsals ?? []); setMeetings(d.meetings ?? []); setMeetingGroups(d.meetingGroups ?? []); setNote(d.note ?? "");
     }
     setLoading(false);
-  }, [grid, mine, teamId, person]);
+  }, [grid, mine, teamId, person, canSeeCancelled, showCancelled]);
   useEffect(() => { void load(); }, [load]);
 
   // pilih otomatis acara terdekat bila pilihan lama tidak ada di bulan ini
@@ -172,7 +175,7 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
     setTimeout(() => asideRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   };
   const rowOn = (r: AgendaRow) => sheet && (r.kind === "E" ? selected === r.id && !selectedRehearsal && !selMeeting : r.kind === "R" ? selectedRehearsal === r.id && !selMeeting : selMeeting === r.id);
-  const activeFilters = [mine, teamId, person, groupId, canSeeMeetings && !showMeetings].filter(Boolean).length;
+  const activeFilters = [mine, teamId, person, groupId, canSeeMeetings && !showMeetings, canSeeCancelled && showCancelled].filter(Boolean).length;
 
   const sections = useMemo(() => {
     if (!detail) return [];
@@ -220,6 +223,12 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
           className={`inline-flex h-[46px] items-center gap-2 rounded-xl border px-4 text-[13.5px] font-semibold ${showMeetings ? "border-[var(--line)] bg-white text-[var(--ink)]" : "border-dashed border-[var(--line)] bg-transparent text-[var(--ink-2)]"}`}>
           <span className="size-[9px] rounded-full" style={{ background: RAPAT_TONE.dot, opacity: showMeetings ? 1 : 0.35 }} aria-hidden="true" />
           {showMeetings ? "Rapat tampil" : "Rapat disembunyikan"}{shownMeetings.length > 0 && <span className="text-xs font-bold text-[var(--ink-2)]">({shownMeetings.length})</span>}
+        </button>}
+        {canSeeCancelled && <button type="button" onClick={() => setShowCancelled((v) => !v)} aria-pressed={showCancelled}
+          title={showCancelled ? "Sembunyikan acara batal" : "Tampilkan acara batal (hanya terlihat oleh admin)"}
+          className={`inline-flex h-[46px] items-center gap-2 rounded-xl border px-4 text-[13.5px] font-semibold ${showCancelled ? "border-[#E8B4B4] bg-[#FDECEC] text-[#9B1C1C]" : "border-dashed border-[var(--line)] bg-transparent text-[var(--ink-2)]"}`}>
+          <span className="size-[9px] rounded-full bg-[#B42318]" style={{ opacity: showCancelled ? 1 : 0.35 }} aria-hidden="true" />
+          {showCancelled ? "Acara batal tampil" : "Acara batal disembunyikan"}
         </button>}
         {canSeeMeetings && showMeetings && meetingGroups.length > 0 && (
           <select value={groupId} onChange={(e) => setGroupId(e.target.value)} aria-label="Filter kelompok rapat" className="h-[46px] rounded-xl border border-[var(--line)] bg-white px-3 text-[13.5px] font-semibold">

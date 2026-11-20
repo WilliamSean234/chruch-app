@@ -100,6 +100,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
 
   // ───────── status
   const publish = () => run(() => callApi("POST", `/api/v1/events/${eventId}/publish`));
+  const reopen = () => run(() => callApi("POST", `/api/v1/events/${eventId}/reopen`));
   const unpublish = () => run(() => callApi("POST", `/api/v1/events/${eventId}/unpublish`));
   const cancel = () => run(() => callApi("POST", `/api/v1/events/${eventId}/cancel`, { reason: cancelReason }), () => { setCancelOpen(false); setCancelReason(""); });
 
@@ -207,6 +208,11 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
             <span className="text-[13px] font-semibold text-[var(--ink-2)]">{d.number} · {dayLong(d.startsAt)}{d.createdBy ? ` · dibuat oleh ${d.createdBy}` : ""}</span>
           </div>
         </div>
+        {perms.publish && d.status === "CANCELLED" && (
+          <div className="flex flex-wrap gap-2.5 max-md:hidden">
+            <button className={btnPrimary} disabled={busy} onClick={reopen}>Aktifkan kembali</button>
+          </div>
+        )}
         {perms.publish && editable && (
           <div className="flex flex-wrap gap-2.5 max-md:hidden">
             {d.status === "DRAFT" && <button className={btnPrimary} disabled={busy} onClick={publish}>Terbitkan jadwal</button>}
@@ -220,6 +226,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
         ...(perms.editEvent && editable ? [{ key: "save", label: "Simpan perubahan", icon: "save" as const, tone: "primary" as const, disabled: busy || !infoDirty, busy, onClick: () => { void saveInfo(); } }] : []),
         ...(perms.publish && editable && d.status === "DRAFT" ? [{ key: "publish", label: "Terbitkan jadwal", icon: "publish" as const, tone: "gold" as const, disabled: busy, onClick: () => { void publish(); } }] : []),
         ...(perms.publish && editable && d.status === "PUBLISHED" ? [{ key: "unpublish", label: "Tarik ke draf", icon: "unpublish" as const, tone: "neutral" as const, disabled: busy, onClick: () => { void unpublish(); } }] : []),
+        ...(perms.publish && d.status === "CANCELLED" ? [{ key: "reopen", label: "Aktifkan kembali", icon: "check" as const, tone: "primary" as const, disabled: busy, busy, onClick: () => { void reopen(); } }] : []),
         ...(perms.publish && editable ? [{ key: "cancel", label: "Batalkan acara", icon: "cancel" as const, tone: "danger" as const, onClick: () => { setCancelOpen(true); setTimeout(() => document.getElementById("batalkan-acara")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); } }] : []),
       ]} />
 

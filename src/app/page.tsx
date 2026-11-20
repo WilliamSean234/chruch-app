@@ -15,7 +15,7 @@ export default async function KalenderPage() {
       actions={can(u, "event.write") ? <><Link href="/jadwal/baru" className="flex h-[46px] items-center gap-2 rounded-xl bg-[var(--primary)] px-5 text-sm font-bold text-white hover:brightness-110 max-md:hidden">＋ Buat jadwal</Link><Fab actions={[{ key: "new", label: "Buat jadwal", icon: "plus", href: "/jadwal/baru" }]} /></> : null}
     >
       <CalendarView
-        canFilter canSeeMeetings={canSeeMeetings} canEdit={can(u, "assignment.write")} hasPerson={!!u.personId} myPersonId={u.personId}
+        canFilter canSeeMeetings={canSeeMeetings} canSeeCancelled={can(u, "event.publish")} canEdit={can(u, "assignment.write")} hasPerson={!!u.personId} myPersonId={u.personId}
         drop={can(u, "assignment.write") ? { addSeat: can(u, "event.write"), override: can(u, "booking.override"), scope: teamScope(u) } : null}
       />
     </AppShell>

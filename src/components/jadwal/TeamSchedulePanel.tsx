@@ -55,6 +55,7 @@ export default function TeamSchedulePanel() {
 function UploadTab({ goExport }: { goExport: () => void }) {
   const [year, setYear] = useState(thisYear + (new Date().getMonth() >= 9 ? 1 : 0));
   const [file, setFile] = useState<File | null>(null);
+  const [withCurrent, setWithCurrent] = useState(false); // template berisi jadwal yang sudah ada
   const [busy, setBusy] = useState(false);
   const [fail, setFail] = useState("");
   const [pv, setPv] = useState<Preview | null>(null);
@@ -228,7 +229,11 @@ function UploadTab({ goExport }: { goExport: () => void }) {
               {[thisYear - 1, thisYear, thisYear + 1, thisYear + 2].map((y) => <option key={y} value={y}>{y}</option>)}
             </select>
           </label>
-          <a className={`${btnGhost} inline-flex items-center`} href={`/api/v1/team-schedule/${FORMAT}/template?year=${year}`}>Unduh template {year}</a>
+          <a className={`${btnGhost} inline-flex items-center`} href={`/api/v1/team-schedule/${FORMAT}/template?year=${year}${withCurrent ? "&filled=1" : ""}`}>Unduh template {year}</a>
+          <label className="flex min-h-11 max-w-md cursor-pointer items-start gap-2.5 rounded-xl border border-[var(--line)] bg-white px-3.5 py-2.5 text-sm font-semibold">
+            <input type="checkbox" className="mt-0.5 size-4 flex-none" checked={withCurrent} onChange={(e) => setWithCurrent(e.target.checked)} />
+            <span>Isi dengan orang yang sudah dijadwalkan di {year}<span className="block text-[12.5px] font-medium text-[var(--ink-2)]">{withCurrent ? "Template berisi petugas tim EBM yang sudah tercatat. Cocok untuk merevisi jadwal." : "Template kosong, hanya tanggal Minggu."}</span></span>
+          </label>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <input ref={input} type="file" accept=".xlsx" onChange={(e) => { setFile(e.target.files?.[0] ?? null); setPv(null); setResults(null); setFail(""); }}

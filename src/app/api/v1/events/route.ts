@@ -15,6 +15,7 @@ const query = z.object({
   mine: z.enum(["true", "false"]).optional(), // "Jadwal saya"
   personId: z.string().uuid().optional(), // penjadwal: filter orang tertentu
   teamTypeId: z.string().uuid().optional(), // penjadwal: filter tim tertentu
+  cancelled: z.enum(["true", "false"]).optional(), // tampilkan acara batal (hanya yang berhak)
 });
 
 /** Kalender: semua orang melihat seluruh acara (yang sudah terbit); filter orang/tim hanya sesuai hak akses. */
@@ -22,7 +23,7 @@ export const GET = handle(async (req: Request) => {
   const u = await requireUser(req);
   requirePermission(u, "calendar.read");
   const q = query.parse(Object.fromEntries(new URL(req.url).searchParams));
-  return NextResponse.json(await listCalendar(u, { ...q, mine: q.mine === "true" }));
+  return NextResponse.json(await listCalendar(u, { ...q, mine: q.mine === "true", cancelled: q.cancelled === "true" }));
 });
 
 export const POST = handle(async (req: Request) => {

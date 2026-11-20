@@ -419,24 +419,32 @@ export async function exportSchedule(u: AuthUser, formatKey: string, year: numbe
 
 // ───────── template Excel ─────────
 
-export async function templateWorkbook(u: AuthUser, formatKey: string, year: number): Promise<Buffer> {
+/** `filled`: isi kolom dengan petugas yang sudah dijadwalkan di tahun itu (Ibadah I; bila berbeda dengan Ibadah II, tetap yang I). */
+export async function templateWorkbook(u: AuthUser, formatKey: string, year: number, filled = false): Promise<Buffer> {
   const format = getFormat(formatKey);
   const team = await findTeam(u.tenantId, format);
   authorize(u, team);
   if (!Number.isInteger(year) || year < 2000 || year > 2100) throw badRequest("Tahun tidak valid.");
 
   const members = (await candidates(u.tenantId, team.id)).filter((p) => p.isMember).map((p) => displayName({ name: p.name, nickname: p.nickname }));
-  const list = [...new Set(members)].sort((a, b) => a.localeCompare(b, "id"));
-
+  const current = new Map<string, Record<string, string>>(); // tanggal → kolom → nama
+  let anyDiff = false;
+  if (filled) {
+    const model = await exportSchedule(u, formatKey, year, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    anyDiff = model.hasDiff;
+    for (const mo of model.months) for (const r of mo.rows) current.set(r.date, Object.fromEntries(Object.entries(r.cells).map(([k, v]) => [k, v.split(" / ")[0]!])));
+  }
+  // daftar pilihan: anggota tim, ditambah siapa pun yang sudah tertulis di jadwal (supaya tidak ditandai salah ketik)
+  const list = [...new Set([...members, ...[...current.values()].flatMap((m) => Object.values(m)).filter(Boolean)])].sort((a, b) => a.localeCompare(b, "id"));
   const cells: XCell[] = [];
   const merges: string[] = [];
   const lists: { sqref: string; formula: string }[] = [];
   const st = await inspect(u.tenantId, format);
-  const cols = [...format.columns.map((c) => ({ label: c.label })), ...templateExtras(st).map((x) => ({ label: x.label }))];
+  const cols = [...format.columns.map((c) => ({ key: c.key, label: c.label })), ...templateExtras(st).map((x) => ({ key: x.key, label: x.label }))];
   const nc = cols.length;
   let r = 3;
   cells.push({ r: 1, c: 3, v: `${format.title} ${year}`, s: "bold" });
-  cells.push({ r: 2, c: 3, v: "Isi nama persis seperti di daftar pilihan (atau nama panggilan). Satu baris berlaku untuk Ibadah Minggu I dan II. Satu kursi satu nama.", s: "note" });
+  cells.push({ r: 2, c: 3, v: `Isi nama persis seperti di daftar pilihan (atau nama panggilan). Satu baris berlaku untuk Ibadah Minggu I dan II. Satu kursi satu nama.${filled ? " Terisi dari jadwal yang sudah ada." : ""}${anyDiff ? " Bila Ibadah I dan II berbeda, yang tertulis adalah petugas Ibadah I." : ""}`, s: "note" });
   for (let month = 1; month <= 12; month++) {
     cells.push({ r, c: 3, v: MONTHS_ID[month - 1]!.toUpperCase(), s: "title" });
     for (let c = 4; c < 3 + nc + 1; c++) cells.push({ r, c, v: "", s: "title" });
@@ -451,7 +459,9 @@ export async function templateWorkbook(u: AuthUser, formatKey: string, year: num
       if (dt.getUTCMonth() !== month - 1) break;
       if (dt.getUTCDay() !== 0) continue;
       cells.push({ r, c: 3, v: day, s: "center" });
-      for (let i = 0; i < nc; i++) cells.push({ r, c: 4 + i, v: "", s: "cell" });
+      const date = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const have = current.get(date);
+      for (let i = 0; i < nc; i++) cells.push({ r, c: 4 + i, v: (have && have[cols[i]!.key]) || "", s: "cell" });
       r++;
     }
     if (list.length && r > first) lists.push({ sqref: `D${first}:${String.fromCharCode(67 + nc)}${r - 1}`, formula: `Daftar!$A$1:$A$${list.length}` });
