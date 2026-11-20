@@ -17,8 +17,9 @@ const SHORT = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "O
 type Col = { key: string; label: string; ministry: string; ministryId: string | null };
 type Row = { date: string; month: number; line: number; names: Record<string, string>; existing: { 1?: ExistingService; 2?: ExistingService } };
 type NameRow = { key: string; raw: string; count: number; columns: string[]; status: "MATCHED" | "AMBIGUOUS" | "NONE"; personId: string | null; guess: string | null; suggestions: string[] };
+type Extra = { key: string; label: string; suggested: string; exists: boolean; ministryId: string | null };
 type Preview = {
-  year: number; sheetName: string | null; errors: { line?: number; message: string }[]; warnings: { line?: number; message: string }[];
+  extras: Extra[]; year: number; sheetName: string | null; errors: { line?: number; message: string }[]; warnings: { line?: number; message: string }[];
   columns: Col[]; newMinistries: string[]; services: { n: number; name: string; startTime: string }[]; rows: Row[]; names: NameRow[]; people: PersonOpt[];
 };
 type SvcResult = { n: 1 | 2; name: string; state: string; reason?: string; changed: number; rejected: { column: string; message: string }[] };
@@ -58,11 +59,34 @@ function UploadTab({ goExport }: { goExport: () => void }) {
   const [fail, setFail] = useState("");
   const [pv, setPv] = useState<Preview | null>(null);
   const [choice, setChoice] = useState<Record<string, string>>({}); // kunci nama → id orang | "skip" | ""
+  const [extraOn, setExtraOn] = useState<Record<string, { on: boolean; name: string }>>({}); // pelayanan baru dari kolom file
   const [dropped, setDropped] = useState<Set<string>>(new Set()); // `${tanggal}|${kolom}` yang tidak jadi diisi karena merangkap
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [results, setResults] = useState<DateResult[] | null>(null);
   const [saved, setSaved] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+
+  const cols = useMemo<Col[]>(() => {
+    if (!pv) return [];
+    const extra = pv.extras.filter((x) => extraOn[x.key]?.on).map((x) => {
+      const name = (extraOn[x.key]!.name || x.suggested).trim();
+      return { key: x.key, label: name.toUpperCase(), ministry: name, ministryId: name.toLowerCase() === x.suggested.toLowerCase() ? x.ministryId : null };
+    });
+    return [...pv.columns, ...extra];
+  }, [pv, extraOn]);
+  const extraErr = useMemo(() => {
+    if (!pv) return "";
+    const taken = new Set(pv.columns.map((c) => c.ministry.toLowerCase()));
+    for (const x of pv.extras) {
+      const e = extraOn[x.key];
+      if (!e?.on) continue;
+      const n = e.name.trim().toLowerCase();
+      if (!n) return "Nama pelayanan baru tidak boleh kosong.";
+      if (taken.has(n)) return `"${e.name.trim()}" sudah ada di format. Pakai nama lain atau matikan kolomnya.`;
+      taken.add(n);
+    }
+    return "";
+  }, [pv, extraOn]);
 
   const people = useMemo(() => new Map((pv?.people ?? []).map((p) => [p.id, p])), [pv]);
 
@@ -78,6 +102,7 @@ function UploadTab({ goExport }: { goExport: () => void }) {
       else {
         const p = d as Preview;
         setPv(p);
+        setExtraOn(Object.fromEntries(p.extras.map((x) => [x.key, { on: true, name: x.suggested }])));
         setChoice(Object.fromEntries(p.names.map((n) => [n.key, n.status === "MATCHED" && n.personId ? n.personId : ""])));
       }
     } catch { setFail("Koneksi terputus. Coba lagi."); }
@@ -87,7 +112,7 @@ function UploadTab({ goExport }: { goExport: () => void }) {
   // isi akhir tiap tanggal: kolom → id orang | null
   const cellsOf = (row: Row): Record<string, string | null> => {
     const out: Record<string, string | null> = {};
-    for (const c of pv!.columns) {
+    for (const c of cols) {
       const raw = row.names[c.key];
       const pid = raw ? choice[normName(raw)] : "";
       out[c.key] = pid && pid !== "skip" && !dropped.has(`${row.date}|${c.key}`) ? pid : null;
@@ -96,7 +121,7 @@ function UploadTab({ goExport }: { goExport: () => void }) {
   };
   const rawCells = (row: Row) => {
     const out: Record<string, string | null> = {};
-    for (const c of pv!.columns) { const raw = row.names[c.key]; const pid = raw ? choice[normName(raw)] : ""; out[c.key] = pid && pid !== "skip" ? pid : null; }
+    for (const c of cols) { const raw = row.names[c.key]; const pid = raw ? choice[normName(raw)] : ""; out[c.key] = pid && pid !== "skip" ? pid : null; }
     return out;
   };
 
@@ -105,9 +130,9 @@ function UploadTab({ goExport }: { goExport: () => void }) {
     if (!ex) return "baru";
     if (ex.past) return "lewat";
     if (ex.status === "CANCELLED") return "batal";
-    const ids = new Set(pv!.columns.map((c) => c.ministryId).filter(Boolean));
+    const ids = new Set(cols.map((c) => c.ministryId).filter(Boolean));
     const foreign = ex.seats.some((s) => !ids.has(s.ministryId) || s.slotNo > 1);
-    const diff = pv!.columns.some((c) => (ex.seats.find((s) => s.ministryId === c.ministryId && s.slotNo === 1)?.personId ?? null) !== (cells[c.key] ?? null));
+    const diff = cols.some((c) => (ex.seats.find((s) => s.ministryId === c.ministryId && s.slotNo === 1)?.personId ?? null) !== (cells[c.key] ?? null));
     return foreign || diff ? "ubah" : "sama";
   };
 
@@ -122,17 +147,18 @@ function UploadTab({ goExport }: { goExport: () => void }) {
     for (const r of pv.rows) {
       const raw = rawCells(r);
       const by = new Map<string, Col[]>();
-      for (const c of pv.columns) { const p = raw[c.key]; if (p) by.set(p, [...(by.get(p) ?? []), c]); }
+      for (const c of cols) { const p = raw[c.key]; if (p) by.set(p, [...(by.get(p) ?? []), c]); }
       for (const [p, cols] of by) if (cols.length > 1) doubles.push({ date: r.date, person: p, cols });
     }
     const count = (s: string) => rows.filter((x) => x.s1 === s || x.s2 === s).length;
     const todo = rows.filter((x) => x.s1 === "baru" || x.s1 === "ubah" || x.s2 === "baru" || x.s2 === "ubah");
-    const unresolved = pv.names.filter((n) => !choice[n.key]).length;
-    return { rows, doubles, todo, unresolved, baru: count("baru"), ubah: count("ubah"), sama: rows.filter((x) => x.s1 === "sama" && x.s2 === "sama").length, lewat: rows.filter((x) => x.s1 === "lewat" || x.s2 === "lewat").length };
+    const used = new Set(pv.rows.flatMap((r) => cols.map((c) => r.names[c.key]).filter(Boolean).map((x) => normName(x!))));
+    const unresolved = pv.names.filter((n) => used.has(n.key) && !choice[n.key]).length;
+    return { rows, doubles, todo, unresolved, used, baru: count("baru"), ubah: count("ubah"), sama: rows.filter((x) => x.s1 === "sama" && x.s2 === "sama").length, lewat: rows.filter((x) => x.s1 === "lewat" || x.s2 === "lewat").length };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pv, choice, dropped]);
+  }, [pv, choice, dropped, cols]);
 
-  const canSave = !!pv && !!view && pv.rows.length > 0 && view.unresolved === 0 && view.todo.length > 0 && !progress;
+  const canSave = !!pv && !!view && pv.rows.length > 0 && view.unresolved === 0 && !extraErr && view.todo.length > 0 && !progress;
 
   async function save() {
     if (!pv || !view || !canSave) return;
@@ -143,7 +169,7 @@ function UploadTab({ goExport }: { goExport: () => void }) {
       try {
         const r = await fetch(`/api/v1/team-schedule/${FORMAT}/apply`, {
           method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store",
-          body: JSON.stringify({ year: pv.year, date: x.r.date, cells: x.cells }),
+          body: JSON.stringify({ year: pv.year, date: x.r.date, cells: x.cells, extras: cols.filter((c) => c.key.startsWith("x_")).map((c) => ({ key: c.key, ministry: c.ministry })) }),
         });
         const d = await r.json().catch(() => null);
         if (r.ok) out.push(d as DateResult);
@@ -154,7 +180,7 @@ function UploadTab({ goExport }: { goExport: () => void }) {
       setProgress({ done: i + 1, total: view.todo.length });
     }
     // ejaan yang dipilih manual disimpan, supaya unggahan berikutnya cocok sendiri
-    const items = pv.names.filter((n) => n.status !== "MATCHED" && choice[n.key] && choice[n.key] !== "skip").map((n) => ({ personId: choice[n.key]!, raw: n.raw }));
+    const items = pv.names.filter((n) => view.used.has(n.key) && n.status !== "MATCHED" && choice[n.key] && choice[n.key] !== "skip").map((n) => ({ personId: choice[n.key]!, raw: n.raw }));
     if (items.length) await fetch(`/api/v1/team-schedule/${FORMAT}/aliases`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) }).catch(() => null);
     setProgress(null); setResults(out); setSaved(true);
   }
@@ -230,6 +256,31 @@ function UploadTab({ goExport }: { goExport: () => void }) {
 
           {pv.rows.length > 0 && (
             <>
+              {pv.extras.length > 0 && (
+                <section className="rounded-2xl border border-[#EBD9A8] bg-[#FFF8E6] p-4">
+                  <h2 className="text-base font-extrabold text-[#7A5200]">Pelayanan yang belum terdaftar ({pv.extras.length})</h2>
+                  <p className="mt-1 text-sm font-semibold text-[#7A5200]">Kolom berikut ada di file tetapi belum menjadi pelayanan tim EBM. Daftarkan sebagai pelayanan baru? Bila tidak, kolomnya dilewati.</p>
+                  <ul className="mt-3 flex flex-col gap-2">
+                    {pv.extras.map((x) => {
+                      const e = extraOn[x.key] ?? { on: true, name: x.suggested };
+                      return (
+                        <li key={x.key} className="grid items-center gap-2 rounded-xl border border-[#EBD9A8] bg-white p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+                          <label className="flex items-center gap-2 text-sm font-extrabold">
+                            <input type="checkbox" className="size-4" checked={e.on} onChange={(ev) => setExtraOn((m) => ({ ...m, [x.key]: { ...e, on: ev.target.checked } }))} />
+                            <span className="min-w-0 truncate">Daftarkan kolom "{x.label}"</span>
+                          </label>
+                          <div className="flex flex-col gap-1">
+                            <input value={e.name} disabled={!e.on} maxLength={60} onChange={(ev) => setExtraOn((m) => ({ ...m, [x.key]: { ...e, name: ev.target.value } }))} className={`${inputCls} disabled:opacity-50`} aria-label={`Nama pelayanan baru untuk ${x.label}`} />
+                            {x.exists && e.on && e.name.trim().toLowerCase() === x.suggested.toLowerCase() && <span className="text-[12px] font-semibold text-[#565B76]">Sudah ada pelayanan dengan nama ini, jadi dipakai.</span>}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {extraErr && <p role="alert" className="mt-2 text-[13px] font-bold text-[#A12B2B]">{extraErr}</p>}
+                </section>
+              )}
+
               <section className={card}>
                 <h2 className="text-lg font-extrabold">2. Cocokkan nama</h2>
                 <p className="mt-1 text-sm font-medium text-[var(--ink-2)]">
@@ -237,7 +288,7 @@ function UploadTab({ goExport }: { goExport: () => void }) {
                   {pv.newMinistries.length > 0 && <> Posisi baru yang akan dibuat: <b>{pv.newMinistries.join(", ")}</b>.</>}
                 </p>
                 <ul className="mt-3 flex flex-col gap-2">
-                  {[...pv.names].sort((a, b) => Number(!!choice[a.key]) - Number(!!choice[b.key])).map((n) => (
+                  {[...pv.names].filter((n) => view.used.has(n.key)).sort((a, b) => Number(!!choice[a.key]) - Number(!!choice[b.key])).map((n) => (
                     <li key={n.key} className="grid items-center gap-2 rounded-xl border border-[var(--line)] p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
                       <div className="min-w-0">
                         <div className="truncate text-sm font-extrabold">{n.raw}</div>
@@ -286,13 +337,14 @@ function UploadTab({ goExport }: { goExport: () => void }) {
                 </div>
                 {progress && <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#E4E6F2]"><div className="h-full bg-[var(--primary)] transition-all" style={{ width: `${(progress.done / Math.max(progress.total, 1)) * 100}%` }} /></div>}
                 {view.unresolved > 0 && <p className="mt-2 text-[13px] font-bold text-[#7A5200]">Pilih semua nama di langkah 2 dulu sebelum menyimpan.</p>}
+                {extraErr && <p className="mt-2 text-[13px] font-bold text-[#A12B2B]">{extraErr}</p>}
                 <div className="mt-3 overflow-x-auto rounded-xl border border-[var(--line)]">
                   <table className="w-full min-w-[760px] border-collapse text-[13px]">
                     <thead>
                       <tr className="bg-[#F3E9CF] text-left">
                         <th className="sticky left-0 bg-[#F3E9CF] px-2.5 py-2 font-extrabold">Tanggal</th>
                         <th className="px-2.5 py-2 font-extrabold">Status</th>
-                        {pv.columns.map((c) => <th key={c.key} className="px-2.5 py-2 font-extrabold">{c.label}</th>)}
+                        {cols.map((c) => <th key={c.key} className="px-2.5 py-2 font-extrabold">{c.label}</th>)}
                       </tr>
                     </thead>
                     <tbody>
@@ -302,7 +354,7 @@ function UploadTab({ goExport }: { goExport: () => void }) {
                           <tr key={r.date} className={i % 2 ? "bg-[#F6F7FC]" : ""}>
                             <td className="sticky left-0 whitespace-nowrap bg-inherit px-2.5 py-2 font-extrabold">{dayText(r.date)}</td>
                             <td className="whitespace-nowrap px-2.5 py-2">{s1 === s2 ? stateChip(s1) : <>{stateChip(s1)} {stateChip(s2)}</>}</td>
-                            {pv.columns.map((c) => {
+                            {cols.map((c) => {
                               const now = cells[c.key] ? disp(people.get(cells[c.key]!)) : "";
                               const old = ex?.seats.find((s) => s.ministryId === c.ministryId && s.slotNo === 1);
                               const oldName = old?.personId && old.personId !== cells[c.key] ? old.personName : null;

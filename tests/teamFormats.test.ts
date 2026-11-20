@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { readXlsx } from "../src/lib/importer/xlsx";
 import { buildXlsx, type XCell } from "../src/lib/xlsxWrite";
-import { EBM_FORMAT, matchName, monthOf, parseTeamSheet, type Candidate } from "../src/lib/teamFormats";
+import { EBM_FORMAT, matchName, monthOf, parseTeamSheet, suggestMinistryName, type Candidate } from "../src/lib/teamFormats";
 
 const sample = () => readXlsx(readFileSync(join(__dirname, "fixtures", "JADWAL_EBM_2027.xlsx")));
 
@@ -86,4 +86,25 @@ test("teks di kolom TGL yang disertai nama tetap dilaporkan sebagai galat", () =
   const cells: XCell[] = [{ r: 1, c: 3, v: "MARET" }, { r: 2, c: 3, v: "TGL" }, { r: 2, c: 4, v: "PIC" }, { r: 3, c: 3, v: "minggu depan" }, { r: 3, c: 4, v: "Albert" }];
   const r = parseTeamSheet(readXlsx(buildXlsx([{ name: "x", cells }])), EBM_FORMAT, 2027);
   assert.equal(r.errors.length, 1);
+});
+
+test("kolom pelayanan yang belum dikenal ditawarkan sebagai pelayanan baru", () => {
+  const cells: XCell[] = [
+    { r: 1, c: 3, v: "FEBRUARI" }, { r: 2, c: 3, v: "TGL" }, { r: 2, c: 4, v: "PIC" }, { r: 2, c: 5, v: "SPONSOR" }, { r: 2, c: 6, v: "KET" },
+    { r: 3, c: 3, v: 7 }, { r: 3, c: 4, v: "Albert" }, { r: 3, c: 5, v: "Patrick" }, { r: 3, c: 6, v: "libur" },
+  ];
+  const r = parseTeamSheet(readXlsx(buildXlsx([{ name: "x", cells }])), EBM_FORMAT, 2027);
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.extraColumns.length, 1); // KET hanya catatan, bukan pelayanan
+  assert.deepEqual(r.extraColumns[0], { key: "x_SPONSOR", label: "SPONSOR", suggested: "Sponsor" });
+  assert.equal(r.rows[0]!.names.x_SPONSOR, "Patrick");
+  assert.equal(r.rows[0]!.names.pic, "Albert");
+  assert.ok(r.warnings.some((w) => /KET/.test(w.message)));
+});
+
+test("nama saran pelayanan: huruf besar semua jadi kapital di awal kata, singkatan pendek tetap", () => {
+  assert.equal(suggestMinistryName("SPONSOR"), "Sponsor");
+  assert.equal(suggestMinistryName("EASY WORSHIP"), "Easy Worship");
+  assert.equal(suggestMinistryName("LED"), "LED");
+  assert.equal(suggestMinistryName("Backup Cam"), "Backup Cam");
 });

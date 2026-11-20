@@ -49,7 +49,20 @@ export type SheetRow = {
   names: Record<string, string>; // kunci kolom → teks apa adanya (kosong = tidak diisi)
 };
 export type ParseIssue = { line?: number; message: string };
-export type ParseResult = { rows: SheetRow[]; errors: ParseIssue[]; warnings: ParseIssue[]; sheetName: string | null };
+export type ExtraColumn = { key: string; label: string; suggested: string }; // kolom di file yang belum dikenal format
+export type ParseResult = { rows: SheetRow[]; errors: ParseIssue[]; warnings: ParseIssue[]; sheetName: string | null; extraColumns: ExtraColumn[] };
+
+/** Kolom catatan biasa yang tidak ditawarkan sebagai pelayanan baru. */
+const NOT_A_SERVICE = new Set(["KET", "KETERANGAN", "CATATAN", "NOTE", "NOTES", "NO", "NOMOR", "HARI", "BULAN"]);
+
+/** "SPONSOR" → "Sponsor", "EASY WORSHIP" → "Easy Worship"; singkatan pendek (≤3 huruf) dan yang bercampur huruf kecil dibiarkan. */
+export function suggestMinistryName(label: string): string {
+  const t = label.replace(/\s+/g, " ").trim();
+  if (t !== t.toUpperCase()) return t;
+  return t.split(" ").map((w) => (w.length <= 3 || /[^A-Z]/.test(w) ? w : w[0] + w.slice(1).toLowerCase())).join(" ");
+}
+
+export const extraKey = (label: string) => `x_${normHead(label)}`;
 
 const MONTH_WORDS: [number, string][] = [
   [1, "JANUARI"], [1, "JANUARY"], [2, "FEBRUARI"], [2, "FEBRUARY"], [3, "MARET"], [3, "MARCH"], [4, "APRIL"], [5, "MEI"], [5, "MAY"], [6, "JUNI"], [6, "JUNE"],
@@ -105,19 +118,20 @@ export function parseTeamSheet(sheets: XSheet[], format: TeamFormat, year: numbe
   const errors: ParseIssue[] = [];
   const warnings: ParseIssue[] = [];
   const rows: SheetRow[] = [];
+  const extras = new Map<string, ExtraColumn>();
 
   // pakai sheet pertama yang memuat nama bulan
   const sheet = sheets.find((s) => [...s.cells.values()].some((r) => r.size === 1 && monthOf([...r.values()][0]!) !== null)) ?? null;
   if (!sheet) {
     errors.push({ message: "Tidak ada blok bulan (JANUARI, FEBRUARI, dst.) di file ini. Pakai template dari halaman ini, atau pastikan nama bulan ada di baris judul tiap blok." });
-    return { rows, errors, warnings, sheetName: null };
+    return { rows, errors, warnings, sheetName: null, extraColumns: [] };
   }
 
   let month: number | null = null;
   let dateCol = -1;
-  let colMap = new Map<number, FormatColumn>();
+  let colMap = new Map<number, { key: string; label: string }>();
   const seen = new Map<string, number>();
-  const unknownHeads = new Set<string>();
+  const ignoredHeads = new Set<string>();
 
   const lines = [...sheet.cells.keys()].sort((a, b) => a - b);
   for (const line of lines) {
@@ -137,8 +151,14 @@ export function parseTeamSheet(sheets: XSheet[], format: TeamFormat, year: numbe
       for (const [c, v] of entries) {
         if (c === dateCol) continue;
         const col = columnOf(format, v);
-        if (col) colMap.set(c, col);
-        else unknownHeads.add(v);
+        if (col) { colMap.set(c, col); continue; }
+        const label = v.replace(/\s+/g, " ").trim();
+        const h = normHead(label);
+        if (!h) continue;
+        if (NOT_A_SERVICE.has(h)) { ignoredHeads.add(label); continue; }
+        const key = extraKey(label);
+        if (!extras.has(key)) extras.set(key, { key, label, suggested: suggestMinistryName(label) });
+        colMap.set(c, { key, label });
       }
       continue;
     }
@@ -172,6 +192,7 @@ export function parseTeamSheet(sheets: XSheet[], format: TeamFormat, year: numbe
 
     const names: Record<string, string> = {};
     for (const col of format.columns) names[col.key] = "";
+    for (const k of extras.keys()) names[k] = "";
     for (const [c, v] of entries) {
       const col = colMap.get(c);
       if (!col) continue;
@@ -186,9 +207,9 @@ export function parseTeamSheet(sheets: XSheet[], format: TeamFormat, year: numbe
     rows.push({ date, month, line, names });
   }
 
-  if (unknownHeads.size) warnings.push({ message: `Kolom tidak dikenal dan dilewati: ${[...unknownHeads].join(", ")}.` });
+  if (ignoredHeads.size) warnings.push({ message: `Kolom catatan dilewati: ${[...ignoredHeads].join(", ")}.` });
   if (rows.length === 0 && errors.length === 0) errors.push({ message: "Tidak ada baris tanggal yang terbaca. Pastikan tiap blok bulan punya baris header (TGL, PIC, dst.) dan baris tanggal di bawahnya." });
-  return { rows, errors, warnings, sheetName: sheet.name };
+  return { rows, errors, warnings, sheetName: sheet.name, extraColumns: [...extras.values()] };
 }
 
 // ───────── pencocokan nama ─────────

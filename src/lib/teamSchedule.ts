@@ -25,6 +25,23 @@ export const getFormat = (key: string): TeamFormat => {
   return f;
 };
 
+export type ExtraSpec = { key: string; ministry: string };
+
+/** Kolom tambahan dari posisi tim yang ada di template Ibadah Minggu tetapi bukan bagian format dasar (mis. pelayanan baru dari unggahan). */
+function templateExtras(st: FormatState) {
+  const known = new Set([...st.ministries.values()].filter((m) => !!m).map((m) => m!.id));
+  const out = new Map<string, string>();
+  for (const t of st.templates.values()) for (const sl of t.slots) if (sl.ministry.teamTypeId === st.team.id && !known.has(sl.ministryId)) out.set(sl.ministryId, sl.ministry.name);
+  return [...out.entries()].map(([id, name]) => ({ key: `m:${id}`, label: name.toUpperCase(), id }));
+}
+const ministryIdOf = (st: FormatState, key: string) => (key.startsWith("m:") ? key.slice(2) : st.ministries.get(key)?.id);
+
+/** Format dasar ditambah kolom pelayanan baru dari file (kunci x_…). */
+export const withExtras = (f: TeamFormat, extras: ExtraSpec[]): TeamFormat => ({
+  ...f,
+  columns: [...f.columns, ...extras.filter((e) => !f.columns.some((c) => c.key === e.key)).map((e) => ({ key: e.key, label: e.ministry.toUpperCase(), ministry: e.ministry, aliases: [] as string[] }))],
+});
+
 const tplInclude = { slots: { include: { ministry: true } } } as const;
 
 type Team = { id: string; name: string };
@@ -147,7 +164,7 @@ export async function previewSchedule(u: AuthUser, formatKey: string, year: numb
   // tabel nama: satu baris per nama unik di file
   const names = new Map<string, { raw: string; count: number; dates: string[]; columns: Set<string> }>();
   for (const r of parsed.rows) {
-    for (const c of format.columns) {
+    for (const c of [...format.columns, ...parsed.extraColumns]) {
       const raw = r.names[c.key];
       if (!raw) continue;
       const k = normName(raw);
@@ -188,8 +205,14 @@ export async function previewSchedule(u: AuthUser, formatKey: string, year: numb
     existing.set(d, cur);
   }
 
+  const teamMinistries = await prisma.ministry.findMany({ where: { tenantId: u.tenantId, teamTypeId: st.team.id, deletedAt: null }, select: { id: true, name: true } });
+  const extras = parsed.extraColumns.map((x) => {
+    const have = teamMinistries.find((m) => m.name.toLowerCase() === x.suggested.toLowerCase());
+    return { key: x.key, label: x.label, suggested: have?.name ?? x.suggested, exists: !!have, ministryId: have?.id ?? null };
+  });
+
   return {
-    year, sheetName: parsed.sheetName, errors: parsed.errors, warnings: parsed.warnings,
+    year, sheetName: parsed.sheetName, extras, errors: parsed.errors, warnings: parsed.warnings,
     columns: format.columns.map((c) => ({ key: c.key, label: c.label, ministry: c.ministry, ministryId: st.ministries.get(c.key)?.id ?? null })),
     newMinistries: format.columns.filter((c) => !st.ministries.get(c.key)).map((c) => c.ministry),
     services: [1, 2].map((n) => ({ n, name: st.templates.get(n as 1 | 2)!.name, startTime: st.templates.get(n as 1 | 2)!.startTime })),
@@ -205,6 +228,7 @@ export const applyBody = z.object({
   year: z.number().int().min(2000).max(2100),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   cells: z.record(z.string(), z.string().uuid().nullable()),
+  extras: z.array(z.object({ key: z.string().regex(/^x_[A-Z0-9+]{1,40}$/), ministry: z.string().trim().min(1).max(60) })).max(8).default([]),
 });
 export const aliasBody = z.object({
   items: z.array(z.object({ personId: z.string().uuid(), raw: z.string().trim().min(1).max(60) })).max(300),
@@ -216,7 +240,8 @@ export type ServiceResult = {
 export type DateResult = { date: string; services: ServiceResult[] };
 
 export async function applyDate(u: AuthUser, formatKey: string, b: z.infer<typeof applyBody>): Promise<DateResult> {
-  const format = getFormat(formatKey);
+  const format = withExtras(getFormat(formatKey), b.extras);
+  if (new Set(format.columns.map((c) => c.ministry.toLowerCase())).size !== format.columns.length) throw badRequest("Nama pelayanan baru sama dengan pelayanan yang sudah ada di format.");
   const probe = await findTeam(u.tenantId, format);
   authorize(u, probe);
 
@@ -346,6 +371,7 @@ export async function exportSchedule(u: AuthUser, formatKey: string, year: numbe
   const format = getFormat(formatKey);
   const st = await inspect(u.tenantId, format);
   authorize(u, st.team);
+  const columns = [...format.columns.map((c) => ({ key: c.key, label: c.label })), ...templateExtras(st).map((x) => ({ key: x.key, label: x.label }))];
   const sel = [...new Set(months)].filter((m) => m >= 1 && m <= 12).sort((a, b) => a - b);
   if (!sel.length) throw badRequest("Pilih minimal satu bulan.");
 
@@ -376,8 +402,8 @@ export async function exportSchedule(u: AuthUser, formatKey: string, year: numbe
       const src = byDate.get(date) ?? {};
       const cells: Record<string, string> = {};
       let differs = false;
-      for (const c of format.columns) {
-        const mid = st.ministries.get(c.key)?.id;
+      for (const c of columns) {
+        const mid = ministryIdOf(st, c.key);
         const a = (mid && src[1]?.get(mid)) || "";
         const b2 = (mid && src[2]?.get(mid)) || "";
         if (a && b2 && a !== b2) { cells[c.key] = `${a} / ${b2}`; differs = true; }
@@ -388,7 +414,7 @@ export async function exportSchedule(u: AuthUser, formatKey: string, year: numbe
     }
     out.push({ month, name: MONTHS_ID[month - 1]!.toUpperCase(), rows });
   }
-  return { format: formatKey, title: format.title, year, columns: format.columns.map((c) => ({ key: c.key, label: c.label })), months: out, hasDiff };
+  return { format: formatKey, title: format.title, year, columns, months: out, hasDiff };
 }
 
 // ───────── template Excel ─────────
@@ -405,7 +431,9 @@ export async function templateWorkbook(u: AuthUser, formatKey: string, year: num
   const cells: XCell[] = [];
   const merges: string[] = [];
   const lists: { sqref: string; formula: string }[] = [];
-  const nc = format.columns.length;
+  const st = await inspect(u.tenantId, format);
+  const cols = [...format.columns.map((c) => ({ label: c.label })), ...templateExtras(st).map((x) => ({ label: x.label }))];
+  const nc = cols.length;
   let r = 3;
   cells.push({ r: 1, c: 3, v: `${format.title} ${year}`, s: "bold" });
   cells.push({ r: 2, c: 3, v: "Isi nama persis seperti di daftar pilihan (atau nama panggilan). Satu baris berlaku untuk Ibadah Minggu I dan II. Satu kursi satu nama.", s: "note" });
@@ -415,7 +443,7 @@ export async function templateWorkbook(u: AuthUser, formatKey: string, year: num
     merges.push(`C${r}:${String.fromCharCode(66 + nc + 1)}${r}`);
     r++;
     cells.push({ r, c: 3, v: "TGL", s: "head" });
-    format.columns.forEach((c, i) => cells.push({ r, c: 4 + i, v: c.label, s: "head" }));
+    cols.forEach((c, i) => cells.push({ r, c: 4 + i, v: c.label, s: "head" }));
     r++;
     const first = r;
     for (let day = 1; day <= 31; day++) {
@@ -429,7 +457,7 @@ export async function templateWorkbook(u: AuthUser, formatKey: string, year: num
     if (list.length && r > first) lists.push({ sqref: `D${first}:${String.fromCharCode(67 + nc)}${r - 1}`, formula: `Daftar!$A$1:$A$${list.length}` });
     r += 2;
   }
-  const main = { name: `Jadwal ${format.key.toUpperCase()} ${year}`, cols: [3, 3, 8, ...format.columns.map((c) => Math.max(14, c.label.length + 3))], cells, merges, lists };
+  const main = { name: `Jadwal ${format.key.toUpperCase()} ${year}`, cols: [3, 3, 8, ...cols.map((c) => Math.max(14, c.label.length + 3))], cells, merges, lists };
   const sheets = [main];
   if (list.length) sheets.push({ name: "Daftar", cols: [30], cells: list.map((v, i) => ({ r: i + 1, c: 1, v })), merges: [], lists: [] });
   return buildXlsx(sheets);
