@@ -85,6 +85,30 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
     return () => clearTimeout(t);
   }, [flash]);
 
+  // Auto-scroll saat menyeret: browser hanya menggulir sedikit di tepi layar, jadi kalender di atas sulit dijangkau
+  // dari rekap di bawah. Selama ada kartu yang diseret, dekatkan kursor ke tepi atas/bawah → halaman menggulir sendiri
+  // (makin dekat tepi makin cepat).
+  useEffect(() => {
+    if (!dragPerson) return;
+    let y = -1, last = 0, raf = 0;
+    const TOP = 130, BOTTOM = 120, MAX = 30; // TOP sudah termasuk header lengket (~88px)
+    const onOver = (ev: DragEvent) => { y = ev.clientY; last = Date.now(); };
+    const tick = () => {
+      // berhenti menggulir jika kursor sudah tidak mengirim kabar (keluar jendela / drag selesai)
+      if (y >= 0 && Date.now() - last < 600) {
+        const h = window.innerHeight;
+        let dy = 0;
+        if (y < TOP) dy = -Math.max(3, MAX * Math.pow((TOP - y) / TOP, 2));
+        else if (h - y < BOTTOM) dy = Math.max(3, MAX * Math.pow((BOTTOM - (h - y)) / BOTTOM, 2));
+        if (dy) window.scrollBy(0, dy);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    document.addEventListener("dragover", onOver);
+    raf = requestAnimationFrame(tick);
+    return () => { document.removeEventListener("dragover", onOver); cancelAnimationFrame(raf); };
+  }, [dragPerson]);
+
   // Dipanggil dari rekap: klik nama → kalender hanya menampilkan jadwal orang itu. Klik lagi → filter dilepas.
   const pickPerson = useCallback((p: PersonLite | null) => {
     setMine(false); // "Jadwal saya" akan menimpa filter orang, jadi dimatikan
@@ -246,6 +270,16 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
           <span>{flash}</span>
           <button type="button" onClick={() => setFlash("")} className="rounded-lg px-2 py-1 text-xs font-bold hover:bg-white/60">Tutup</button>
         </p>
+      )}
+      {dragPerson && (
+        <>
+          <div aria-hidden className="pointer-events-none fixed inset-x-0 top-[var(--header-h)] z-40 flex h-12 items-start justify-center bg-gradient-to-b from-[var(--primary)]/25 to-transparent pt-1">
+            <span className="rounded-full bg-[var(--primary)] px-3 py-1 text-[11px] font-bold text-white shadow">▲ Dekatkan ke tepi atas untuk gulir naik</span>
+          </div>
+          <div aria-hidden className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex h-12 items-end justify-center bg-gradient-to-t from-[var(--primary)]/25 to-transparent pb-1">
+            <span className="rounded-full bg-[var(--primary)] px-3 py-1 text-[11px] font-bold text-white shadow">▼ Dekatkan ke tepi bawah untuk gulir turun</span>
+          </div>
+        </>
       )}
       {dialog && drop && (
         <AssignDropDialog
