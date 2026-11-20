@@ -19,7 +19,7 @@ type P = {
 const CG = ["CG Efata", "CG Betlehem", "CG Sion"];
 
 const PEOPLE: P[] = [
-  // Pimpinan ibadah
+  // Penatalayan ibadah (PIC, liturgos, pembicara)
   { name: "Setia", g: "L", born: "1984-03-12", comm: ["Young couple"], min: ["PIC", "Liturgos (WL)"] },
   { name: "Maria", g: "P", born: "1986-07-02", comm: ["Young couple"], min: ["Liturgos (WL)"] },
   { name: "Rudy", g: "L", born: "1979-11-23", min: ["Liturgos (WL)", "PIC"] },
@@ -61,7 +61,7 @@ const PEOPLE: P[] = [
 
 const ACCOUNTS: { email: string; person: string; role: "PENJADWAL" | "ADMIN_TIM" | "PETUGAS_ABSEN" | "PELAYAN"; team?: string }[] = [
   { email: "penjadwal@dummy.local", person: "Ruth", role: "PENJADWAL" },
-  { email: "admin.pemusik@dummy.local", person: "Grace", role: "ADMIN_TIM", team: "Tim pemusik" },
+  { email: "admin.pemusik@dummy.local", person: "Grace", role: "ADMIN_TIM", team: "Penatalayan ibadah" },
   { email: "admin.ebm@dummy.local", person: "Michael", role: "ADMIN_TIM", team: "Tim EBM" },
   { email: "absen@dummy.local", person: "Debora", role: "PETUGAS_ABSEN" },
   { email: "pelayan@dummy.local", person: "William", role: "PELAYAN" },

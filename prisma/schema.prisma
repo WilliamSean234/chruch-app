@@ -189,7 +189,7 @@ model PersonCommunity {
 }
 
 // ───────── Tim, posisi, ruangan ─────────
-model TeamType { // pemusik, EBM, usher, pimpinan ibadah, + tim dinamis
+model TeamType { // penatalayan ibadah (pemusik, WL, singer, PIC), EBM, usher, + tim dinamis
   id         String      @id @default(uuid())
   tenantId   String
   name       String
@@ -209,6 +209,7 @@ model Ministry { // keyboard, drum, singer, LCD, PIC, liturgos, ...
   teamTypeId               String
   name                     String
   rehearsalRequiredDefault Boolean             @default(false)
+  bandOnly                 Boolean             @default(false) // posisi band (bass, gitar, drum, …): tidak dipakai di ibadah No Band
   sortOrder                Int                 @default(0)
   deletedAt                DateTime?
   teamType                 TeamType            @relation(fields: [teamTypeId], references: [id])
@@ -289,6 +290,9 @@ model Event { // header; nomor EV-YYYYMM-0001
   roomId       String
   status       String             @default("DRAFT") // DRAFT | PUBLISHED | CANCELLED
   attendanceMode String           @default("COUNT") // COUNT = jumlah saja | NAMES = per nama
+  theme        String? // tema ibadah (opsional; boleh beberapa baris: judul, ayat, tagline)
+  padus        String? // catatan paduan suara di ibadah ini, mis. "Choir Dewasa - KU 1 & 2" (opsional)
+  bandMode     String             @default("BAND") // BAND | NO_BAND (No Band: hanya keyboard/piano/PSR; posisi bandOnly tidak dipakai)
   publishedAt  DateTime?
   cancelReason String?
   createdById  String?

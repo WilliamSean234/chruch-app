@@ -20,6 +20,7 @@ const PERMISSIONS = [
   "rehearsal.write",
   "event.publish",
   "booking.override", // hanya Superadmin
+  "attendance.write", // input kehadiran (petugas dibatasi ke acara yang ditugaskan)
   "calendar.read",
   "schedule.read-own",
 ] as const;
@@ -36,6 +37,7 @@ const ROLES: { code: string; name: string; isSuperadmin?: boolean; permissions: 
       "assignment.write",
       "rehearsal.write",
       "event.publish",
+      "attendance.write",
       "calendar.read",
       "schedule.read-own",
     ],
@@ -46,25 +48,38 @@ const ROLES: { code: string; name: string; isSuperadmin?: boolean; permissions: 
     name: "Admin Tim",
     permissions: ["person.write", "assignment.write", "rehearsal.write", "calendar.read", "schedule.read-own"],
   },
+  {
+    // hanya boleh mengisi kehadiran acara tempat orang tersebut ditugaskan (dicek di layanan, bukan di role)
+    code: "PETUGAS_ABSEN",
+    name: "Petugas Absen",
+    permissions: ["attendance.write", "calendar.read", "schedule.read-own"],
+  },
   { code: "PELAYAN", name: "Pelayan", permissions: ["calendar.read", "schedule.read-own"] },
 ];
 
 // ───────── Tim paten & posisi ─────────
 // Posisi dengan lebih dari satu kursi (Gitar 1, Lighting 2, Usher 3) memakai slotNo pada penugasan.
-const TEAMS: { name: string; ministries: { name: string; rehearsalRequired?: boolean }[] }[] = [
+const TEAMS: {
+  name: string;
+  core?: boolean; // default true (tim paten); false = tim yang bisa dihapus/diubah admin
+  ministries: { name: string; rehearsalRequired?: boolean; bandOnly?: boolean }[];
+}[] = [
   {
-    name: "Pimpinan ibadah",
-    ministries: [{ name: "PIC" }, { name: "Liturgos (WL)", rehearsalRequired: true }, { name: "Pembicara" }],
+    // Bertanggung jawab atas pemusik, WL/Liturgos, Singer/Backing Vocal, dan PIC.
+    name: "Penatalayan ibadah",
+    ministries: [
+      { name: "PIC" }, { name: "Liturgos (WL)", rehearsalRequired: true }, { name: "Pembicara" },
+      ...["Keyboard", "Piano", "PSR"].map((name) => ({ name, rehearsalRequired: true })),
+      ...["Bass", "Gitar", "Kajon", "Drum"].map((name) => ({ name, rehearsalRequired: true, bandOnly: true })), // tidak dipakai di ibadah No Band
+      { name: "Singer", rehearsalRequired: true },
+    ],
   },
   {
-    name: "Tim pemusik",
-    ministries: ["Keyboard", "Piano", "PSR", "Bass", "Gitar", "Drum", "Singer"].map((name) => ({
-      name,
-      rehearsalRequired: true,
-    })),
+    name: "Tim EBM",
+    ministries: [{ name: "LCD" }, { name: "Sound" }, { name: "Lighting" }, { name: "Multimedia" }],
   },
-  { name: "Tim EBM", ministries: [{ name: "LCD" }, { name: "Sound" }, { name: "Lighting" }] },
   { name: "Usher", ministries: [{ name: "Usher" }] },
+  { name: "Tim publikasi", core: false, ministries: [{ name: "Desain e-flyer" }] },
 ];
 
 const ROOMS = ["Ruang A", "Ruang B", "Ruang C"];
@@ -85,10 +100,40 @@ const MANDARIN: SlotDef[] = [
   ["LCD", 1], ["Sound", 1],
   ["Usher", 1],
 ];
-const TEMPLATES: { name: string; startTime: string; room: string; slots: SlotDef[] }[] = [
-  { name: "Ibadah Minggu I", startTime: "07:00", room: "Ruang A", slots: FULL },
-  { name: "Ibadah Minggu II", startTime: "09:30", room: "Ruang A", slots: FULL },
-  { name: "Ibadah Mandarin", startTime: "09:30", room: "Ruang B", slots: MANDARIN },
+// Fellowship pemuda: Sabtu minggu ke-4 tiap bulan, 18:00, ruangan terpisah, tim lebih ringkas.
+const FELLOWSHIP: SlotDef[] = [
+  ["Pembicara", 1],
+  ["Gitar", 1], ["Kajon", 1],
+  ["Multimedia", 1],
+  ["Desain e-flyer", 1],
+];
+const TEMPLATES: {
+  name: string;
+  weekday: number;
+  recurrence: "WEEKLY" | "MONTHLY_NTH";
+  ordinal?: number;
+  startTime: string;
+  room: string;
+  attendanceMode: "COUNT" | "NAMES";
+  attendanceCommunity?: string;
+  rehearsal?: boolean; // false = semua slot tidak wajib latihan
+  slots: SlotDef[];
+}[] = [
+  { name: "Ibadah Minggu I", weekday: 0, recurrence: "WEEKLY", startTime: "07:00", room: "Ruang A", attendanceMode: "COUNT", slots: FULL },
+  { name: "Ibadah Minggu II", weekday: 0, recurrence: "WEEKLY", startTime: "09:30", room: "Ruang A", attendanceMode: "COUNT", slots: FULL },
+  { name: "Ibadah Mandarin", weekday: 0, recurrence: "WEEKLY", startTime: "09:30", room: "Ruang B", attendanceMode: "COUNT", slots: MANDARIN },
+  {
+    name: "Fellowship Pemuda",
+    weekday: 6, // Sabtu
+    recurrence: "MONTHLY_NTH",
+    ordinal: 4, // Sabtu ke-4 dalam bulan
+    startTime: "18:00",
+    room: "Ruang C",
+    attendanceMode: "NAMES",
+    attendanceCommunity: "Pemuda",
+    rehearsal: false,
+    slots: FELLOWSHIP,
+  },
 ];
 
 async function main() {
@@ -146,20 +191,21 @@ async function main() {
   for (const t of TEAMS) {
     const team = await prisma.teamType.upsert({
       where: { tenantId_name: { tenantId: TENANT_ID, name: t.name } },
-      update: { isCore: true, sortOrder: teamOrder },
-      create: { tenantId: TENANT_ID, name: t.name, isCore: true, sortOrder: teamOrder },
+      update: { isCore: t.core !== false, sortOrder: teamOrder },
+      create: { tenantId: TENANT_ID, name: t.name, isCore: t.core !== false, sortOrder: teamOrder },
     });
     teamOrder += 1;
     let order = 0;
     for (const m of t.ministries) {
       const ministry = await prisma.ministry.upsert({
         where: { tenantId_teamTypeId_name: { tenantId: TENANT_ID, teamTypeId: team.id, name: m.name } },
-        update: { rehearsalRequiredDefault: !!m.rehearsalRequired, sortOrder: order },
+        update: { rehearsalRequiredDefault: !!m.rehearsalRequired, bandOnly: !!m.bandOnly, sortOrder: order },
         create: {
           tenantId: TENANT_ID,
           teamTypeId: team.id,
           name: m.name,
           rehearsalRequiredDefault: !!m.rehearsalRequired,
+          bandOnly: !!m.bandOnly,
           sortOrder: order,
         },
       });
@@ -189,12 +235,14 @@ async function main() {
     });
     posOrder += 1;
   }
+  const communityIds: Record<string, string> = {};
   for (const name of COMMUNITIES) {
-    await prisma.community.upsert({
+    const c = await prisma.community.upsert({
       where: { tenantId_name: { tenantId: TENANT_ID, name } },
       update: {},
       create: { tenantId: TENANT_ID, name },
     });
+    communityIds[name] = c.id;
   }
 
   // Template acara + slot bawaan (wajib latihan mengikuti default posisi)
@@ -211,10 +259,14 @@ async function main() {
       create: {
         tenantId: TENANT_ID,
         name: tpl.name,
-        weekday: 0,
+        weekday: tpl.weekday,
+        recurrence: tpl.recurrence,
+        ordinal: tpl.ordinal ?? null,
         startTime: tpl.startTime,
-        durationMin: 120,
+        durationMin: 120, // default 2 jam, Superadmin bisa mengubah
         roomId: roomIds[tpl.room],
+        attendanceModeDefault: tpl.attendanceMode,
+        attendanceCommunityId: tpl.attendanceCommunity ? communityIds[tpl.attendanceCommunity] : null,
       },
     });
     for (const [ministryName, slotNo] of tpl.slots) {
@@ -226,7 +278,7 @@ async function main() {
           templateId: template.id,
           ministryId,
           slotNo,
-          rehearsalRequired: reqById.get(ministryId) ?? false,
+          rehearsalRequired: tpl.rehearsal === false ? false : reqById.get(ministryId) ?? false,
         },
       });
     }

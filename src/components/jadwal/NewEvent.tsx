@@ -34,7 +34,7 @@ export default function NewEvent() {
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
 
-  const [k, setK] = useState({ title: "", date: today, start: "09:00", dur: 120, roomId: "", mode: "COUNT" });
+  const [k, setK] = useState({ title: "", date: today, start: "09:00", dur: 120, roomId: "", mode: "COUNT", theme: "", padus: "" });
   const [teamIds, setTeamIds] = useState<string[]>([]);
 
   useEffect(() => {
@@ -67,7 +67,7 @@ export default function NewEvent() {
 
   async function createOneOff() {
     setBusy(true); setError("");
-    const r = await callApi("POST", "/api/v1/events", { title: k.title, date: k.date, startTime: k.start, durationMin: k.dur, roomId: k.roomId, attendanceMode: k.mode, teamTypeIds: teamIds });
+    const r = await callApi("POST", "/api/v1/events", { title: k.title, date: k.date, startTime: k.start, durationMin: k.dur, roomId: k.roomId, attendanceMode: k.mode, theme: k.theme, padus: k.padus, teamTypeIds: teamIds });
     setBusy(false);
     if (!r.ok) return setError(errMsg(r.data));
     router.push(`/jadwal/${r.data.id}`);
@@ -151,6 +151,12 @@ export default function NewEvent() {
             </label>
             <label className="flex flex-col gap-1.5 text-[13px] font-bold sm:col-span-2">Kehadiran dicatat
               <select className={inputCls} value={k.mode} onChange={(e) => setK({ ...k, mode: e.target.value })}><option value="COUNT">Jumlah saja</option><option value="NAMES">Per nama</option></select>
+            </label>
+            <label className="flex flex-col gap-1.5 text-[13px] font-bold sm:col-span-2">Tema ibadah <span className="font-medium text-[var(--ink-2)]">(opsional)</span>
+              <textarea rows={2} maxLength={600} className={`${inputCls} h-auto min-h-[44px] py-2.5`} value={k.theme} onChange={(e) => setK({ ...k, theme: e.target.value })} />
+            </label>
+            <label className="flex flex-col gap-1.5 text-[13px] font-bold sm:col-span-2">Padus <span className="font-medium text-[var(--ink-2)]">(opsional, catatan saja)</span>
+              <input maxLength={200} className={inputCls} value={k.padus} onChange={(e) => setK({ ...k, padus: e.target.value })} />
             </label>
           </div>
           <fieldset className="mt-4"><legend className="text-[13px] font-bold">Tim yang terlibat</legend>

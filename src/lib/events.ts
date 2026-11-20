@@ -1,15 +1,20 @@
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
-import { badRequest, conflict, notFound } from "./errors";
+import { badRequest, conflict, forbidden, notFound } from "./errors";
 import { addMinutes, DATE_RE, localParts, TIME_RE, zonedToUtc } from "./time";
 import { assertRoomFree, assertRoomUsable, bookRoom, promoteOrphanOverrides, releaseBookings, translateOverlap } from "./booking";
 import { isSundayPair } from "./seatRules";
 import { nextDocNumber } from "./docNumber";
 import { creatorNames } from "./creators";
 import { assertTransition, isEditable } from "./eventStatusFlow";
-import type { AuthUser } from "./rbac";
+import { teamScope, type AuthUser } from "./rbac";
 import { pageOf, pagingQuery, resolvePaging } from "./paging";
+
+/** Teks opsional: kosong atau spasi saja = tidak ada (null). */
+const optText = (max: number) => z.string().trim().max(max).nullish().transform((v) => (v ? v : null));
+export const THEME_MAX = 600;
+export const PADUS_MAX = 200;
 
 const seatSpec = z.object({ ministryId: z.string().uuid(), count: z.number().int().min(1).max(10).default(1), rehearsalRequired: z.boolean().optional() });
 
@@ -20,6 +25,8 @@ export const eventCreateBody = z.object({
   durationMin: z.number().int().min(15).max(720).default(120),
   roomId: z.string().uuid(),
   attendanceMode: z.enum(["COUNT", "NAMES"]).default("COUNT"),
+  theme: optText(THEME_MAX), // tema ibadah (opsional)
+  padus: optText(PADUS_MAX), // catatan paduan suara (opsional)
   teamTypeIds: z.array(z.string().uuid()).default([]), // tim kosong tanpa kursi, mis. "Bagi roti & anggur"
   seats: z.array(seatSpec).default([]),
 });
@@ -31,7 +38,11 @@ export const eventUpdateBody = z.object({
   durationMin: z.number().int().min(15).max(720).optional(),
   roomId: z.string().uuid().optional(),
   attendanceMode: z.enum(["COUNT", "NAMES"]).optional(),
+  theme: z.string().trim().max(THEME_MAX).nullish().transform((v) => (v === undefined ? undefined : v ? v : null)), // kosong = hapus tema
+  padus: z.string().trim().max(PADUS_MAX).nullish().transform((v) => (v === undefined ? undefined : v ? v : null)),
 });
+
+export const bandModeBody = z.object({ bandMode: z.enum(["BAND", "NO_BAND"]) });
 
 export const seatBody = seatSpec;
 export const teamBody = z.object({ teamTypeId: z.string().uuid() });
@@ -46,6 +57,7 @@ type EventFull = Prisma.EventGetPayload<{ include: typeof include }>;
 
 export const toDto = (e: EventFull) => ({
   id: e.id, number: e.number, title: e.title, status: e.status, attendanceMode: e.attendanceMode,
+  theme: e.theme, padus: e.padus, bandMode: e.bandMode,
   startsAt: e.startsAt.toISOString(), endsAt: e.endsAt.toISOString(),
   durationMin: Math.round((e.endsAt.getTime() - e.startsAt.getTime()) / 60_000),
   room: { id: e.room.id, name: e.room.name },
@@ -54,7 +66,7 @@ export const toDto = (e: EventFull) => ({
   seats: e.assignments.map((a) => ({
     id: a.id, teamTypeId: a.teamTypeId, ministryId: a.ministryId, ministryName: a.ministry.name, slotNo: a.slotNo,
     label: a.slotNo > 1 || e.assignments.filter((x) => x.ministryId === a.ministryId).length > 1 ? `${a.ministry.name} ${a.slotNo}` : a.ministry.name,
-    rehearsalRequired: a.rehearsalRequired,
+    rehearsalRequired: a.rehearsalRequired, bandOnly: a.ministry.bandOnly,
     person: a.person ? { id: a.person.id, name: a.person.name, origin: a.person.origin, originChurch: a.person.originChurch } : null,
   })),
   rehearsals: e.rehearsals.map((r) => ({ id: r.id, seq: r.seq, startsAt: r.startsAt.toISOString(), endsAt: r.endsAt.toISOString(), room: { id: r.room.id, name: r.room.name }, note: r.note })),
@@ -177,7 +189,7 @@ export async function createEvent(u: AuthUser, b: z.infer<typeof eventCreateBody
     prisma.$transaction(async (tx) => {
       const e = await tx.event.create({
         data: {
-          tenantId: u.tenantId, number, title: b.title, startsAt, endsAt, roomId: b.roomId, status: "DRAFT", attendanceMode: b.attendanceMode, createdById: u.userId,
+          tenantId: u.tenantId, number, title: b.title, startsAt, endsAt, roomId: b.roomId, status: "DRAFT", attendanceMode: b.attendanceMode, theme: b.theme, padus: b.padus, createdById: u.userId,
           teams: { create: teamIds.map((teamTypeId) => ({ teamTypeId })) },
           assignments: { create: seats.map((s, i) => ({ tenantId: u.tenantId, ...s, sortOrder: i })) },
         },
@@ -189,7 +201,7 @@ export async function createEvent(u: AuthUser, b: z.infer<typeof eventCreateBody
   return getEvent(u.tenantId, created.id);
 }
 
-/** Ubah judul, waktu, ruangan, atau mode kehadiran. Pemakaian ruangan dan orang ikut dipindah. */
+/** Ubah judul, tema, catatan padus, waktu, ruangan, atau mode kehadiran. Pemakaian ruangan dan orang ikut dipindah. */
 export async function updateEvent(u: AuthUser, id: string, b: z.infer<typeof eventUpdateBody>) {
   const cur = await loadEditable(u.tenantId, id);
 
@@ -211,7 +223,7 @@ export async function updateEvent(u: AuthUser, id: string, b: z.infer<typeof eve
   await translateOverlap(
     () =>
       prisma.$transaction(async (tx) => {
-        await tx.event.update({ where: { id }, data: { title: b.title, attendanceMode: b.attendanceMode, startsAt, endsAt, roomId } });
+        await tx.event.update({ where: { id }, data: { title: b.title, attendanceMode: b.attendanceMode, theme: b.theme, padus: b.padus, startsAt, endsAt, roomId } });
         if (timeChanged || roomChanged) {
           await releaseBookings(tx, { sourceType: "EVENT", sourceId: id, resourceType: "ROOM" });
           await bookRoom(tx, { tenantId: u.tenantId, roomId, startsAt, endsAt, sourceType: "EVENT", sourceId: id });
@@ -224,6 +236,57 @@ export async function updateEvent(u: AuthUser, id: string, b: z.infer<typeof eve
     "Waktu baru bentrok: ada pelayan di acara ini yang sudah terjadwal di tempat lain pada jam itu, atau ruangan terpakai.",
   );
   return getEvent(u.tenantId, id);
+}
+
+/**
+ * Band atau No Band. No Band: hanya keyboard/piano/PSR dan sejenisnya, jadi kursi posisi band (bass, gitar, drum, …) dihapus dari acara
+ * (orangnya dilepas). Band: kursi posisi band dipulihkan dari template acara bila ada. Mengembalikan jumlah kursi yang dihapus/dipulihkan.
+ */
+export async function setBandMode(u: AuthUser, id: string, mode: "BAND" | "NO_BAND") {
+  const e = await loadEditable(u.tenantId, id);
+  if (e.bandMode === mode) return { event: await getEvent(u.tenantId, id), removed: 0, restored: 0, released: [] as string[] };
+
+  // Admin Tim hanya boleh mengubah bila mengurus tim yang punya posisi band
+  const bandTeams = (await prisma.ministry.findMany({ where: { tenantId: u.tenantId, bandOnly: true, deletedAt: null }, select: { teamTypeId: true } })).map((m) => m.teamTypeId);
+  const scope = teamScope(u);
+  if (scope !== null && !bandTeams.some((t) => scope.includes(t))) throw forbidden();
+
+  let removed = 0, restored = 0;
+  const released: string[] = [];
+  if (mode === "NO_BAND") {
+    const seats = e.assignments.filter((a) => a.ministry.bandOnly);
+    await prisma.$transaction(async (tx) => {
+      if (seats.length) {
+        await releaseBookings(tx, { assignmentId: { in: seats.map((s) => s.id) } });
+        await tx.eventAssignment.deleteMany({ where: { id: { in: seats.map((s) => s.id) } } });
+        for (const pid of new Set(seats.map((s) => s.personId).filter((x): x is string => !!x))) await promoteOrphanOverrides(tx, u.tenantId, pid, id);
+      }
+      await tx.event.update({ where: { id }, data: { bandMode: "NO_BAND" } });
+    });
+    removed = seats.length;
+    released.push(...seats.filter((s) => s.person).map((s) => `${s.ministry.name}: ${s.person!.name}`));
+  } else {
+    const slots = e.templateId
+      ? await prisma.eventTemplateSlot.findMany({ where: { templateId: e.templateId, ministry: { bandOnly: true, deletedAt: null } }, include: { ministry: true }, orderBy: [{ ministryId: "asc" }, { slotNo: "asc" }] })
+      : [];
+    const have = new Set(e.assignments.map((a) => `${a.ministryId}:${a.slotNo}`));
+    const missing = slots.filter((sl) => !have.has(`${sl.ministryId}:${sl.slotNo}`));
+    await prisma.$transaction(async (tx) => {
+      if (missing.length) {
+        const order = await tx.eventAssignment.aggregate({ where: { eventId: id }, _max: { sortOrder: true } });
+        let o = (order._max.sortOrder ?? -1) + 1;
+        for (const t of new Set(missing.map((m) => m.ministry.teamTypeId))) {
+          if (!(await tx.eventTeam.count({ where: { eventId: id, teamTypeId: t } }))) await tx.eventTeam.create({ data: { eventId: id, teamTypeId: t } });
+        }
+        await tx.eventAssignment.createMany({
+          data: missing.map((sl) => ({ tenantId: u.tenantId, eventId: id, teamTypeId: sl.ministry.teamTypeId, ministryId: sl.ministryId, slotNo: sl.slotNo, sortOrder: o++, rehearsalRequired: sl.rehearsalRequired })),
+        });
+      }
+      await tx.event.update({ where: { id }, data: { bandMode: "BAND" } });
+    });
+    restored = missing.length;
+  }
+  return { event: await getEvent(u.tenantId, id), removed, restored, released };
 }
 
 export async function addTeam(u: AuthUser, eventId: string, teamTypeId: string) {
@@ -249,9 +312,10 @@ export async function removeTeam(u: AuthUser, eventId: string, teamTypeId: strin
 
 /** Tambah kursi (mis. Gitar 2). Tim induknya otomatis ikut ditambahkan ke acara. */
 export async function addSeats(u: AuthUser, eventId: string, b: z.infer<typeof seatSpec>) {
-  await loadEditable(u.tenantId, eventId);
+  const ev = await loadEditable(u.tenantId, eventId);
   const m = await prisma.ministry.findFirst({ where: { id: b.ministryId, tenantId: u.tenantId, deletedAt: null } });
   if (!m) throw notFound("Posisi pelayanan");
+  if (m.bandOnly && ev.bandMode === "NO_BAND") throw conflict(`Ibadah ini No Band, jadi posisi ${m.name} tidak dipakai. Ubah ke Band dulu bila perlu.`);
   await prisma.$transaction(async (tx) => {
     const last = await tx.eventAssignment.aggregate({ where: { eventId, ministryId: m.id }, _max: { slotNo: true } });
     const order = await tx.eventAssignment.aggregate({ where: { eventId }, _max: { sortOrder: true } });

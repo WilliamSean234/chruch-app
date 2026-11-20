@@ -11,12 +11,12 @@ import { dayLong, dayShort, hm, initials, MONTHS, STATUS_LABEL, toneFor, WEEKDAY
 import RoomOptions from "@/components/ui/RoomOptions";
 
 type Seat = {
-  id: string; teamTypeId: string; ministryId: string; ministryName: string; label: string; rehearsalRequired: boolean;
+  id: string; teamTypeId: string; ministryId: string; ministryName: string; label: string; rehearsalRequired: boolean; bandOnly?: boolean;
   person: { id: string; name: string; origin: string; originChurch: string | null } | null;
 };
 type Detail = {
   createdBy: string | null; createdAt: string;
-  id: string; number: string; title: string; status: string; attendanceMode: string; startsAt: string; endsAt: string; durationMin: number;
+  id: string; number: string; title: string; status: string; attendanceMode: string; theme: string | null; padus: string | null; bandMode: "BAND" | "NO_BAND"; startsAt: string; endsAt: string; durationMin: number;
   room: { id: string; name: string }; teams: { teamTypeId: string; name: string }[]; seats: Seat[];
   /** Ibadah pasangan di hari yang sama (Minggu 1 dan 2): personelnya biasanya sama. */
   pair: { id: string; number: string; title: string; startsAt: string; filled: number } | null;
@@ -42,7 +42,8 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
   const [saved, setSaved] = useState(false); // popup "berhasil disimpan"
   const [cancelReason, setCancelReason] = useState("");
   // form info
-  const [f, setF] = useState({ title: "", date: "", start: "", end: "", roomId: "", mode: "COUNT" });
+  const [f, setF] = useState({ title: "", date: "", start: "", end: "", roomId: "", mode: "COUNT", theme: "", padus: "" });
+  const [bandAsk, setBandAsk] = useState(false); // konfirmasi (tanpa popup bawaan browser) sebelum ke No Band bila ada orang di posisi band
   const [base, setBase] = useState(f); // isi form terakhir dari server, untuk mengetahui ada perubahan atau tidak
   // form latihan
   const [rf, setRf] = useState<{ open: boolean; editId: string | null; date: string; start: string; dur: number; roomId: string; note: string }>({ open: false, editId: null, date: "", start: "19:00", dur: 120, roomId: "", note: "" });
@@ -53,7 +54,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
     const det = a.data as Detail;
     setD(det);
     if (b.ok) setReh(b.data);
-    const form = { title: det.title, date: ymd(det.startsAt), start: hmInput(det.startsAt), end: hmInput(det.endsAt), roomId: det.room.id, mode: det.attendanceMode };
+    const form = { title: det.title, date: ymd(det.startsAt), start: hmInput(det.startsAt), end: hmInput(det.endsAt), roomId: det.room.id, mode: det.attendanceMode, theme: det.theme ?? "", padus: det.padus ?? "" };
     setF(form); setBase(form);
   }, [eventId]);
 
@@ -95,7 +96,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
     if (!d) return;
     const dur = diffMin(f.start, f.end);
     if (dur <= 0) return setBanner({ kind: "error", title: "Waktu tidak valid", message: "Jam selesai harus setelah jam mulai." });
-    return run(() => callApi("PATCH", `/api/v1/events/${eventId}`, { title: f.title, date: f.date, startTime: f.start, durationMin: dur, roomId: f.roomId, attendanceMode: f.mode }), () => setSaved(true));
+    return run(() => callApi("PATCH", `/api/v1/events/${eventId}`, { title: f.title, date: f.date, startTime: f.start, durationMin: dur, roomId: f.roomId, attendanceMode: f.mode, theme: f.theme, padus: f.padus }), () => setSaved(true));
   };
 
   // ───────── status
@@ -143,6 +144,15 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
   }
 
   const removeSeat = async (seatId: string, label: string) => { if (await askConfirm(`Hapus posisi ${label} dari acara ini?`)) void run(() => callApi("DELETE", `/api/v1/events/${eventId}/seats/${seatId}`)); };
+  const setBand = (bandMode: "BAND" | "NO_BAND") => {
+    setBandAsk(false);
+    return run(() => callApi("POST", `/api/v1/events/${eventId}/band-mode`, { bandMode }), (r) => {
+      const gone: string[] = r?.released ?? [];
+      setBanner({ kind: "info", title: bandMode === "NO_BAND" ? "Diubah ke No Band" : "Diubah ke Band", message: bandMode === "NO_BAND"
+        ? `${r?.removed ?? 0} posisi band dihapus dari acara.${gone.length ? ` Orang yang dilepas: ${gone.join(", ")}.` : ""}`
+        : (r?.restored ?? 0) > 0 ? `${r.restored} posisi band dikembalikan sesuai template.` : "Tidak ada posisi band yang perlu dikembalikan. Tambahkan lewat tombol tambah posisi bila perlu." });
+    });
+  };
   const addSeat = (ministryId: string, count: number) => run(() => callApi("POST", `/api/v1/events/${eventId}/seats`, { ministryId, count }), () => setAddSeatTeam(null));
   const addNewSeat = async (teamTypeId: string, name: string, required: boolean, count: number) => {
     const known = teams.find((t) => t.id === teamTypeId)?.ministries.find((m) => m.name.toLowerCase() === name.trim().toLowerCase());
@@ -288,6 +298,12 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
                   <option value="NAMES">Per nama</option>
                 </select>
               </label>
+              <label className="flex flex-col gap-1.5 text-[13px] font-bold sm:col-span-2 lg:col-span-3">Tema ibadah <span className="font-medium text-[var(--ink-2)]">(opsional)</span>
+                <textarea rows={2} maxLength={600} className={`${inputCls} h-auto min-h-[44px] py-2.5`} value={f.theme} disabled={!perms.editEvent || !editable} onChange={(e) => setF({ ...f, theme: e.target.value })} placeholder="mis. Hidup dalam terang kasih Kristus" />
+              </label>
+              <label className="flex flex-col gap-1.5 text-[13px] font-bold sm:col-span-2 lg:col-span-3">Padus <span className="font-medium text-[var(--ink-2)]">(opsional, catatan saja)</span>
+                <input maxLength={200} className={inputCls} value={f.padus} disabled={!perms.editEvent || !editable} onChange={(e) => setF({ ...f, padus: e.target.value })} placeholder="mis. Padus Rayon 3 membawakan 2 lagu" />
+              </label>
             </div>
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
               <span className="text-xs font-semibold text-[var(--ink-2)]">Waktu dan ruangan bisa diubah untuk acara ini saja. Orang yang sudah dijadwalkan ikut pindah jam, dan ditolak bila bentrok.</span>
@@ -308,6 +324,29 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
                 </button>
               )}
             </div>
+          )}
+
+          {(d.bandMode === "NO_BAND" || d.seats.some((x) => x.bandOnly)) && (
+            <section className={card}>
+              <div className="flex flex-wrap items-center gap-3">
+                <SectionTitle>Band atau No Band</SectionTitle>
+                <span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-bold ${d.bandMode === "NO_BAND" ? "bg-[var(--gold-soft)] text-[#6F4304]" : "bg-[var(--primary-soft)] text-[var(--primary-ink)]"}`}>{d.bandMode === "NO_BAND" ? "No Band" : "Band"}</span>
+                <span className="flex-1" />
+                {perms.assign && editable && (
+                  d.bandMode === "BAND"
+                    ? <button className={btnGhost} disabled={busy} onClick={() => (d.seats.some((x) => x.bandOnly && x.person) ? setBandAsk(true) : void setBand("NO_BAND"))}>Jadikan No Band</button>
+                    : <button className={btnGhost} disabled={busy} onClick={() => void setBand("BAND")}>Kembalikan ke Band</button>
+                )}
+              </div>
+              <p className="mt-2 text-xs font-semibold text-[var(--ink-2)]">{d.bandMode === "NO_BAND" ? "No Band: hanya piano, keyboard, atau PSR. Posisi bass, gitar, drum dan sejenisnya tidak dipakai." : "Band: lengkap dengan bass, gitar, drum dan sejenisnya."}</p>
+              {bandAsk && (
+                <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-[#EAD9AE] bg-[#FFFBF0] p-3.5">
+                  <span className="min-w-0 flex-1 text-sm font-semibold text-[#6F4304]">Posisi band yang sudah terisi akan dihapus dari acara ini dan orangnya dilepas. Lanjutkan?</span>
+                  <button className="h-10 rounded-xl bg-[#B42318] px-4 text-sm font-bold text-white disabled:opacity-50" disabled={busy} onClick={() => void setBand("NO_BAND")}>Ya, jadikan No Band</button>
+                  <button className={`${btnGhost} h-10`} onClick={() => setBandAsk(false)}>Batal</button>
+                </div>
+              )}
+            </section>
           )}
 
           {sections.map((t) => {

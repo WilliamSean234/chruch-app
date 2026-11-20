@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ebmOutsideWarning, isSundayPair, judgePair, teamKind } from "../src/lib/seatRules";
+import { ebmOutsideWarning, isSundayPair, judgePair, seatKind, teamKind } from "../src/lib/seatRules";
 
 const seat = (teamName: string, ministryName: string) => ({ teamName, ministryName });
 const PIC = seat("Pimpinan ibadah", "PIC");
@@ -84,4 +84,33 @@ test("Ibadah Minggu 1 dan 2 berpasangan, dengan angka Romawi atau Arab", () => {
   assert.ok(!isSundayPair("Ibadah Minggu I", "Ibadah Minggu I"));
   assert.ok(!isSundayPair("Ibadah Mandarin", "Ibadah Minggu I"));
   assert.ok(!isSundayPair("Fellowship Pemuda", "Ibadah Minggu II"));
+});
+
+// ───────── Penatalayan ibadah (gabungan pimpinan ibadah dan pemusik) ─────────
+
+const PEN = "Penatalayan ibadah";
+
+test("Penatalayan ibadah dikenali, nama lama tetap dikenali", () => {
+  assert.equal(teamKind(PEN), "PIMPINAN");
+  assert.equal(teamKind("Pimpinan ibadah"), "PIMPINAN");
+  assert.equal(teamKind("Tim pemusik"), "PEMUSIK");
+});
+
+test("kursi di Penatalayan: PIC, Liturgos, Pembicara = pimpinan; alat musik dan Singer = pemusik", () => {
+  for (const m of ["PIC", "Liturgos (WL)", "Pembicara"]) assert.equal(seatKind(PEN, m), "PIMPINAN");
+  for (const m of ["Keyboard", "Piano", "PSR", "Bass", "Gitar", "Gitar 2", "Kajon", "Drum", "Singer"]) assert.equal(seatKind(PEN, m), "PEMUSIK");
+  assert.equal(seatKind("Tim EBM", "LCD"), "EBM");
+  assert.equal(seatKind("Usher", "Usher"), "USHER");
+});
+
+test("setelah digabung: EBM tetap tidak boleh merangkap pemusik, PIC tetap boleh merangkap Usher", () => {
+  const keys = seat(PEN, "Keyboard");
+  const singer = seat(PEN, "Singer");
+  assert.equal(judgePair(keys, LCD, "Sari").kind, "BLOCKED");
+  assert.equal(judgePair(LCD, singer, "Sari").kind, "BLOCKED");
+  assert.equal(judgePair(USHER, seat(PEN, "PIC"), "Budi").kind, "ALLOWED");
+  assert.equal(judgePair(USHER, seat(PEN, "Liturgos (WL)"), "Budi").kind, "CONFLICT");
+  assert.equal(judgePair(USHER, keys, "Budi").kind, "CONFLICT");
+  // pemusik merangkap posisi lain di Penatalayan: bentrok biasa
+  assert.equal(judgePair(keys, seat(PEN, "PIC"), "Budi").kind, "CONFLICT");
 });

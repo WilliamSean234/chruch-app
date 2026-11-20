@@ -89,6 +89,7 @@ export async function assignPerson(u: AuthUser, eventId: string, assignmentId: s
 export async function assignCore(u: AuthUser, eventId: string, assignmentId: string, body: z.infer<typeof assignBody>, opts: { mirror?: boolean } = {}): Promise<{ warnings: string[] }> {
   const seat = await loadSeat(u, eventId, assignmentId);
   if (!isEditable(seat.event.status)) throw conflict("Acara yang sudah dibatalkan tidak bisa diubah.");
+  if (body.personId !== null && seat.event.bandMode === "NO_BAND" && seat.ministry.bandOnly) throw conflict(`Ibadah ini No Band, jadi posisi ${seat.ministry.name} tidak dipakai. Ubah ke Band dulu bila perlu.`);
 
   if (body.personId === null) {
     await prisma.$transaction(async (tx) => {

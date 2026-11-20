@@ -16,6 +16,7 @@ type CalRehearsal = { id: string; eventId: string; eventTitle: string; seq: numb
 type Detail = {
   createdBy: string | null; createdAt: string;
   id: string; number: string; title: string; status: string; startsAt: string; endsAt: string; room: { name: string };
+  theme?: string | null; padus?: string | null; bandMode?: "BAND" | "NO_BAND";
   teams: { teamTypeId: string; name: string }[];
   seats: { id: string; teamTypeId: string; label: string; ministryName: string; rehearsalRequired: boolean; person: { id: string; name: string; origin: string; originChurch: string | null } | null }[];
   rehearsals: { id: string; seq: number; startsAt: string; endsAt: string; room: { name: string }; note: string | null }[];
@@ -459,6 +460,13 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
                 <div className="flex flex-1 flex-col gap-0.5 rounded-xl bg-[var(--bg)] px-3 py-2.5"><span className="text-[11.5px] font-semibold text-[var(--ink-2)]">Waktu</span><span className="text-sm font-bold">{hm(detail.startsAt)}–{hm(detail.endsAt)}</span></div>
                 <div className="flex flex-1 flex-col gap-0.5 rounded-xl bg-[var(--bg)] px-3 py-2.5"><span className="text-[11.5px] font-semibold text-[var(--ink-2)]">Ruangan</span><span className="text-sm font-bold">{detail.room.name}</span></div>
               </div>
+              {(detail.theme || detail.padus || detail.bandMode === "NO_BAND") && (
+                <div className="flex flex-col gap-2 rounded-xl bg-[var(--bg)] px-3 py-2.5">
+                  {detail.theme && <div className="flex flex-col gap-0.5"><span className="text-[11.5px] font-semibold text-[var(--ink-2)]">Tema ibadah</span><span className="whitespace-pre-line break-words text-sm font-bold">{detail.theme}</span></div>}
+                  {detail.padus && <div className="flex flex-col gap-0.5"><span className="text-[11.5px] font-semibold text-[var(--ink-2)]">Padus</span><span className="break-words text-sm font-bold">{detail.padus}</span></div>}
+                  {detail.bandMode === "NO_BAND" && <span className="self-start whitespace-nowrap rounded-full bg-[var(--gold-soft)] px-2.5 py-[3px] text-xs font-bold text-[#6F4304]">No Band</span>}
+                </div>
+              )}
 
               {sections.map((s) => (
                 <div key={s.title} className="flex flex-col gap-2">

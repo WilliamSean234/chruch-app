@@ -8,6 +8,7 @@ export const ministryBody = z.object({
   teamTypeId: z.string().uuid(),
   name: z.string().trim().min(1).max(80),
   rehearsalRequiredDefault: z.boolean().default(false),
+  bandOnly: z.boolean().optional(), // posisi band (bass, gitar, drum, …): tidak dipakai di ibadah No Band
   sortOrder: z.number().int().optional(),
 });
 
@@ -57,10 +58,10 @@ export async function createMinistry(tenantId: string, b: z.infer<typeof ministr
   const old = await prisma.ministry.findFirst({ where: { tenantId, teamTypeId: b.teamTypeId, name: b.name } });
   if (old && !old.deletedAt) throw conflict(`Posisi "${b.name}" sudah ada di tim ${team.name}.`);
   if (old) {
-    return prisma.ministry.update({ where: { id: old.id }, data: { deletedAt: null, rehearsalRequiredDefault: b.rehearsalRequiredDefault } });
+    return prisma.ministry.update({ where: { id: old.id }, data: { deletedAt: null, rehearsalRequiredDefault: b.rehearsalRequiredDefault, bandOnly: b.bandOnly ?? old.bandOnly } });
   }
   return prisma.ministry.create({
-    data: { tenantId, teamTypeId: b.teamTypeId, name: b.name, rehearsalRequiredDefault: b.rehearsalRequiredDefault, sortOrder: b.sortOrder ?? 100 },
+    data: { tenantId, teamTypeId: b.teamTypeId, name: b.name, rehearsalRequiredDefault: b.rehearsalRequiredDefault, bandOnly: b.bandOnly ?? false, sortOrder: b.sortOrder ?? 100 },
   });
 }
 
@@ -71,7 +72,7 @@ export async function updateMinistry(tenantId: string, id: string, b: Partial<z.
     // tim induk tidak dipindah; hapus lalu buat baru bila perlu
     return await prisma.ministry.update({
       where: { id },
-      data: { name: b.name, rehearsalRequiredDefault: b.rehearsalRequiredDefault, sortOrder: b.sortOrder },
+      data: { name: b.name, rehearsalRequiredDefault: b.rehearsalRequiredDefault, bandOnly: b.bandOnly, sortOrder: b.sortOrder },
     });
   } catch (e) {
     if (dup(e)) throw conflict("Nama posisi sudah dipakai di tim ini.");

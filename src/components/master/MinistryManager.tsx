@@ -6,7 +6,7 @@ import Modal from "./Modal";
 import Switch from "@/components/jadwal/Switch";
 import { btnGhost, btnPrimary, callApi, errMsg, inputCls } from "@/components/jadwal/api";
 
-type Min = { id: string; name: string; rehearsalRequiredDefault: boolean };
+type Min = { id: string; name: string; rehearsalRequiredDefault: boolean; bandOnly?: boolean };
 type Team = { id: string; name: string; isCore: boolean; ministries: Min[] };
 
 /** Kelola tim dan posisi pelayanan (Keyboard, Drum, Angklung, …) beserta bawaan wajib latihannya. */
@@ -76,6 +76,9 @@ export default function MinistryManager({ onClose, onChange }: { onClose: () => 
                   <>
                     <span className="flex items-center gap-2 text-xs font-bold text-[var(--ink-2)]">Wajib latihan
                       <Switch checked={m.rehearsalRequiredDefault} onChange={(v) => void call("PATCH", `/api/v1/ministries/${m.id}`, { rehearsalRequiredDefault: v })} label={`${m.name} wajib latihan bawaan`} disabled={busy} />
+                    </span>
+                    <span className="flex items-center gap-2 text-xs font-bold text-[var(--ink-2)]" title="Posisi band tidak dipakai di ibadah No Band">Posisi band
+                      <Switch checked={!!m.bandOnly} onChange={(v) => void call("PATCH", `/api/v1/ministries/${m.id}`, { bandOnly: v })} label={`${m.name} posisi band (tidak dipakai saat No Band)`} disabled={busy} />
                     </span>
                     <span className="flex gap-1">
                       <button type="button" onClick={() => setEdit({ kind: "min", id: m.id, name: m.name })} className="rounded-lg px-2 py-1 text-xs font-bold text-[var(--primary-ink)] hover:bg-[var(--primary-soft)]">Ubah</button>

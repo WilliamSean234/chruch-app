@@ -6,7 +6,9 @@
  * - Orang yang bertugas di EBM tidak boleh merangkap Usher atau tim pemusik (dan sebaliknya).
  * - Anggota EBM yang bertugas di luar EBM (pemusik, pimpinan ibadah, usher) sebaiknya hanya satu orang per acara (peringatan).
  *
- * Jenis tim dikenali dari namanya (tim paten dari seed: "Pimpinan ibadah", "Tim pemusik", "Tim EBM", "Usher").
+ * Jenis tim dikenali dari namanya (tim paten dari seed: "Penatalayan ibadah", "Tim EBM", "Usher"; nama lama "Pimpinan ibadah" dan
+ * "Tim pemusik" tetap dikenali). Penatalayan ibadah berisi pimpinan (PIC, Liturgos, Pembicara) sekaligus pemusik (alat musik, Singer),
+ * jadi jenis kursinya ditentukan dari tim dan posisinya (`seatKind`).
  */
 export type TeamKind = "EBM" | "USHER" | "PEMUSIK" | "PIMPINAN" | "OTHER";
 
@@ -15,8 +17,17 @@ export const teamKind = (teamName: string): TeamKind => {
   if (/\bebm\b/.test(n)) return "EBM";
   if (/\busher\b/.test(n)) return "USHER";
   if (/pemusik|musik/.test(n)) return "PEMUSIK";
-  if (/pimpinan/.test(n)) return "PIMPINAN";
+  if (/pimpinan|penatalayan/.test(n)) return "PIMPINAN";
   return "OTHER";
+};
+
+/** Posisi pimpinan ibadah; posisi lain di Penatalayan ibadah (alat musik, Singer) dihitung sebagai pemusik. */
+const isLeaderMinistry = (ministryName: string) => /^(pic|liturgos|wl|pembicara)\b/i.test(ministryName.trim());
+
+/** Jenis kursi: seperti jenis tim, kecuali kursi non-pimpinan di Penatalayan ibadah yang dihitung pemusik. */
+export const seatKind = (teamName: string, ministryName: string): TeamKind => {
+  const k = teamKind(teamName);
+  return k === "PIMPINAN" && !isLeaderMinistry(ministryName) ? "PEMUSIK" : k;
 };
 
 export const isPic = (ministryName: string) => /^pic$/i.test(ministryName.trim());
@@ -30,8 +41,8 @@ export type PairVerdict =
 
 /** Menilai dua kursi yang dipegang orang yang sama di acara yang sama. `mine` = kursi yang sedang diisi, `other` = kursi lain miliknya. */
 export function judgePair(mine: SeatRef, other: SeatRef, who: string): PairVerdict {
-  const km = teamKind(mine.teamName);
-  const ko = teamKind(other.teamName);
+  const km = seatKind(mine.teamName, mine.ministryName);
+  const ko = seatKind(other.teamName, other.ministryName);
 
   if ((isPic(mine.ministryName) && ko === "USHER") || (km === "USHER" && isPic(other.ministryName))) {
     return { kind: "ALLOWED", note: `${who} merangkap PIC dan Usher di acara ini.` };
