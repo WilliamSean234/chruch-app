@@ -71,3 +71,19 @@ test("pencocokan nama: persis, panggilan, alias, dan saran", () => {
   assert.equal(v.suggestions[0], "3"); // anggota EBM didahulukan
   assert.equal(matchName("ZZZ", people).status, "NONE");
 });
+
+test("catatan teks di bawah blok bulan diabaikan, bukan dianggap tanggal", () => {
+  const cells: XCell[] = [
+    { r: 1, c: 3, v: "MARET" }, { r: 2, c: 3, v: "TGL" }, { r: 2, c: 4, v: "PIC" }, { r: 3, c: 3, v: 7 }, { r: 3, c: 4, v: "Albert" },
+    { r: 6, c: 3, v: "Isi nama persis seperti di daftar pilihan. Satu baris berlaku untuk Ibadah Minggu I dan II." },
+  ];
+  const r = parseTeamSheet(readXlsx(buildXlsx([{ name: "x", cells }])), EBM_FORMAT, 2027);
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.rows.length, 1);
+});
+
+test("teks di kolom TGL yang disertai nama tetap dilaporkan sebagai galat", () => {
+  const cells: XCell[] = [{ r: 1, c: 3, v: "MARET" }, { r: 2, c: 3, v: "TGL" }, { r: 2, c: 4, v: "PIC" }, { r: 3, c: 3, v: "minggu depan" }, { r: 3, c: 4, v: "Albert" }];
+  const r = parseTeamSheet(readXlsx(buildXlsx([{ name: "x", cells }])), EBM_FORMAT, 2027);
+  assert.equal(r.errors.length, 1);
+});

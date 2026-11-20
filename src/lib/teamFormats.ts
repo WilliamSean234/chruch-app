@@ -149,6 +149,9 @@ export function parseTeamSheet(sheets: XSheet[], format: TeamFormat, year: numbe
       if (entries.some(([c]) => colMap.has(c))) errors.push({ line, message: `Baris ${line}: ada nama tetapi kolom TGL kosong.` });
       continue;
     }
+    // catatan atau teks bebas di bawah blok (tidak ada nama di kolom posisi): bukan baris jadwal
+    const looksDate = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) || /^\d{1,2}(\.0+)?$/.test(rawDate);
+    if (!looksDate && !entries.some(([c]) => colMap.has(c))) continue;
     let day: number | null = null;
     const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(rawDate);
     if (iso) {

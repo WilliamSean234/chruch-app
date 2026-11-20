@@ -408,6 +408,7 @@ export async function templateWorkbook(u: AuthUser, formatKey: string, year: num
   const nc = format.columns.length;
   let r = 3;
   cells.push({ r: 1, c: 3, v: `${format.title} ${year}`, s: "bold" });
+  cells.push({ r: 2, c: 3, v: "Isi nama persis seperti di daftar pilihan (atau nama panggilan). Satu baris berlaku untuk Ibadah Minggu I dan II. Satu kursi satu nama.", s: "note" });
   for (let month = 1; month <= 12; month++) {
     cells.push({ r, c: 3, v: MONTHS_ID[month - 1]!.toUpperCase(), s: "title" });
     for (let c = 4; c < 3 + nc + 1; c++) cells.push({ r, c, v: "", s: "title" });
@@ -428,7 +429,6 @@ export async function templateWorkbook(u: AuthUser, formatKey: string, year: num
     if (list.length && r > first) lists.push({ sqref: `D${first}:${String.fromCharCode(67 + nc)}${r - 1}`, formula: `Daftar!$A$1:$A$${list.length}` });
     r += 2;
   }
-  cells.push({ r, c: 3, v: "Isi nama persis seperti di daftar pilihan (atau nama panggilan). Satu baris berlaku untuk Ibadah Minggu I dan II. Satu kursi satu nama.", s: "note" });
   const main = { name: `Jadwal ${format.key.toUpperCase()} ${year}`, cols: [3, 3, 8, ...format.columns.map((c) => Math.max(14, c.label.length + 3))], cells, merges, lists };
   const sheets = [main];
   if (list.length) sheets.push({ name: "Daftar", cols: [30], cells: list.map((v, i) => ({ r: i + 1, c: 1, v })), merges: [], lists: [] });
