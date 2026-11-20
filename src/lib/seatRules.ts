@@ -2,6 +2,7 @@
  * Aturan merangkap tugas dalam satu acara. Murni (tanpa database) supaya mudah diuji.
  *
  * - PIC boleh merangkap Usher (dan sebaliknya), tetap diberi catatan.
+ * - Sesama posisi EBM boleh dirangkap oleh satu orang di acara yang sama, tetap diberi catatan.
  * - Orang yang bertugas di EBM tidak boleh merangkap Usher atau tim pemusik (dan sebaliknya).
  * - Anggota EBM yang bertugas di luar EBM (pemusik, pimpinan ibadah, usher) sebaiknya hanya satu orang per acara (peringatan).
  *
@@ -34,6 +35,10 @@ export function judgePair(mine: SeatRef, other: SeatRef, who: string): PairVerdi
 
   if ((isPic(mine.ministryName) && ko === "USHER") || (km === "USHER" && isPic(other.ministryName))) {
     return { kind: "ALLOWED", note: `${who} merangkap PIC dan Usher di acara ini.` };
+  }
+  // Tim EBM kecil: anggotanya boleh memegang lebih dari satu posisi EBM di acara yang sama (tetap diberi catatan).
+  if (km === "EBM" && ko === "EBM") {
+    return { kind: "ALLOWED", note: `${who} merangkap ${other.ministryName} dan ${mine.ministryName} di acara ini.` };
   }
   if (ko === "EBM" && (km === "USHER" || km === "PEMUSIK")) {
     return { kind: "BLOCKED", message: `${who} sudah bertugas di EBM (${other.ministryName}) pada acara ini, jadi tidak boleh merangkap ${mine.ministryName}. Orang yang bertugas di EBM tidak boleh merangkap Usher atau tim pemusik.` };

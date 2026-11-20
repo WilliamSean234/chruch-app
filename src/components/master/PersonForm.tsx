@@ -10,7 +10,7 @@ import { ROLE_LABEL } from "@/lib/ui";
 export type Opt = { id: string; name: string };
 export type Team = { id: string; name: string; ministries: Opt[] };
 export type PersonDto = {
-  id: string; name: string; title: string | null; birthDate: string | null; age: number | null; gender: "L" | "P"; origin: "DALAM" | "LUAR"; originChurch: string | null;
+  id: string; name: string; title: string | null; nickname?: string | null; aliases?: string[]; birthDate: string | null; age: number | null; gender: "L" | "P"; origin: "DALAM" | "LUAR"; originChurch: string | null;
   position: Opt; cgGroup: Opt | null; communities: Opt[]; ministries: { id: string; name: string; teamTypeId: string; teamName: string }[];
   account: { email: string; isActive: boolean; mustChangePassword?: boolean; roleCodes?: string[]; teamTypeId?: string | null } | null;
   /** Kelompok rapat + jabatan; hanya dikirim server untuk Superadmin. */
@@ -26,6 +26,8 @@ export default function PersonForm({ person, lookups, scope, canAccount, isSuper
 }) {
   const [name, setName] = useState(person?.name ?? "");
   const [title, setTitle] = useState(person?.title ?? "");
+  const [nickname, setNickname] = useState(person?.nickname ?? "");
+  const [aliasText, setAliasText] = useState((person?.aliases ?? []).join(", "));
   const [gender, setGender] = useState<"L" | "P" | "">(person?.gender ?? "");
   const [birth, setBirth] = useState(person?.birthDate ?? "");
   const [positionId, setPositionId] = useState(person?.position.id ?? lookups.positions.find((p) => p.name === "Jemaat")?.id ?? lookups.positions[0]?.id ?? "");
@@ -48,7 +50,7 @@ export default function PersonForm({ person, lookups, scope, canAccount, isSuper
     if (origin === "LUAR" && !church.trim()) return setError("Isi gereja asal untuk orang dari luar.");
     setBusy(true); setError(""); setDups([]);
     const body = {
-      name: name.trim(), title: title.trim() || null, gender, birthDate: birth || null, positionId, cgGroupId: cgId || null,
+      name: name.trim(), title: title.trim() || null, nickname: nickname.trim() || null, aliases: person ? aliasText.split(",").map((x) => x.trim()).filter(Boolean) : undefined, gender, birthDate: birth || null, positionId, cgGroupId: cgId || null,
       origin, originChurch: origin === "LUAR" ? church.trim() : null, communityIds: [...comm], ministryIds: [...mins],
       confirmDuplicate: confirmDuplicate || undefined,
     };
@@ -79,6 +81,10 @@ export default function PersonForm({ person, lookups, scope, canAccount, isSuper
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_120px]">
           <Field label="Nama"><input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} autoFocus={!person} maxLength={120} /></Field>
           <Field label="Gelar" hint="mis. Pdt., Ps."><input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={20} /></Field>
+        </div>
+        <div className={`grid grid-cols-1 gap-4 ${person ? "sm:grid-cols-2" : ""}`}>
+          <Field label="Nama panggilan" hint="Tampil di jadwal yang dibagikan, mis. Ko Yosi"><input className={inputCls} value={nickname} onChange={(e) => setNickname(e.target.value)} maxLength={40} /></Field>
+          {person && <Field label="Ejaan lain di file jadwal" hint="Pisahkan dengan koma. Terisi otomatis saat Anda mencocokkan nama di upload jadwal."><input className={inputCls} value={aliasText} onChange={(e) => setAliasText(e.target.value)} /></Field>}
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Field label="Jenis kelamin">

@@ -143,12 +143,12 @@ const longDate = (iso: string) => new Intl.DateTimeFormat("id-ID", { timeZone: "
  * Buat acara DRAFT dari template untuk setiap tanggal yang cocok pola. Kursi dibuat kosong.
  * Tanggal yang sudah punya acara dari template ini dilewati; tanggal yang ruangannya bentrok dilewati dan dilaporkan.
  */
-type TplWithSlots = Prisma.EventTemplateGetPayload<{ include: { slots: { include: { ministry: true } } } }>;
-type Created = { id: string; number: string; date: string };
+export type TplWithSlots = Prisma.EventTemplateGetPayload<{ include: { slots: { include: { ministry: true } } } }>;
+export type Created = { id: string; number: string; date: string };
 type Skipped = { date: string; reason: string };
 
 /** Buat satu acara DRAFT dari template pada satu tanggal. Mengembalikan acara yang dibuat, atau alasan dilewati. */
-async function createOnDate(u: AuthUser, t: TplWithSlots, iso: string): Promise<{ created?: Created; skipped?: Skipped }> {
+export async function createOnDate(u: AuthUser, t: TplWithSlots, iso: string): Promise<{ created?: Created; skipped?: Skipped }> {
   const teamIds = [...new Set(t.slots.map((s) => s.ministry.teamTypeId))];
   const startsAt = zonedToUtc(iso, t.startTime);
   const endsAt = addMinutes(startsAt, t.durationMin);

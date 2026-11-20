@@ -48,6 +48,12 @@ npm run db:fix-roles
 
 Hak disimpan di token login, jadi setiap pengguna perlu **keluar lalu masuk lagi** setelah perintah ini agar hak barunya berlaku (misalnya tombol Isi kehadiran).
 
+Orang yang sudah melayani di bidang EBM otomatis masuk kelompok rapat **EBM** (dibuat bila belum ada) setiap kali posisinya diisi lewat form Orang atau impor Excel. Untuk data yang sudah ada sebelumnya, jalankan sekali (aman diulang, hanya menambah anggota):
+
+```
+npm run db:sync-ebm
+```
+
 Data awal bisa juga diisi lewat **Pengaturan → Impor Excel**: unduh template, isi sheet Orang, Akun, Acara, serta KelompokRapat, JabatanKelompok, AnggotaKelompok, dan Rapat. Unggahan boleh diulang karena data yang sudah ada dilewati.
 
 Jangan jalankan `db:seed:dummy`, `db:seed:groups`, atau `db:seed:meetings` di produksi. Setelah selesai, kembalikan `.env` ke database percobaan agar tidak salah sasaran.
@@ -59,6 +65,7 @@ Jangan jalankan `db:seed:dummy`, `db:seed:groups`, atau `db:seed:meetings` di pr
 - [ ] Tambah ruangan, orang, dan satu template; buat satu jadwal lalu terbitkan.
 - [ ] Setelah `db:fix-roles`, masuk ulang sebagai Penjadwal: tombol **Isi kehadiran** muncul di detail acara pada Kalender.
 - [ ] Coba impor `contoh-data-gereja.xlsx` di database percobaan (bukan produksi): semua sheet harus lolos tanpa baris bermasalah.
+- [ ] Buat Ibadah Minggu I dengan tickbox pasangan: Ibadah Minggu II ikut terbuat di hari yang sama. Isi kursi di salah satunya, lalu di yang lain tekan **Isi dari ...**. Coba PIC yang sama sebagai Usher (boleh, ada catatan) dan orang EBM sebagai Usher (ditolak).
 - [ ] Buka `/daftar` dari HP: isi form (email salah harus ditolak, syarat kata sandi berubah hijau), lalu di **Pengaturan → Permintaan daftar** setujui dengan menautkan ke orang yang sudah ada, dan masuk dengan akun itu.
 - [ ] Coba bentrok: dua acara di ruangan dan jam yang sama harus ditolak.
 - [ ] Buat satu akun Pelayan biasa: pastikan ia **tidak** melihat rapat dan hanya melihat jadwalnya di **Jadwal saya**.
@@ -90,3 +97,11 @@ Tersimpan di tabel `LoginThrottle` (migrasi `login_throttle`), jadi tetap berlak
 - Pembatasan login sudah ada di aplikasi (lihat bagian bawah). Untuk perlindungan lapis kedua, aktifkan juga Vercel Firewall (rate limit di `/api/auth/*` dan `/api/v1/auth/token`).
 - Content-Security-Policy baru bagian aman (anti-bingkai, `<base>`, `<object>`, tujuan form). Pembatasan skrip/gaya (`script-src`) belum dipasang karena perlu nonce per permintaan dan diuji di browser.
 - Tes yang ada baru tes unit logika murni. Skrip `scripts/test-konflik.ps1` dan `scripts/test-latihan.ps1` menguji alur API terhadap server yang berjalan.
+
+## Jadwal tim EBM (unggah dan bagikan)
+
+- Halaman: **Jadwal acara → Jadwal tim** (`/jadwal/tim`). Untuk pemegang `assignment.write` (Superadmin dan Admin Tim; Admin Tim dibatasi ke timnya).
+- Migrasi `20261120170000_person_nickname` menambah kolom **nama panggilan** dan **ejaan lain** pada Person. Vercel menjalankannya otomatis saat build. Lokal: `npx prisma migrate deploy` lalu `npx prisma generate`.
+- Unggahan pertama membuat/menyamakan 7 posisi tim EBM (PIC EBM, Cameramen, Soundman, Lighting+LED, Easy Worship LED, PPT Prompter, BM+VMOX) dan menyesuaikan template Ibadah Minggu I dan II. Posisi lama tidak dihapus.
+- Satu baris tanggal berlaku untuk dua ibadah. Acara yang belum ada dibuat sebagai DRAFT; yang sudah ada hanya diganti petugas tim EBM-nya. Tanggal yang sudah lewat dan acara batal dilewati.
+- Format file diatur di `src/lib/teamFormats.ts`. Tim lain (pemusik, usher) cukup menambah format baru di sana setelah template-nya ada.

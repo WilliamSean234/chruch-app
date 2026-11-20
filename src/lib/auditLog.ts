@@ -24,7 +24,7 @@ export const CATEGORIES: { key: string; label: string; prefixes: string[] }[] = 
 ];
 
 const LABELS: Record<string, string> = {
-  "assignment.set": "Mengatur petugas", "assignment.copy": "Menyalin personel antar acara", "attendance.guest": "Mencatat tamu ibadah", "attendance.batch": "Mencatat kehadiran ibadah per nama", "attendance.summary": "Mencatat jumlah kehadiran", "booking.override": "Menimpa bentrok jadwal",
+  "assignment.set": "Mengatur petugas", "assignment.copy": "Menyalin personel antar acara", "assignment.upload": "Mengunggah jadwal tim", "person.alias": "Menyimpan ejaan nama jadwal", "attendance.guest": "Mencatat tamu ibadah", "attendance.batch": "Mencatat kehadiran ibadah per nama", "attendance.summary": "Mencatat jumlah kehadiran", "booking.override": "Menimpa bentrok jadwal",
   "cg.leaders": "Mengatur pemimpin CG",
   "event.cancel": "Membatalkan acara", "event.create": "Membuat acara", "event.publish": "Menerbitkan acara", "event.unpublish": "Menarik acara dari terbit", "event.update": "Mengubah acara",
   "event.seat.add": "Menambah posisi acara", "event.seat.remove": "Menghapus posisi acara", "event.team.add": "Menambah tim ke acara", "event.team.remove": "Menghapus tim dari acara",

@@ -154,6 +154,8 @@ model Person {
   name         String
   nameKey      String // huruf kecil tanpa gelar; cegah nama dobel
   title        String? // Pdt., Ps., dst.
+  nickname     String? // nama panggilan, dipakai di jadwal yang dibagikan (mis. "Ko Yosi")
+  aliases      String[] @default([]) // ejaan lain di file jadwal yang pernah dicocokkan ke orang ini (huruf kecil)
   birthDate    DateTime?         @db.Date // usia dihitung dari sini
   gender       String // L | P
   positionId   String

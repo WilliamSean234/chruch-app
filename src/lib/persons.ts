@@ -14,6 +14,8 @@ export const personBody = z
   .object({
     name: z.string().trim().min(1, "Nama wajib diisi").max(120),
     title: z.string().trim().max(20).nullish(),
+    nickname: z.string().trim().max(40).nullish(), // nama panggilan; undefined = tidak diubah
+    aliases: z.array(z.string().trim().min(1).max(40)).max(12).optional(), // ejaan lain untuk pencocokan upload; undefined = tidak diubah
     birthDate: dateOnly.nullish(),
     gender: z.enum(["L", "P"]),
     positionId: z.string().uuid(),
@@ -31,6 +33,9 @@ export const personBody = z
   });
 export type PersonInput = z.infer<typeof personBody>;
 
+/** Ejaan lain disimpan huruf kecil, tanpa duplikat. */
+const cleanAliases = (a: string[] | undefined) => [...new Set((a ?? []).map((x) => x.trim().toLowerCase().replace(/\s+/g, " ")).filter(Boolean))];
+
 const include = {
   position: true,
   cgGroup: true,
@@ -45,6 +50,8 @@ export const toDto = (p: PersonFull) => ({
   id: p.id,
   name: p.name,
   title: p.title,
+  nickname: p.nickname,
+  aliases: p.aliases,
   birthDate: p.birthDate ? p.birthDate.toISOString().slice(0, 10) : null,
   age: ageFrom(p.birthDate),
   gender: p.gender,
@@ -165,6 +172,8 @@ export async function createPerson(u: AuthUser, b: PersonInput) {
       name: b.name,
       nameKey: key,
       title: b.title ?? null,
+      nickname: b.nickname || null,
+      aliases: cleanAliases(b.aliases),
       birthDate: b.birthDate ? new Date(`${b.birthDate}T00:00:00.000Z`) : null,
       gender: b.gender,
       positionId: b.positionId,
@@ -204,6 +213,8 @@ export async function updatePerson(u: AuthUser, id: string, b: PersonInput) {
         name: b.name,
         nameKey: key,
         title: b.title ?? null,
+        ...(b.nickname !== undefined ? { nickname: b.nickname || null } : {}),
+        ...(b.aliases !== undefined ? { aliases: cleanAliases(b.aliases) } : {}),
         birthDate: b.birthDate ? new Date(`${b.birthDate}T00:00:00.000Z`) : null,
         gender: b.gender,
         positionId: b.positionId,

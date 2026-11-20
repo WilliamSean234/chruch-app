@@ -81,6 +81,12 @@ const withoutAllowed = (found: PersonConflict[], allowed: Set<string>) => found.
  * Bentrok = diblokir (409 PERSON_CONFLICT). Hanya Superadmin yang boleh menembus dengan alasan, dan itu dicatat di audit log.
  */
 export async function assignPerson(u: AuthUser, eventId: string, assignmentId: string, body: z.infer<typeof assignBody>, opts: { mirror?: boolean } = {}) {
+  const { warnings } = await assignCore(u, eventId, assignmentId, body, opts);
+  return { event: await getEvent(u.tenantId, eventId), warnings };
+}
+
+/** Isi inti tanpa memuat ulang seluruh acara (untuk pekerjaan massal seperti upload jadwal). Mengembalikan catatan untuk pengguna. */
+export async function assignCore(u: AuthUser, eventId: string, assignmentId: string, body: z.infer<typeof assignBody>, opts: { mirror?: boolean } = {}): Promise<{ warnings: string[] }> {
   const seat = await loadSeat(u, eventId, assignmentId);
   if (!isEditable(seat.event.status)) throw conflict("Acara yang sudah dibatalkan tidak bisa diubah.");
 
@@ -90,8 +96,7 @@ export async function assignPerson(u: AuthUser, eventId: string, assignmentId: s
       await tx.eventAssignment.update({ where: { id: assignmentId }, data: { personId: null } });
       if (seat.personId) await promoteOrphanOverrides(tx, u.tenantId, seat.personId, eventId);
     });
-    const mirrored = opts.mirror === false ? [] : await mirrorToPair(u, seat, null);
-    return { event: await getEvent(u.tenantId, eventId), warnings: mirrored };
+    return { warnings: opts.mirror === false ? [] : await mirrorToPair(u, seat, null) };
   }
 
   const [person, ranges, capable] = await Promise.all([
@@ -100,7 +105,7 @@ export async function assignPerson(u: AuthUser, eventId: string, assignmentId: s
     prisma.personMinistry.count({ where: { personId: body.personId, ministryId: seat.ministryId } }),
   ]);
   if (!person) throw notFound("Orang");
-  if (seat.personId === person.id) return { event: await getEvent(u.tenantId, eventId), warnings: [] as string[] };
+  if (seat.personId === person.id) return { warnings: [] };
 
   const others = await eventSeats(eventId, assignmentId);
   const ebm = await ebmPeople(u.tenantId, [person.id, ...others.map((o) => o.personId!)]);
@@ -151,7 +156,7 @@ export async function assignPerson(u: AuthUser, eventId: string, assignmentId: s
   if (!capable) warnings.push(`${person.name} belum tercatat bisa ${seat.ministry.name}.`);
   if (verdict.ebmWarning) warnings.push(verdict.ebmWarning);
   if (opts.mirror !== false) warnings.push(...(await mirrorToPair(u, seat, person)));
-  return { event: await getEvent(u.tenantId, eventId), warnings };
+  return { warnings };
 }
 
 /**
@@ -168,7 +173,7 @@ async function mirrorToPair(u: AuthUser, seat: Awaited<ReturnType<typeof loadSea
   const twin = pair.assignments.find((a) => a.ministryId === seat.ministryId && a.slotNo === seat.slotNo);
   if (!twin || twin.personId !== before) return []; // tidak ada kursi kembar, atau sudah dibedakan
   try {
-    await assignPerson(u, pair.id, twin.id, { personId: person?.id ?? null }, { mirror: false });
+    await assignCore(u, pair.id, twin.id, { personId: person?.id ?? null }, { mirror: false });
   } catch (err) {
     if (err instanceof ApiError) return [`Tidak ikut diubah di ${pair.title} (${seat.ministry.name}): ${err.message}`];
     throw err;
@@ -271,7 +276,7 @@ export async function copyPersonnel(u: AuthUser, targetEventId: string, sourceEv
     if (!src) continue;
     const label = target.assignments.filter((x) => x.ministryId === seat.ministryId).length > 1 ? `${seat.ministry.name} ${seat.slotNo}` : seat.ministry.name;
     try {
-      const r = await assignPerson(u, targetEventId, seat.id, { personId: src.personId }, { mirror: false });
+      const r = await assignCore(u, targetEventId, seat.id, { personId: src.personId }, { mirror: false });
       filled++;
       for (const w of r.warnings) if (!w.includes("belum tercatat bisa")) notes.add(w);
     } catch (e) {

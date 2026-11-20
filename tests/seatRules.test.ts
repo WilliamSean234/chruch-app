@@ -41,8 +41,14 @@ test("orang EBM tidak boleh merangkap Usher atau pemusik, dari dua arah", () => 
   assert.match((c as { message: string }).message, /sudah bertugas sebagai Usher/);
 });
 
-test("pasangan lain tetap bentrok biasa (bisa ditembus Superadmin), termasuk dua posisi EBM", () => {
-  assert.equal(judgePair(LCD, SOUND, "Sari").kind, "CONFLICT");
+test("sesama posisi EBM boleh dirangkap satu orang, dengan catatan", () => {
+  const v = judgePair(LCD, SOUND, "Sari");
+  assert.equal(v.kind, "ALLOWED");
+  assert.match((v as { note: string }).note, /Sari merangkap Sound dan LCD/);
+  assert.equal(judgePair(seat("Tim EBM", "PIC EBM"), LCD, "Sari").kind, "ALLOWED");
+});
+
+test("pasangan lain tetap bentrok biasa (bisa ditembus Superadmin)", () => {
   assert.equal(judgePair(LCD, PIC, "Sari").kind, "CONFLICT");
 });
 
