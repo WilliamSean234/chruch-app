@@ -21,7 +21,12 @@ type Detail = {
   /** Ibadah pasangan di hari yang sama (Minggu 1 dan 2): personelnya biasanya sama. */
   pair: { id: string; number: string; title: string; startsAt: string; filled: number } | null;
 };
-type Reh = { sessions: { id: string; seq: number; startsAt: string; endsAt: string; room: { id: string; name: string }; note: string | null }[]; participants: { assignmentId: string; rehearsalRequired: boolean }[] };
+/** "2026-12-20", 3 → "2026-12-17" */
+const daysBefore = (ymdText: string, n: number) => {
+  const [y, m, dd] = ymdText.split("-").map(Number);
+  return new Date(Date.UTC(y!, m! - 1, dd! - n)).toISOString().slice(0, 10);
+};
+type Reh = { sessions: { id: string; seq: number; startsAt: string; endsAt: string; room: { id: string; name: string }; note: string | null; shared?: boolean }[]; participants: { assignmentId: string; rehearsalRequired: boolean }[] };
 type TeamFull = { id: string; name: string; ministries: { id: string; name: string }[] };
 type Room = { id: string; name: string; floor?: number | null; isActive: boolean };
 type Banner = { kind: "error" | "info"; title: string; message: string; override?: (reason: string) => Promise<void> };
@@ -174,7 +179,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
   // ───────── latihan
   const openRehearsal = (s?: Reh["sessions"][number]) =>
     setRf(s ? { open: true, editId: s.id, date: ymd(s.startsAt), start: hmInput(s.startsAt), dur: Math.round((new Date(s.endsAt).getTime() - new Date(s.startsAt).getTime()) / 60000), roomId: s.room.id, note: s.note ?? "" }
-      : { open: true, editId: null, date: d ? ymd(d.startsAt) : "", start: "19:00", dur: 120, roomId: d?.room.id ?? rooms[0]?.id ?? "", note: "" });
+      : { open: true, editId: null, date: d ? daysBefore(ymd(d.startsAt), 3) : "", start: "19:00", dur: 120, roomId: d?.room.id ?? rooms[0]?.id ?? "", note: "" }); // bawaan: 3 hari sebelum ibadah (Kamis); latihan tidak boleh sesudah ibadah
   const saveRehearsal = (ov?: { reason: string }): Promise<boolean> => {
     const body = { date: rf.date, startTime: rf.start, durationMin: rf.dur, roomId: rf.roomId, note: rf.note || null, override: ov };
     return run(
@@ -472,8 +477,9 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
                     <span>{WEEKDAYS[new Date(`${ymd(s.startsAt)}T00:00:00Z`).getUTCDay()]}<br /><span className="text-[17px] font-extrabold text-[var(--ink)]">{ymd(s.startsAt).slice(8)}</span></span>
                   </div>
                   <div className="flex min-w-0 flex-1 flex-col leading-tight">
-                    <span className="text-sm font-bold">Latihan ke-{s.seq}</span>
+                    <span className="text-sm font-bold">Latihan ke-{s.seq}{d && new Date(s.startsAt).getTime() >= new Date(d.startsAt).getTime() && <span className="ml-2 rounded-md bg-[#FDECEC] px-1.5 py-0.5 text-[11px] font-extrabold text-[#A12B2B]">Sesudah ibadah, ubah</span>}</span>
                     <span className="text-xs font-semibold text-[var(--ink-2)]">{dayShort(s.startsAt)} · {hm(s.startsAt)}–{hm(s.endsAt)} · {s.room.name}</span>
+                    {s.shared && d?.pair && <span className="text-xs font-semibold text-[#1B6B34]">Juga berlaku untuk {d.pair.title}</span>}
                     {s.note && <span className="truncate text-xs text-[var(--ink-2)]">{s.note}</span>}
                   </div>
                   {perms.rehearsal && editable && (
@@ -490,7 +496,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
               <div className="mt-3 flex flex-col gap-3 rounded-2xl border border-[#D0D3E8] bg-[#FAFAFF] p-4">
                 <span className="text-sm font-extrabold">{rf.editId ? "Ubah sesi latihan" : "Tambah sesi latihan"}</span>
                 <div className="grid grid-cols-2 gap-3">
-                  <label className="col-span-2 flex flex-col gap-1.5 text-[13px] font-bold">Tanggal<input type="date" className={inputCls} value={rf.date} onChange={(e) => setRf({ ...rf, date: e.target.value })} /></label>
+                  <label className="col-span-2 flex flex-col gap-1.5 text-[13px] font-bold">Tanggal<input type="date" className={inputCls} value={rf.date} max={d ? ymd(d.startsAt) : undefined} onChange={(e) => setRf({ ...rf, date: e.target.value })} /></label>
                   <label className="flex flex-col gap-1.5 text-[13px] font-bold">Mulai<input type="time" className={inputCls} value={rf.start} onChange={(e) => setRf({ ...rf, start: e.target.value })} /></label>
                   <label className="flex flex-col gap-1.5 text-[13px] font-bold">Durasi (menit)<input type="number" min={15} max={480} step={15} className={inputCls} value={rf.dur} onChange={(e) => setRf({ ...rf, dur: Number(e.target.value) })} /></label>
                   <label className="col-span-2 flex flex-col gap-1.5 text-[13px] font-bold">Ruangan
@@ -498,6 +504,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
                   </label>
                   <label className="col-span-2 flex flex-col gap-1.5 text-[13px] font-bold">Catatan<input className={inputCls} value={rf.note} onChange={(e) => setRf({ ...rf, note: e.target.value })} placeholder="opsional" /></label>
                 </div>
+                <p className="text-xs font-medium text-[var(--ink-2)]">Latihan harus sebelum ibadah dimulai.{d?.pair && !rf.editId ? ` Cukup dibuat sekali: otomatis berlaku juga untuk ${d.pair.title}.` : ""}{d?.pair && rf.editId ? ` Perubahan ikut ke ${d.pair.title} bila latihannya sama.` : ""}</p>
                 <div className="flex gap-2.5">
                   <button className={btnPrimary} disabled={busy || !rf.date || !rf.roomId} onClick={() => saveRehearsal()}>Simpan sesi</button>
                   <button className={btnGhost} onClick={() => setRf({ ...rf, open: false })}>Batal</button>

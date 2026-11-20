@@ -4,6 +4,7 @@ import { conflict, notFound } from "./errors";
 import { assertNotLocked, assertTransition } from "./eventStatusFlow";
 import { assertRoomFree, assertRoomUsable, bookRoom, personConflicts, releaseBookings, translateOverlap } from "./booking";
 import { getEvent } from "./events";
+import { twinInfo } from "./rehearsals";
 import { localParts } from "./time";
 import type { AuthUser } from "./rbac";
 
@@ -39,11 +40,18 @@ export async function unpublishEvent(u: AuthUser, id: string) {
 export async function cancelEvent(u: AuthUser, id: string, reason: string) {
   const e = await load(u.tenantId, id);
   assertTransition(e.status, "CANCELLED");
-  const rehearsals = await prisma.rehearsalSession.findMany({ where: { eventId: id, deletedAt: null }, select: { id: true } });
+  const rehearsals = await prisma.rehearsalSession.findMany({ where: { eventId: id, deletedAt: null } });
+  // latihan yang sama di acara pasangan (Ibadah Minggu 1/2) tetap jalan; ruangannya hanya dipesan oleh satu sesi, jadi pesanan itu dipindah ke kembarannya
+  const tw = rehearsals.length ? await twinInfo(u.tenantId, e) : { pairId: null, twins: new Map<string, string>() };
+  const handOver = rehearsals.filter((r) => tw.twins.has(r.id));
   await prisma.$transaction(async (tx) => {
     await releaseBookings(tx, { sourceType: "EVENT", sourceId: id });
     if (rehearsals.length) {
       await releaseBookings(tx, { sourceType: "REHEARSAL", sourceId: { in: rehearsals.map((r) => r.id) } });
+      for (const r of handOver) {
+        await releaseBookings(tx, { sourceType: "REHEARSAL", sourceId: tw.twins.get(r.id)!, resourceType: "ROOM" });
+        await bookRoom(tx, { tenantId: u.tenantId, roomId: r.roomId, startsAt: r.startsAt, endsAt: r.endsAt, sourceType: "REHEARSAL", sourceId: tw.twins.get(r.id)! });
+      }
       await tx.rehearsalSession.updateMany({ where: { eventId: id, deletedAt: null }, data: { deletedAt: new Date() } });
     }
     await tx.event.update({ where: { id }, data: { status: "CANCELLED", cancelReason: reason } });

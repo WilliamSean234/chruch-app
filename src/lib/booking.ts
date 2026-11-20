@@ -15,7 +15,7 @@ const fmt = (d: Date) =>
   new Intl.DateTimeFormat("id-ID", { timeZone: process.env.APP_TIMEZONE ?? "Asia/Jakarta", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
 
 /** Cek cepat: siapa yang sedang memakai ruangan ini pada rentang itu. Null bila kosong. */
-export type ExcludeSource = string | { sourceType: string; sourceId: string };
+export type ExcludeSource = string | { sourceType: string; sourceId: string } | { sourceType: string; sourceId: string }[];
 const asExclude = (x?: ExcludeSource) => (typeof x === "string" ? { sourceType: "EVENT", sourceId: x } : x);
 
 export async function roomConflict(tenantId: string, roomId: string, startsAt: Date, endsAt: Date, exclude?: ExcludeSource): Promise<string[] | null> {
@@ -86,7 +86,7 @@ export async function personConflicts(
   tenantId: string,
   personIds: string[],
   ranges: Range[],
-  opts: { excludeAssignmentId?: string; currentEventId?: string; excludeSource?: { sourceType: string; sourceId: string } } = {},
+  opts: { excludeAssignmentId?: string; currentEventId?: string; excludeSource?: { sourceType: string; sourceId: string } | { sourceType: string; sourceId: string }[] } = {},
 ): Promise<Map<string, PersonConflict[]>> {
   const out = new Map<string, PersonConflict[]>();
   if (!personIds.length || !ranges.length) return out;
@@ -137,8 +137,8 @@ export async function personConflicts(
  * yang tersisa harus kembali menjadi baris biasa, kalau tidak orang itu tidak akan terdeteksi bentrok di tempat lain.
  * Baris yang memang override karena bentrok dengan acara lain dibiarkan.
  */
-export async function promoteOrphanOverrides(tx: Tx, tenantId: string, personId: string, eventId: string) {
-  const seats = await tx.eventAssignment.findMany({ where: { eventId, personId }, select: { id: true } });
+export async function promoteOrphanOverrides(tx: Tx, tenantId: string, personId: string, eventId: string | string[]) {
+  const seats = await tx.eventAssignment.findMany({ where: { eventId: Array.isArray(eventId) ? { in: eventId } : eventId, personId }, select: { id: true } });
   if (!seats.length) return;
   const rows = await tx.booking.findMany({
     where: { tenantId, resourceType: "PERSON", resourceId: personId, deletedAt: null, assignmentId: { in: seats.map((s) => s.id) } },

@@ -6,6 +6,7 @@ import { can, type AuthUser } from "./rbac";
 import { listMeetings } from "./meetings";
 import { attendanceWriteBlock } from "./eventStatusFlow";
 import { canSeeMeetingSchedule } from "./groups";
+import { dedupeTwinRehearsals } from "./rehearsalRules";
 
 /** Hanya penjadwal yang boleh melihat acara DRAFT; semua orang lain hanya melihat yang sudah diterbitkan. */
 export const canSeeDrafts = (u: AuthUser) => can(u, "event.write");
@@ -75,11 +76,12 @@ export async function listCalendar(u: AuthUser, q: CalendarQuery) {
   return {
     meetings,
     meetingGroups,
-    rehearsals: rehearsalRows.map((r) => ({
+    // latihan Ibadah Minggu 1 dan 2 yang kembar (jam dan ruangan sama) tampil sekali
+    rehearsals: dedupeTwinRehearsals(rehearsalRows.map((r) => ({
       id: r.id, eventId: r.eventId, eventTitle: r.event.title, seq: r.seq, startsAt: r.startsAt.toISOString(), endsAt: r.endsAt.toISOString(),
       room: { id: r.room.id, name: r.room.name },
       mine: !!u.personId && r.event.assignments.some((a) => a.personId === u.personId && a.rehearsalRequired),
-    })),
+    }))),
     items: rows.map((e) => {
       const myOwn = u.personId ? e.assignments.find((a) => a.personId === u.personId) : undefined;
       return {

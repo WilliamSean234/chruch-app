@@ -6,6 +6,7 @@ import { ebmOutsideWarning, judgePair, teamKind, type OutsideSeat } from "./seat
 import { assertNotLocked, isEditable, isLockedByAge } from "./eventStatusFlow";
 import { audit } from "./audit";
 import { findPairEvent, getEvent } from "./events";
+import { twinInfo } from "./rehearsals";
 import { can, requirePermission, requireTeamAccess, type AuthUser } from "./rbac";
 import { nameKey } from "./names";
 
@@ -92,11 +93,15 @@ export async function assignCore(u: AuthUser, eventId: string, assignmentId: str
   assertNotLocked(seat.event.startsAt);
   if (body.personId !== null && seat.event.bandMode === "NO_BAND" && seat.ministry.bandOnly) throw conflict(`Ibadah ini No Band, jadi posisi ${seat.ministry.name} tidak dipakai. Ubah ke Band dulu bila perlu.`);
 
+  // latihan Ibadah Minggu 1 dan 2 di hari yang sama adalah satu latihan ("kembar"): bukan bentrok satu sama lain
+  const tw = seat.rehearsalRequired ? await twinInfo(u.tenantId, seat.event) : { pairId: null, twins: new Map<string, string>() };
+  const promoteIn = tw.pairId ? [eventId, tw.pairId] : eventId;
+
   if (body.personId === null) {
     await prisma.$transaction(async (tx) => {
       await releaseBookings(tx, { assignmentId });
       await tx.eventAssignment.update({ where: { id: assignmentId }, data: { personId: null } });
-      if (seat.personId) await promoteOrphanOverrides(tx, u.tenantId, seat.personId, eventId);
+      if (seat.personId) await promoteOrphanOverrides(tx, u.tenantId, seat.personId, promoteIn);
     });
     return { warnings: opts.mirror === false ? [] : await mirrorToPair(u, seat, null) };
   }
@@ -116,7 +121,15 @@ export async function assignCore(u: AuthUser, eventId: string, assignmentId: str
     throw new ApiError(409, "SEAT_RULE", verdict.blocked, { canOverride: false }); // aturan merangkap: tidak bisa ditembus override
   }
 
-  const foundAll = (await personConflicts(u.tenantId, [person.id], ranges, { excludeAssignmentId: assignmentId, currentEventId: eventId })).get(person.id) ?? [];
+  const twinIds = [...tw.twins.values()];
+  const foundAll = (await personConflicts(u.tenantId, [person.id], ranges, { excludeAssignmentId: assignmentId, currentEventId: eventId, ...(twinIds.length ? { excludeSource: twinIds.map((id) => ({ sourceType: "REHEARSAL", sourceId: id })) } : {}) })).get(person.id) ?? [];
+  // jam latihan yang sudah dikunci untuk orang ini lewat kursi di acara pasangan: baris barunya ditandai override supaya tidak bentrok dengan dirinya
+  const shadowed = new Set<string>();
+  if (twinIds.length) {
+    const rows = await prisma.booking.findMany({ where: { tenantId: u.tenantId, resourceType: "PERSON", resourceId: person.id, sourceType: "REHEARSAL", sourceId: { in: twinIds }, deletedAt: null }, select: { sourceId: true } });
+    const have = new Set(rows.map((r) => r.sourceId));
+    for (const [mine, twin] of tw.twins) if (have.has(twin)) shadowed.add(mine);
+  }
   const found = withoutAllowed(foundAll, verdict.allowedSeatIds); // merangkap yang dibolehkan bukan bentrok
 
   if (found.length) {
@@ -139,10 +152,10 @@ export async function assignCore(u: AuthUser, eventId: string, assignmentId: str
             tenantId: u.tenantId, resourceType: "PERSON", resourceId: person.id, startsAt: r.startsAt, endsAt: r.endsAt,
             sourceType: r.sourceType, sourceId: r.sourceId, assignmentId,
             // jam yang bentrok (termasuk dengan kursi lain miliknya yang dibolehkan, mis. PIC dan Usher) ditandai override
-            isOverride: foundAll.some((c) => rangesOverlap(c, r)),
+            isOverride: (r.sourceType === "REHEARSAL" && shadowed.has(r.sourceId)) || foundAll.some((c) => rangesOverlap(c, r)),
           })),
         });
-        if (seat.personId && seat.personId !== person.id) await promoteOrphanOverrides(tx, u.tenantId, seat.personId, eventId); // orang yang digantikan
+        if (seat.personId && seat.personId !== person.id) await promoteOrphanOverrides(tx, u.tenantId, seat.personId, promoteIn); // orang yang digantikan
       }),
     `${person.name} baru saja dijadwalkan di tempat lain pada jam itu. Muat ulang lalu coba lagi.`,
   );

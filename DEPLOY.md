@@ -114,3 +114,12 @@ Tersimpan di tabel `LoginThrottle` (migrasi `login_throttle`), jadi tetap berlak
 - **Band / No Band**: ibadah baru otomatis Band. "Jadikan No Band" menghapus posisi bertanda *Posisi band* (bass, gitar, drum, kajon) dari acara itu dan melepas orangnya; "Kembalikan ke Band" memulihkan dari template. Tanda *Posisi band* diatur di Orang › Pelayanan.
 - **Tema ibadah** (maks 600 huruf) dan **Padus** (catatan teks, maks 200 huruf) bersifat opsional; diisi di form acara, tampil di detail acara kalender.
 - Admin Tim lama untuk Tim pemusik otomatis dipindah ke Penatalayan ibadah.
+
+### Jadwal tim Penatalayan (unggah dan bagikan)
+
+- Pilih tim **Penatalayan** di **Jadwal acara → Jadwal tim**. Satu baris tanggal berlaku untuk Ibadah Minggu I dan II. Tata letak file (sama untuk template, export, dan unggahan): TGL | Liturgos | **Pemusik** (Band/No Band, Keyboard, Piano, Bass, Gitar, Drum, …) | **Backing Vocal** (Singer 1, 2, …) | PIC | Padus | Tema. Header dua baris dengan sel gabungan, warna sama seperti EBM dan Usher.
+- Kolom dinamis: tambah kolom di bawah judul **Pemusik** dan beri nama (mis. "Gitar 2", atau alat baru seperti "Kajon"); jumlah kursi Backing Vocal mengikuti sel gabungan di file. Kolom tanpa nama di bawah Pemusik ditolak dengan petunjuk, jadi pakai template dari halaman ini.
+- **Band / No Band** per baris. No Band mengosongkan Bass, Gitar, Drum (dan posisi bertanda *Posisi band*), isian di kolom itu diabaikan dengan catatan. **Padus** dan **Tema** teks bebas (maks 200 dan 600 huruf); kolom yang ada di file menimpa acara (sel kosong = dikosongkan), kolom yang tidak ada di file tidak mengubah apa pun.
+- Isi sel dibersihkan otomatis: catatan dalam kurung (mis. "(B)", "(KKR)") dibuang, "A ganti B" dipakai A, banyak nama dalam satu sel hanya nama pertama yang dipakai (peringatan muncul; tambah kolom "Gitar 2" dst. untuk nama berikutnya), TBC/-/? dianggap kosong. Tahun tanggal 2 angka ("4-Oct-26") terbaca.
+- File adalah acuan untuk tim ini: posisi yang tidak ada kolomnya di file dilepas dari template dan acara yang disentuh, kecuali **Pembicara** yang selalu dipertahankan.
+- Tema/Padus/Band diterapkan ke Ibadah Minggu I dan II sekaligus. Acara yang sudah lewat 2 bulan tetap terkunci dan dilewati.
