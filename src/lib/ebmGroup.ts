@@ -5,7 +5,7 @@ import { teamKind } from "./seatRules";
 type Db = Prisma.TransactionClient;
 
 /** Nama kelompok rapat yang dianggap kelompok EBM: "EBM" atau "Tim EBM". */
-const EBM_GROUP = /^(tim\s+)?ebm$/i;
+export const EBM_GROUP = /^(tim\s+)?ebm$/i;
 
 /**
  * Setiap orang yang melayani di bidang EBM (punya posisi di tim EBM) otomatis menjadi anggota kelompok "EBM".

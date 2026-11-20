@@ -11,7 +11,7 @@ import { addMinutes, localParts, zonedToUtc } from "./time";
 import { promoteOrphanOverrides, releaseBookings } from "./booking";
 import { createOnDate, type TplWithSlots } from "./templates";
 import { assignCore } from "./assignments";
-import { syncEbmGroup } from "./ebmGroup";
+import { EBM_GROUP, syncEbmGroup } from "./ebmGroup";
 import { sundayPair, teamKind } from "./seatRules";
 import { nameKey } from "./names";
 import { isEditable } from "./eventStatusFlow";
@@ -112,14 +112,25 @@ export type ExistingService = { eventId: string; status: string; past: boolean; 
 
 const yearRange = (year: number) => ({ from: zonedToUtc(`${year}-01-01`, "00:00"), to: zonedToUtc(`${year + 1}-01-01`, "00:00") });
 
+/**
+ * Orang yang boleh dipilih untuk jadwal tim, dengan penanda anggota tim: punya posisi di tim itu, atau masih anggota kelompok EBM
+ * (orang yang sudah dimasukkan ke kelompok tetapi belum diberi posisi apa pun tetap muncul).
+ */
 async function candidates(tenantId: string, teamId: string): Promise<(Candidate & { personOpt: PersonOpt })[]> {
-  const rows = await prisma.person.findMany({
-    where: { tenantId, deletedAt: null },
-    select: { id: true, name: true, nameKey: true, nickname: true, aliases: true, ministries: { select: { ministry: { select: { teamTypeId: true, deletedAt: true } } } } },
-    orderBy: { name: "asc" },
-  });
+  const [rows, groups] = await Promise.all([
+    prisma.person.findMany({
+      where: { tenantId, deletedAt: null },
+      select: { id: true, name: true, nameKey: true, nickname: true, aliases: true, ministries: { select: { ministry: { select: { teamTypeId: true, deletedAt: true } } } } },
+      orderBy: { name: "asc" },
+    }),
+    prisma.meetingGroup.findMany({ where: { tenantId, deletedAt: null }, select: { id: true, name: true } }),
+  ]);
+  const gids = groups.filter((g) => EBM_GROUP.test(g.name.trim())).map((g) => g.id);
+  const inGroup = new Set(
+    gids.length ? (await prisma.groupMember.findMany({ where: { groupId: { in: gids }, leftAt: null }, select: { personId: true } })).map((m) => m.personId) : [],
+  );
   return rows.map((p) => {
-    const isMember = p.ministries.some((m) => m.ministry.teamTypeId === teamId && !m.ministry.deletedAt);
+    const isMember = inGroup.has(p.id) || p.ministries.some((m) => m.ministry.teamTypeId === teamId && !m.ministry.deletedAt);
     return { id: p.id, name: p.name, nickname: p.nickname, aliases: p.aliases, nameKey: p.nameKey, isMember, personOpt: { id: p.id, name: p.name, nickname: p.nickname, isMember } };
   });
 }
