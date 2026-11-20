@@ -4,7 +4,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { readXlsx } from "../src/lib/importer/xlsx";
 import { buildXlsx, type XCell } from "../src/lib/xlsxWrite";
-import { EBM_FORMAT, matchName, monthOf, parseTeamSheet, suggestMinistryName, type Candidate } from "../src/lib/teamFormats";
+import { EBM_FORMAT, USHER_FORMAT, headerRow, matchName, monthOf, parseFullDate, parseTeamSheet, serviceOfHead, suggestMinistryName, withSlots, type Candidate } from "../src/lib/teamFormats";
+import type { XSheet } from "../src/lib/importer/xlsx";
 
 const sample = () => readXlsx(readFileSync(join(__dirname, "fixtures", "JADWAL_EBM_2027.xlsx")));
 
@@ -107,4 +108,130 @@ test("nama saran pelayanan: huruf besar semua jadi kapital di awal kata, singkat
   assert.equal(suggestMinistryName("EASY WORSHIP"), "Easy Worship");
   assert.equal(suggestMinistryName("LED"), "LED");
   assert.equal(suggestMinistryName("Backup Cam"), "Backup Cam");
+});
+
+// ───────── Usher (KU1 / KU2) ─────────
+
+/** Sheet buatan tangan: nilai sel gabungan hanya ada di kolom pertamanya, seperti hasil pembacaan file Excel asli. */
+const sheetOf = (rows: Record<number, Record<number, string>>): XSheet[] => {
+  const cells = new Map<number, Map<number, string>>();
+  for (const [r, cs] of Object.entries(rows)) cells.set(+r, new Map(Object.entries(cs).map(([c, v]) => [+c, v] as const)));
+  return [{ name: "Usher", maxRow: Math.max(...Object.keys(rows).map(Number)), cells }];
+};
+
+test("tanggal lengkap dibaca dari berbagai bentuk", () => {
+  assert.deepEqual(parseFullDate("2026-11-01"), { y: 2026, m: 11, d: 1 });
+  assert.deepEqual(parseFullDate("1 Nov 2026"), { y: 2026, m: 11, d: 1 });
+  assert.deepEqual(parseFullDate("1 November 2026"), { y: 2026, m: 11, d: 1 });
+  assert.deepEqual(parseFullDate("Minggu, 3 Jan 2027"), { y: 2027, m: 1, d: 3 });
+  assert.deepEqual(parseFullDate("03/01/2027"), { y: 2027, m: 1, d: 3 });
+  assert.equal(parseFullDate("Isi nama persis"), null);
+  assert.equal(parseFullDate("12"), null);
+});
+
+test("header KU1/KU2 dikenali, termasuk ejaan lain", () => {
+  assert.equal(serviceOfHead(USHER_FORMAT, "KU1"), 1);
+  assert.equal(serviceOfHead(USHER_FORMAT, "ku 2"), 2);
+  assert.equal(serviceOfHead(USHER_FORMAT, "Ibadah Minggu II"), 2);
+  assert.equal(serviceOfHead(USHER_FORMAT, "PIC"), null);
+  assert.equal(USHER_FORMAT.columns.length, 7);
+  assert.equal(withSlots(USHER_FORMAT, [2, 5]).columns.length, 7);
+  assert.equal(withSlots(USHER_FORMAT, [2, 5]).columns.filter((c) => c.service === 2).length, 5);
+});
+
+// satu header untuk banyak bulan, tanggal lengkap, KU1 3 kolom dan KU2 4 kolom (seperti file asli Usher)
+const usherRows = (dateOf: (d: number) => string) => ({
+  1: { 1: "Tanggal", 2: "KU1", 5: "KU2" },
+  2: { 1: dateOf(1), 2: "Ai Cu", 3: "Emi", 5: "Nancy", 6: "Listy", 7: "Ciang Dao", 8: "Shirly" },
+  3: { 1: dateOf(8), 2: "David Suhendra", 3: "Suk Qing", 4: "Listy", 5: "Listy", 6: "Yetty", 7: "Jiu Cen", 8: "Elemas" },
+  4: { 1: dateOf(15), 2: "Gwat Hiang", 3: "Mei Ching", 4: "Stefanita", 5: "Budiono", 6: "Li Wen", 7: "Rivan", 8: "Felicia" },
+  5: { 1: dateOf(22), 2: "Sonny Hou", 3: "Evi", 4: "Fei San", 5: "Vania", 6: "Sonny W", 7: "Fei San", 8: "Hao-Hao" },
+  6: { 1: dateOf(29), 2: "Timara", 3: "Elly", 4: "Evania", 5: "Timara", 6: "SIsca", 7: "Yen-yen", 8: "Evania" },
+});
+
+for (const [label, dateOf] of [["tanggal ISO (sel tanggal Excel)", (d: number) => `2026-11-${String(d).padStart(2, "0")}`], ["teks \"1 Nov 2026\"", (d: number) => `${d} Nov 2026`]] as const) {
+  test(`jadwal Usher: satu header tanpa judul bulan, ${label}`, () => {
+    const r = parseTeamSheet(sheetOf(usherRows(dateOf)), USHER_FORMAT, 2026);
+    assert.deepEqual(r.errors, []);
+    assert.deepEqual(r.slotCounts, [3, 4]);
+    assert.equal(r.rows.length, 5);
+    assert.equal(r.rows[0]!.date, "2026-11-01");
+    assert.equal(r.rows[0]!.names.s1_1, "Ai Cu");
+    assert.equal(r.rows[0]!.names.s1_3, ""); // sel kuning kosong di file asli
+    assert.equal(r.rows[0]!.names.s2_1, "Nancy");
+    assert.equal(r.rows[0]!.names.s2_4, "Shirly");
+    assert.equal(r.rows[4]!.names.s1_1, "Timara");
+    assert.equal(r.rows[4]!.names.s2_1, "Timara"); // satu orang boleh di KU1 dan KU2
+    assert.ok(r.rows.every((x) => new Date(`${x.date}T00:00:00Z`).getUTCDay() === 0));
+  });
+}
+
+test("jadwal Usher: jumlah kursi mengikuti file, bukan angka bawaan", () => {
+  const r = parseTeamSheet(sheetOf({
+    1: { 1: "TANGGAL", 2: "KU1", 4: "KU2" },
+    2: { 1: "3 Jan 2027", 2: "A", 3: "B", 4: "C", 5: "D", 6: "E" },
+  }), USHER_FORMAT, 2027);
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(r.slotCounts, [2, 3]);
+  assert.equal(r.rows[0]!.names.s2_3, "E");
+});
+
+test("jadwal Usher: tahun yang salah ditolak, kolom KET dan kolom asing tidak jadi kursi", () => {
+  const wrongYear = parseTeamSheet(sheetOf(usherRows((d) => `${d} Nov 2026`)), USHER_FORMAT, 2027);
+  assert.ok(wrongYear.errors.length > 0);
+  assert.match(wrongYear.errors[0]!.message, /tidak sesuai tahun 2027/);
+  const r = parseTeamSheet(sheetOf({
+    1: { 1: "Tanggal", 2: "KU1", 4: "KU2", 6: "KET", 7: "Misc" },
+    2: { 1: "3 Jan 2027", 2: "A", 3: "B", 4: "C", 5: "D", 6: "catatan", 7: "x" },
+  }), USHER_FORMAT, 2027);
+  assert.deepEqual(r.slotCounts, [2, 2]);
+  assert.ok(r.warnings.some((w) => /Misc/.test(w.message)));
+  assert.equal(r.rows[0]!.names.s2_2, "D");
+});
+
+test("jadwal Usher: header tanpa KU2 ditolak dengan pesan jelas", () => {
+  const r = parseTeamSheet(sheetOf({ 1: { 1: "Tanggal", 2: "KU1" }, 2: { 1: "3 Jan 2027", 2: "A", 3: "B" } }), USHER_FORMAT, 2027);
+  assert.ok(r.errors.some((e) => /KU2/.test(e.message)));
+});
+
+test("jadwal Usher: file tanpa header ditolak", () => {
+  const r = parseTeamSheet(sheetOf({ 1: { 1: "halo" } }), USHER_FORMAT, 2027);
+  assert.match(r.errors[0]!.message, /Baris header tidak ditemukan/);
+});
+
+test("jadwal Usher: tanggal teks dengan satu sel (belum ada nama) tidak dianggap judul bulan", () => {
+  const r = parseTeamSheet(sheetOf({
+    1: { 1: "Tanggal", 2: "KU1", 4: "KU2" },
+    2: { 1: "2 Mei 2027" },
+    3: { 1: "9 Mei 2027", 2: "A", 4: "B" },
+  }), USHER_FORMAT, 2027);
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.rows.length, 2);
+  assert.equal(r.rows[1]!.names.s1_1, "A");
+});
+
+test("template Usher yang ditulis aplikasi (judul bulan + sel gabungan) terbaca kembali", () => {
+  const f = withSlots(USHER_FORMAT, [3, 4]);
+  const groups = f.groups!.map((g) => ({ label: g.label, keys: f.columns.filter((c) => c.service === g.service).map((c) => c.key) }));
+  const cells: XCell[] = [{ r: 3, c: 3, v: "JANUARI", s: "title" }];
+  const merges: string[] = [];
+  headerRow(cells, merges, 4, f.columns, groups);
+  cells.push({ r: 5, c: 3, v: 3, s: "center" }, { r: 5, c: 4, v: "Ai Cu", s: "cell" }, { r: 5, c: 9, v: "Shirly", s: "cell" });
+  cells.push({ r: 6, c: 3, v: 10, s: "center" }, { r: 6, c: 6, v: "Emi", s: "cell" }, { r: 6, c: 7, v: "Nancy", s: "cell" });
+  assert.deepEqual(merges, ["D4:F4", "G4:J4"]);
+  const sheets = readXlsx(buildXlsx([{ name: "Jadwal USHER 2027", cells, merges }]));
+  const r = parseTeamSheet(sheets, USHER_FORMAT, 2027);
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(r.slotCounts, [3, 4]);
+  assert.equal(r.rows[0]!.date, "2027-01-03");
+  assert.equal(r.rows[0]!.names.s1_1, "Ai Cu");
+  assert.equal(r.rows[0]!.names.s2_3, "Shirly");
+  assert.equal(r.rows[1]!.names.s1_3, "Emi");
+  assert.equal(r.rows[1]!.names.s2_1, "Nancy");
+});
+
+test("format EBM tidak terpengaruh: file asli tetap 52 baris", () => {
+  const r = parseTeamSheet(sample(), EBM_FORMAT, 2027);
+  assert.equal(r.rows.length, 52);
+  assert.equal(r.slotCounts, null);
 });

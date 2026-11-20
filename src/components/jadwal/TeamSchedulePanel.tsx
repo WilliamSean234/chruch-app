@@ -10,15 +10,16 @@ import { normName } from "@/lib/teamFormats";
 import { buildPdf, renderPngs, toText } from "@/lib/scheduleExport";
 import type { ExportModel, PersonOpt, ExistingService } from "@/lib/teamSchedule";
 
-const FORMAT = "ebm";
 const MONTHS = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 const SHORT = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 
-type Col = { key: string; label: string; ministry: string; ministryId: string | null };
+export type FormatInfo = { key: string; label: string; title: string; perService: boolean };
+type Col = { key: string; label: string; ministry: string; ministryId: string | null; service?: 1 | 2 | null; slotNo?: number };
 type Row = { date: string; month: number; line: number; names: Record<string, string>; existing: { 1?: ExistingService; 2?: ExistingService } };
 type NameRow = { key: string; raw: string; count: number; columns: string[]; status: "MATCHED" | "AMBIGUOUS" | "NONE"; personId: string | null; guess: string | null; suggestions: string[] };
 type Extra = { key: string; label: string; suggested: string; exists: boolean; ministryId: string | null };
 type Preview = {
+  teamShort: string; perService: boolean; slots: [number, number] | null; groups: { service: number; label: string; keys: string[] }[] | null;
   extras: Extra[]; year: number; sheetName: string | null; errors: { line?: number; message: string }[]; warnings: { line?: number; message: string }[];
   columns: Col[]; newMinistries: string[]; services: { n: number; name: string; startTime: string }[]; rows: Row[]; names: NameRow[]; people: PersonOpt[];
 };
@@ -35,24 +36,36 @@ function download(blob: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 
-export default function TeamSchedulePanel() {
+export default function TeamSchedulePanel({ formats }: { formats: FormatInfo[] }) {
   const [tab, setTab] = useState<"upload" | "export">("upload");
+  const [fmtKey, setFmtKey] = useState(formats[0]?.key ?? "ebm");
+  const fmt = formats.find((f) => f.key === fmtKey) ?? formats[0]!;
   return (
     <div className="flex flex-col gap-5">
+      {formats.length > 1 && (
+        <div role="group" aria-label="Pilih tim" className="flex flex-wrap items-center gap-2">
+          <span className="text-[13px] font-bold text-[var(--ink-2)]">Tim</span>
+          {formats.map((f) => (
+            <button key={f.key} type="button" aria-pressed={f.key === fmt.key} onClick={() => setFmtKey(f.key)}
+              className={`h-11 rounded-xl border px-5 text-sm font-bold ${f.key === fmt.key ? "border-[var(--primary)] bg-[var(--primary-soft)] text-[var(--primary-ink)]" : "border-[var(--line)] bg-white text-[var(--ink-2)] hover:bg-[var(--bg)]"}`}>{f.label}</button>
+          ))}
+        </div>
+      )}
       <div role="tablist" className="flex gap-2">
         {([["upload", "Unggah jadwal"], ["export", "Bagikan jadwal"]] as const).map(([k, l]) => (
           <button key={k} role="tab" aria-selected={tab === k} type="button" onClick={() => setTab(k)}
             className={`h-11 flex-1 rounded-xl px-5 text-sm font-bold md:flex-none ${tab === k ? "bg-[var(--primary)] text-white" : "border border-[var(--line)] bg-white text-[var(--primary-ink)] hover:bg-[var(--bg)]"}`}>{l}</button>
         ))}
       </div>
-      {tab === "upload" ? <UploadTab goExport={() => setTab("export")} /> : <ExportTab />}
+      {tab === "upload" ? <UploadTab key={fmt.key} fmt={fmt} goExport={() => setTab("export")} /> : <ExportTab key={fmt.key} fmt={fmt} />}
     </div>
   );
 }
 
 // ───────────────────────── Unggah ─────────────────────────
 
-function UploadTab({ goExport }: { goExport: () => void }) {
+function UploadTab({ fmt, goExport }: { fmt: FormatInfo; goExport: () => void }) {
+  const FORMAT = fmt.key;
   const [year, setYear] = useState(thisYear + (new Date().getMonth() >= 9 ? 1 : 0));
   const [file, setFile] = useState<File | null>(null);
   const [withCurrent, setWithCurrent] = useState(false); // template berisi jadwal yang sudah ada
@@ -131,9 +144,9 @@ function UploadTab({ goExport }: { goExport: () => void }) {
     if (!ex) return "baru";
     if (ex.past) return "lewat";
     if (ex.status === "CANCELLED") return "batal";
-    const ids = new Set(cols.map((c) => c.ministryId).filter(Boolean));
-    const foreign = ex.seats.some((s) => !ids.has(s.ministryId) || s.slotNo > 1);
-    const diff = cols.some((c) => (ex.seats.find((s) => s.ministryId === c.ministryId && s.slotNo === 1)?.personId ?? null) !== (cells[c.key] ?? null));
+    const cn = cols.filter((c) => !c.service || c.service === n); // kolom milik ibadah ini
+    const foreign = ex.seats.some((s) => !cn.some((c) => c.ministryId === s.ministryId && (c.slotNo ?? 1) === s.slotNo));
+    const diff = cn.some((c) => (ex.seats.find((s) => s.ministryId === c.ministryId && s.slotNo === (c.slotNo ?? 1))?.personId ?? null) !== (cells[c.key] ?? null));
     return foreign || diff ? "ubah" : "sama";
   };
 
@@ -143,13 +156,14 @@ function UploadTab({ goExport }: { goExport: () => void }) {
       const cells = cellsOf(r);
       return { r, cells, s1: stateOf(r, 1, cells), s2: stateOf(r, 2, cells) };
     });
-    // rangkap: satu orang di dua kolom atau lebih pada tanggal yang sama (sesudah pilihan nama)
+    // rangkap: satu orang di dua kolom atau lebih pada tanggal yang sama (sesudah pilihan nama). Format per ibadah: hitungan per ibadah,
+    // karena bertugas di KU1 dan KU2 sekaligus itu wajar.
     const doubles: { date: string; person: string; cols: Col[] }[] = [];
     for (const r of pv.rows) {
       const raw = rawCells(r);
-      const by = new Map<string, Col[]>();
-      for (const c of cols) { const p = raw[c.key]; if (p) by.set(p, [...(by.get(p) ?? []), c]); }
-      for (const [p, cols] of by) if (cols.length > 1) doubles.push({ date: r.date, person: p, cols });
+      const by = new Map<string, { p: string; cols: Col[] }>();
+      for (const c of cols) { const p = raw[c.key]; if (!p) continue; const k = `${p}|${c.service ?? 0}`; by.set(k, { p, cols: [...(by.get(k)?.cols ?? []), c] }); }
+      for (const v of by.values()) if (v.cols.length > 1) doubles.push({ date: r.date, person: v.p, cols: v.cols });
     }
     const count = (s: string) => rows.filter((x) => x.s1 === s || x.s2 === s).length;
     const todo = rows.filter((x) => x.s1 === "baru" || x.s1 === "ubah" || x.s2 === "baru" || x.s2 === "ubah");
@@ -170,7 +184,7 @@ function UploadTab({ goExport }: { goExport: () => void }) {
       try {
         const r = await fetch(`/api/v1/team-schedule/${FORMAT}/apply`, {
           method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store",
-          body: JSON.stringify({ year: pv.year, date: x.r.date, cells: x.cells, extras: cols.filter((c) => c.key.startsWith("x_")).map((c) => ({ key: c.key, ministry: c.ministry })) }),
+          body: JSON.stringify({ year: pv.year, date: x.r.date, cells: x.cells, extras: cols.filter((c) => c.key.startsWith("x_")).map((c) => ({ key: c.key, ministry: c.ministry })), ...(pv.slots ? { slots: pv.slots } : {}) }),
         });
         const d = await r.json().catch(() => null);
         if (r.ok) out.push(d as DateResult);
@@ -206,7 +220,7 @@ function UploadTab({ goExport }: { goExport: () => void }) {
         <option value="">— pilih orangnya —</option>
         <option value="skip">Lewati (kursi dikosongkan)</option>
         {sug.length > 0 && <optgroup label="Mirip">{sug.map((p) => <option key={p.id} value={p.id}>{p.name}{p.nickname ? ` (${p.nickname})` : ""}</option>)}</optgroup>}
-        <optgroup label="Semua orang">{rest.map((p) => <option key={p.id} value={p.id}>{p.name}{p.nickname ? ` (${p.nickname})` : ""}{p.isMember ? "" : " · bukan tim EBM"}</option>)}</optgroup>
+        <optgroup label="Semua orang">{rest.map((p) => <option key={p.id} value={p.id}>{p.name}{p.nickname ? ` (${p.nickname})` : ""}{p.isMember ? "" : ` · bukan tim ${pv!.teamShort}`}</option>)}</optgroup>
       </select>
     );
   };
@@ -221,7 +235,7 @@ function UploadTab({ goExport }: { goExport: () => void }) {
       <section className={card}>
         <h2 className="text-lg font-extrabold">1. Pilih tahun dan file</h2>
         <p className="mt-1 max-w-3xl text-sm font-medium text-[var(--ink-2)]">
-          Satu baris tanggal berlaku untuk Ibadah Minggu I dan II. Unggahan membuat acara yang belum ada (berstatus draf) dan mengganti petugas tim EBM di acara yang sudah ada. Bagian acara selain tim EBM tidak disentuh.
+          {fmt.perService ? "Kolom KU1 berlaku untuk Ibadah Minggu I dan KU2 untuk Ibadah Minggu II. Jumlah kursi tiap ibadah mengikuti jumlah kolom di file." : "Satu baris tanggal berlaku untuk Ibadah Minggu I dan II."} Unggahan membuat acara yang belum ada (berstatus draf) dan mengganti petugas tim {fmt.label} di acara yang sudah ada. Bagian acara selain tim {fmt.label} tidak disentuh.
         </p>
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-[13px] font-bold text-[var(--ink-2)]">Tahun
@@ -232,7 +246,7 @@ function UploadTab({ goExport }: { goExport: () => void }) {
           <a className={`${btnGhost} inline-flex items-center`} href={`/api/v1/team-schedule/${FORMAT}/template?year=${year}${withCurrent ? "&filled=1" : ""}`}>Unduh template {year}</a>
           <label className="flex min-h-11 max-w-md cursor-pointer items-start gap-2.5 rounded-xl border border-[var(--line)] bg-white px-3.5 py-2.5 text-sm font-semibold">
             <input type="checkbox" className="mt-0.5 size-4 flex-none" checked={withCurrent} onChange={(e) => setWithCurrent(e.target.checked)} />
-            <span>Isi dengan orang yang sudah dijadwalkan di {year}<span className="block text-[12.5px] font-medium text-[var(--ink-2)]">{withCurrent ? "Template berisi petugas tim EBM yang sudah tercatat. Cocok untuk merevisi jadwal." : "Template kosong, hanya tanggal Minggu."}</span></span>
+            <span>Isi dengan orang yang sudah dijadwalkan di {year}<span className="block text-[12.5px] font-medium text-[var(--ink-2)]">{withCurrent ? `Template berisi petugas tim ${fmt.label} yang sudah tercatat. Cocok untuk merevisi jadwal.` : "Template kosong, hanya tanggal Minggu."}</span></span>
           </label>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -264,7 +278,7 @@ function UploadTab({ goExport }: { goExport: () => void }) {
               {pv.extras.length > 0 && (
                 <section className="rounded-2xl border border-[#EBD9A8] bg-[#FFF8E6] p-4">
                   <h2 className="text-base font-extrabold text-[#7A5200]">Pelayanan yang belum terdaftar ({pv.extras.length})</h2>
-                  <p className="mt-1 text-sm font-semibold text-[#7A5200]">Kolom berikut ada di file tetapi belum menjadi pelayanan tim EBM. Daftarkan sebagai pelayanan baru? Bila tidak, kolomnya dilewati.</p>
+                  <p className="mt-1 text-sm font-semibold text-[#7A5200]">Kolom berikut ada di file tetapi belum menjadi pelayanan tim {fmt.label}. Daftarkan sebagai pelayanan baru? Bila tidak, kolomnya dilewati.</p>
                   <ul className="mt-3 flex flex-col gap-2">
                     {pv.extras.map((x) => {
                       const e = extraOn[x.key] ?? { on: true, name: x.suggested };
@@ -308,10 +322,10 @@ function UploadTab({ goExport }: { goExport: () => void }) {
               {view.doubles.length > 0 && (
                 <section className={card}>
                   <h2 className="text-lg font-extrabold">Merangkap ({view.doubles.length})</h2>
-                  <p className="mt-1 text-sm font-medium text-[var(--ink-2)]">Satu orang di dua posisi pada hari yang sama. Dibolehkan untuk sesama posisi EBM. Hilangkan centang bila salah satunya tidak jadi.</p>
+                  <p className="mt-1 text-sm font-medium text-[var(--ink-2)]">{fmt.perService ? "Satu orang di dua kursi pada ibadah yang sama, kemungkinan salah ketik atau salah baris. Hilangkan centang pada kursi yang tidak jadi." : "Satu orang di dua posisi pada hari yang sama. Dibolehkan untuk sesama posisi EBM. Hilangkan centang bila salah satunya tidak jadi."}</p>
                   <ul className="mt-3 flex flex-col gap-2">
                     {view.doubles.map((d) => (
-                      <li key={`${d.date}|${d.person}`} className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-[var(--line)] px-3 py-2.5 text-sm">
+                      <li key={`${d.date}|${d.person}|${d.cols[0]!.key}`} className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-[var(--line)] px-3 py-2.5 text-sm">
                         <span className="font-extrabold">{dayText(d.date)} · {disp(people.get(d.person))}</span>
                         {d.cols.map((c) => {
                           const k = `${d.date}|${c.key}`;
@@ -349,30 +363,38 @@ function UploadTab({ goExport }: { goExport: () => void }) {
                       <tr className="bg-[#F3E9CF] text-left">
                         <th className="sticky left-0 bg-[#F3E9CF] px-2.5 py-2 font-extrabold">Tanggal</th>
                         <th className="px-2.5 py-2 font-extrabold">Status</th>
-                        {cols.map((c) => <th key={c.key} className="px-2.5 py-2 font-extrabold">{c.label}</th>)}
+                        {pv.groups
+                          ? pv.groups.map((g) => <th key={g.service} colSpan={g.keys.length} className="border-l border-[var(--line)] px-2.5 py-2 text-center font-extrabold">{g.label}</th>)
+                          : cols.map((c) => <th key={c.key} className="px-2.5 py-2 font-extrabold">{c.label}</th>)}
                       </tr>
                     </thead>
                     <tbody>
                       {view.rows.map(({ r, cells, s1, s2 }, i) => {
-                        const ex = r.existing[1] ?? r.existing[2];
+                        const exOf = (c: Col) => (c.service ? r.existing[c.service] : (r.existing[1] ?? r.existing[2]));
                         return (
                           <tr key={r.date} className={i % 2 ? "bg-[#F6F7FC]" : ""}>
                             <td className="sticky left-0 whitespace-nowrap bg-inherit px-2.5 py-2 font-extrabold">{dayText(r.date)}</td>
                             <td className="px-2.5 py-2">
                               <div className="whitespace-nowrap">{s1 === s2 ? stateChip(s1) : <>{stateChip(s1)} {stateChip(s2)}</>}</div>
                               {(() => {
-                                // kursi tim EBM yang ada orangnya tetapi tidak punya kolom di file ini: akan dihapus saat disimpan
-                                const ids = new Set(cols.map((c) => c.ministryId).filter(Boolean));
-                                const gone = ex && !ex.past && ex.status !== "CANCELLED" ? ex.seats.filter((x) => x.personId && !ids.has(x.ministryId)) : [];
-                                return gone.length ? <div className="mt-1 max-w-[190px] text-[11.5px] font-semibold leading-snug text-[#A12B2B]">hapus: {gone.map((x) => `${x.ministryName} (${x.personName})`).join(", ")}</div> : null;
+                                // kursi tim yang ada orangnya tetapi tidak punya kolom di file ini: akan dihapus saat disimpan
+                                const gone = new Set<string>();
+                                for (const n of [1, 2] as const) {
+                                  const e = r.existing[n];
+                                  if (!e || e.past || e.status === "CANCELLED") continue;
+                                  const cn = cols.filter((c) => !c.service || c.service === n);
+                                  for (const x of e.seats) if (x.personId && !cn.some((c) => c.ministryId === x.ministryId && (c.slotNo ?? 1) === x.slotNo)) gone.add(`${x.ministryName}${x.slotNo > 1 ? ` ${x.slotNo}` : ""} (${x.personName})`);
+                                }
+                                return gone.size ? <div className="mt-1 max-w-[190px] text-[11.5px] font-semibold leading-snug text-[#A12B2B]">hapus: {[...gone].join(", ")}</div> : null;
                               })()}
                             </td>
                             {cols.map((c) => {
                               const now = cells[c.key] ? disp(people.get(cells[c.key]!)) : "";
-                              const old = ex?.seats.find((s) => s.ministryId === c.ministryId && s.slotNo === 1);
+                              const ex = exOf(c);
+                              const old = ex?.seats.find((s) => s.ministryId === c.ministryId && s.slotNo === (c.slotNo ?? 1));
                               const oldName = old?.personId && old.personId !== cells[c.key] ? old.personName : null;
                               return (
-                                <td key={c.key} className="px-2.5 py-2 align-top">
+                                <td key={c.key} className={`px-2.5 py-2 align-top ${pv.groups?.some((g) => g.keys[0] === c.key) ? "border-l border-[var(--line)]" : ""}`}>
                                   <div className="font-semibold">{now || <span className="text-[#A0A4BC]">—</span>}</div>
                                   {oldName && ex && !ex.past && <div className="text-[11.5px] font-semibold text-[#8A6119]">dulu: {oldName}</div>}
                                 </td>
@@ -426,7 +448,8 @@ function UploadTab({ goExport }: { goExport: () => void }) {
 
 // ───────────────────────── Bagikan ─────────────────────────
 
-function ExportTab() {
+function ExportTab({ fmt }: { fmt: FormatInfo }) {
+  const FORMAT = fmt.key;
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [months, setMonths] = useState<Set<number>>(new Set([now.getMonth() + 1]));
@@ -516,12 +539,12 @@ function ExportTab() {
               <div key={mo.month} className="overflow-x-auto rounded-xl border border-[var(--line)]">
                 <div className="bg-[var(--primary)] px-3 py-2 text-center text-sm font-extrabold text-white">{mo.name} {model.year}</div>
                 <table className="w-full min-w-[720px] border-collapse text-[13px]">
-                  <thead><tr className="bg-[#F3E9CF]"><th className="px-2.5 py-2 text-left font-extrabold">TGL</th>{model.columns.map((c) => <th key={c.key} className="px-2.5 py-2 text-left font-extrabold">{c.label}</th>)}</tr></thead>
+                  <thead><tr className="bg-[#F3E9CF]"><th className="px-2.5 py-2 text-left font-extrabold">TGL</th>{model.groups ? model.groups.map((g) => <th key={g.label} colSpan={g.keys.length} className="border-l border-[var(--line)] px-2.5 py-2 text-center font-extrabold">{g.label}</th>) : model.columns.map((c) => <th key={c.key} className="px-2.5 py-2 text-left font-extrabold">{c.label}</th>)}</tr></thead>
                   <tbody>
                     {mo.rows.map((r, i) => (
                       <tr key={r.date} className={i % 2 ? "bg-[#F6F7FC]" : ""}>
                         <td className="px-2.5 py-2 font-extrabold">{r.day}</td>
-                        {model.columns.map((c) => <td key={c.key} className={`px-2.5 py-2 font-semibold ${r.cells[c.key]?.includes(" / ") ? "bg-[#FFF4D6]" : ""}`}>{r.cells[c.key] || <span className="text-[#A0A4BC]">—</span>}</td>)}
+                        {model.columns.map((c) => <td key={c.key} className={`px-2.5 py-2 font-semibold ${model.groups?.some((g) => g.keys[0] === c.key) ? "border-l border-[var(--line)]" : ""} ${r.cells[c.key]?.includes(" / ") ? "bg-[#FFF4D6]" : ""}`}>{r.cells[c.key] || <span className="text-[#A0A4BC]">—</span>}</td>)}
                       </tr>
                     ))}
                   </tbody>

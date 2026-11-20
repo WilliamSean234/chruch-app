@@ -49,7 +49,9 @@ function textOf(xml: string): string {
 const BUILTIN_DATE = new Set([14, 15, 16, 17, 18, 19, 20, 21, 22, 45, 46, 47]);
 const isDateFormat = (code: string) => /[dmyhs]/i.test(code.replace(/"[^"]*"|\[[^\]]*\]|\\./g, ""));
 
-export type XSheet = { name: string; maxRow: number; cells: Map<number, Map<number, string>> };
+/** Sel gabungan: nilainya hanya ada di sel kiri atas (baris r1, kolom c1). */
+export type XMerge = { r1: number; c1: number; r2: number; c2: number };
+export type XSheet = { name: string; maxRow: number; cells: Map<number, Map<number, string>>; merges?: XMerge[] };
 
 const colNum = (letters: string) => letters.split("").reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
 
@@ -117,7 +119,9 @@ export function readXlsx(buf: Buffer): XSheet[] {
       cells.set(r, row);
       if (r > maxRow) maxRow = r;
     }
-    sheets.push({ name, maxRow, cells });
+    const merges: XMerge[] = [];
+    for (const mm of xml.matchAll(/<mergeCell\b[^>]*\bref="([A-Z]+)(\d+):([A-Z]+)(\d+)"/g)) merges.push({ c1: colNum(mm[1]!), r1: +mm[2]!, c2: colNum(mm[3]!), r2: +mm[4]! });
+    sheets.push({ name, maxRow, cells, merges });
   }
   return sheets;
 }

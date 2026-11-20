@@ -1,6 +1,7 @@
 /**
  * Jadwal tahunan per tim: siapkan posisi, pratinjau file, simpan per tanggal, export, dan template.
- * Saat ini hanya format EBM. Satu baris tanggal berlaku untuk dua ibadah (Ibadah Minggu I dan II).
+ * Format EBM: satu baris tanggal berlaku untuk dua ibadah (Ibadah Minggu I dan II).
+ * Format Usher: kolom dikelompokkan per ibadah (KU1 = Ibadah Minggu I, KU2 = Ibadah Minggu II), tiap kelompok beberapa kursi.
  */
 import { z } from "zod";
 import { prisma } from "./prisma";
@@ -15,9 +16,9 @@ import { EBM_GROUP, syncEbmGroup } from "./ebmGroup";
 import { sundayPair, teamKind } from "./seatRules";
 import { nameKey } from "./names";
 import { isEditable } from "./eventStatusFlow";
-import { FORMATS, MONTHS_ID, matchName, normName, parseTeamSheet, type Candidate, type TeamFormat } from "./teamFormats";
+import { FORMATS, MAX_SLOTS, MONTHS_ID, headerRow, matchName, normName, parseTeamSheet, withSlots, type Candidate, type TeamFormat } from "./teamFormats";
 import type { XSheet } from "./importer/xlsx";
-import { buildXlsx, type XCell } from "./xlsxWrite";
+import { buildXlsx, colLetter, type XCell } from "./xlsxWrite";
 
 export const getFormat = (key: string): TeamFormat => {
   const f = FORMATS[key];
@@ -67,7 +68,7 @@ type Team = { id: string; name: string };
 
 async function findTeam(tenantId: string, format: TeamFormat): Promise<Team> {
   const teams = await prisma.teamType.findMany({ where: { tenantId, deletedAt: null }, select: { id: true, name: true }, orderBy: { name: "asc" } });
-  const t = teams.find((x) => teamKind(x.name) === "EBM");
+  const t = teams.find((x) => teamKind(x.name) === format.teamKind);
   if (!t) throw conflict(`Tim untuk jadwal ini (${format.teamName}) belum ada. Buat dulu di menu Tim.`);
   return t;
 }
@@ -111,27 +112,40 @@ export async function ensureFormat(tenantId: string, format: TeamFormat): Promis
   const team = await findTeam(tenantId, format);
   const existing = await prisma.ministry.findMany({ where: { tenantId, teamTypeId: team.id } });
   const ids = new Map<string, string>();
+  const byName = new Map<string, string>(); // beberapa kolom bisa memakai posisi yang sama (Usher 1, 2, 3 …)
   for (const [i, c] of format.columns.entries()) {
-    const found = existing.find((m) => m.name.toLowerCase() === c.ministry.toLowerCase());
+    const nm = c.ministry.toLowerCase();
+    const done = byName.get(nm);
+    if (done) { ids.set(c.key, done); continue; }
+    const found = existing.find((m) => m.name.toLowerCase() === nm);
     if (found) {
       if (found.deletedAt) await prisma.ministry.update({ where: { id: found.id }, data: { deletedAt: null } });
       ids.set(c.key, found.id);
+      byName.set(nm, found.id);
     } else {
       const m = await prisma.ministry.create({ data: { tenantId, teamTypeId: team.id, name: c.ministry, sortOrder: 100 + i } });
       ids.set(c.key, m.id);
+      byName.set(nm, m.id);
     }
   }
   const want = new Set(ids.values());
   const templates = await loadTemplates(tenantId);
-  for (const t of templates.values()) {
-    const ebmSlots = t.slots.filter((s) => s.ministry.teamTypeId === team.id);
-    const drop = ebmSlots.filter((s) => !want.has(s.ministryId) || s.slotNo !== 1).map((s) => s.id);
-    const have = new Set(ebmSlots.filter((s) => want.has(s.ministryId) && s.slotNo === 1).map((s) => s.ministryId));
-    const add = [...want].filter((id) => !have.has(id));
+  for (const [n, t] of templates) {
+    // kursi yang harus ada di template ini: posisi + nomor kursi, hanya untuk kolom milik ibadah ini
+    const wantSeats = new Map<string, { ministryId: string; slotNo: number }>();
+    for (const c of format.columns) {
+      if (c.service !== undefined && c.service !== n) continue;
+      const ministryId = ids.get(c.key)!;
+      wantSeats.set(`${ministryId}:${c.slotNo ?? 1}`, { ministryId, slotNo: c.slotNo ?? 1 });
+    }
+    const teamSlots = t.slots.filter((s) => s.ministry.teamTypeId === team.id);
+    const have = new Set(teamSlots.map((s) => `${s.ministryId}:${s.slotNo}`));
+    const drop = teamSlots.filter((s) => !wantSeats.has(`${s.ministryId}:${s.slotNo}`)).map((s) => s.id);
+    const add = [...wantSeats.entries()].filter(([k]) => !have.has(k)).map(([, v]) => v);
     if (drop.length || add.length) {
       await prisma.$transaction([
         prisma.eventTemplateSlot.deleteMany({ where: { id: { in: drop } } }),
-        prisma.eventTemplateSlot.createMany({ data: add.map((ministryId) => ({ templateId: t.id, ministryId, slotNo: 1, rehearsalRequired: false })) }),
+        prisma.eventTemplateSlot.createMany({ data: add.map((x) => ({ templateId: t.id, ministryId: x.ministryId, slotNo: x.slotNo, rehearsalRequired: false })) }),
       ]);
     }
   }
@@ -149,10 +163,10 @@ export type ExistingService = { eventId: string; status: string; past: boolean; 
 const yearRange = (year: number) => ({ from: zonedToUtc(`${year}-01-01`, "00:00"), to: zonedToUtc(`${year + 1}-01-01`, "00:00") });
 
 /**
- * Orang yang boleh dipilih untuk jadwal tim, dengan penanda anggota tim: punya posisi di tim itu, atau masih anggota kelompok EBM
+ * Orang yang boleh dipilih untuk jadwal tim, dengan penanda anggota tim: punya posisi di tim itu, atau (khusus EBM) masih anggota kelompok EBM
  * (orang yang sudah dimasukkan ke kelompok tetapi belum diberi posisi apa pun tetap muncul).
  */
-async function candidates(tenantId: string, teamId: string): Promise<(Candidate & { personOpt: PersonOpt })[]> {
+async function candidates(tenantId: string, teamId: string, useEbmGroup: boolean): Promise<(Candidate & { personOpt: PersonOpt })[]> {
   const [rows, groups] = await Promise.all([
     prisma.person.findMany({
       where: { tenantId, deletedAt: null },
@@ -161,7 +175,7 @@ async function candidates(tenantId: string, teamId: string): Promise<(Candidate 
     }),
     prisma.meetingGroup.findMany({ where: { tenantId, deletedAt: null }, select: { id: true, name: true } }),
   ]);
-  const gids = groups.filter((g) => EBM_GROUP.test(g.name.trim())).map((g) => g.id);
+  const gids = useEbmGroup ? groups.filter((g) => EBM_GROUP.test(g.name.trim())).map((g) => g.id) : [];
   const inGroup = new Set(
     gids.length ? (await prisma.groupMember.findMany({ where: { groupId: { in: gids }, leftAt: null }, select: { personId: true } })).map((m) => m.personId) : [],
   );
@@ -172,13 +186,14 @@ async function candidates(tenantId: string, teamId: string): Promise<(Candidate 
 }
 
 export async function previewSchedule(u: AuthUser, formatKey: string, year: number, sheets: XSheet[]) {
-  const format = getFormat(formatKey);
-  const st = await inspect(u.tenantId, format);
-  authorize(u, st.team);
+  const base = getFormat(formatKey);
+  authorize(u, await findTeam(u.tenantId, base));
   if (!Number.isInteger(year) || year < 2000 || year > 2100) throw badRequest("Tahun tidak valid.");
 
-  const parsed = parseTeamSheet(sheets, format, year);
-  const people = await candidates(u.tenantId, st.team.id);
+  const parsed = parseTeamSheet(sheets, base, year);
+  const format = parsed.slotCounts ? withSlots(base, parsed.slotCounts) : base; // jumlah kursi per ibadah mengikuti file
+  const st = await inspect(u.tenantId, format);
+  const people = await candidates(u.tenantId, st.team.id, format.teamKind === "EBM");
 
   // tabel nama: satu baris per nama unik di file
   const names = new Map<string, { raw: string; count: number; dates: string[]; columns: Set<string> }>();
@@ -232,8 +247,10 @@ export async function previewSchedule(u: AuthUser, formatKey: string, year: numb
 
   return {
     year, sheetName: parsed.sheetName, extras, errors: parsed.errors, warnings: parsed.warnings,
-    columns: format.columns.map((c) => ({ key: c.key, label: c.label, ministry: c.ministry, ministryId: st.ministries.get(c.key)?.id ?? null })),
-    newMinistries: format.columns.filter((c) => !st.ministries.get(c.key)).map((c) => c.ministry),
+    teamShort: format.teamShort, perService: !!format.groups, slots: parsed.slotCounts,
+    columns: format.columns.map((c) => ({ key: c.key, label: c.label, ministry: c.ministry, ministryId: st.ministries.get(c.key)?.id ?? null, service: c.service ?? null, slotNo: c.slotNo ?? 1 })),
+    groups: format.groups ? format.groups.map((g) => ({ service: g.service, label: g.label, keys: format.columns.filter((c) => c.service === g.service).map((c) => c.key) })) : null,
+    newMinistries: [...new Set(format.columns.filter((c) => !st.ministries.get(c.key)).map((c) => c.ministry))],
     services: [1, 2].map((n) => ({ n, name: st.templates.get(n as 1 | 2)!.name, startTime: st.templates.get(n as 1 | 2)!.startTime })),
     rows: parsed.rows.map((r) => ({ date: r.date, month: r.month, line: r.line, names: r.names, existing: existing.get(r.date) ?? {} })),
     names: nameRows,
@@ -248,6 +265,7 @@ export const applyBody = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   cells: z.record(z.string(), z.string().uuid().nullable()),
   extras: z.array(z.object({ key: z.string().regex(/^x_[A-Z0-9+]{1,40}$/), ministry: z.string().trim().min(1).max(60) })).max(8).default([]),
+  slots: z.tuple([z.number().int().min(1).max(MAX_SLOTS), z.number().int().min(1).max(MAX_SLOTS)]).optional(), // jumlah kursi KU1 dan KU2 (format per ibadah)
 });
 export const aliasBody = z.object({
   items: z.array(z.object({ personId: z.string().uuid(), raw: z.string().trim().min(1).max(60) })).max(300),
@@ -259,8 +277,10 @@ export type ServiceResult = {
 export type DateResult = { date: string; services: ServiceResult[] };
 
 export async function applyDate(u: AuthUser, formatKey: string, b: z.infer<typeof applyBody>): Promise<DateResult> {
-  const format = withExtras(getFormat(formatKey), b.extras);
-  if (new Set(format.columns.map((c) => c.ministry.toLowerCase())).size !== format.columns.length) throw badRequest("Nama pelayanan baru sama dengan pelayanan yang sudah ada di format.");
+  const base = withExtras(getFormat(formatKey), b.extras);
+  const format = b.slots ? withSlots(base, b.slots) : base;
+  const slotKey = (c: { ministry: string; service?: 1 | 2; slotNo?: number }) => `${c.ministry.toLowerCase()}|${c.service ?? 0}|${c.slotNo ?? 1}`;
+  if (new Set(format.columns.map(slotKey)).size !== format.columns.length) throw badRequest("Nama pelayanan baru sama dengan pelayanan yang sudah ada di format.");
   const probe = await findTeam(u.tenantId, format);
   authorize(u, probe);
 
@@ -276,12 +296,12 @@ export async function applyDate(u: AuthUser, formatKey: string, b: z.infer<typeo
   // orang yang diisi dicatat bisa di posisinya, supaya muncul di saran berikutnya
   const people = await prisma.person.findMany({ where: { id: { in: wantedPeople }, tenantId: u.tenantId, deletedAt: null }, select: { id: true } });
   if (people.length !== wantedPeople.length) throw badRequest("Ada orang yang tidak ditemukan. Muat ulang pratinjau.");
-  const links = format.columns.flatMap((c) => (b.cells[c.key] ? [{ personId: b.cells[c.key]!, ministryId: st.ministries.get(c.key)!.id }] : []));
+  const links = [...new Map(format.columns.flatMap((c) => (b.cells[c.key] ? [{ personId: b.cells[c.key]!, ministryId: st.ministries.get(c.key)!.id }] : [])).map((l) => [`${l.personId}|${l.ministryId}`, l] as const)).values()];
   if (links.length) {
     const before = await prisma.personMinistry.count({ where: { OR: links } });
     if (before < links.length) {
       await prisma.personMinistry.createMany({ data: links, skipDuplicates: true });
-      await syncEbmGroup(prisma, u.tenantId, { only: wantedPeople, userId: u.userId });
+      if (format.teamKind === "EBM") await syncEbmGroup(prisma, u.tenantId, { only: wantedPeople, userId: u.userId });
     }
   }
 
@@ -291,6 +311,12 @@ export async function applyDate(u: AuthUser, formatKey: string, b: z.infer<typeo
     const tpl = st.templates.get(n)!;
     const res: ServiceResult = { n, name: tpl.name, state: "sama", changed: 0, rejected: [] };
     results.push(res);
+
+    // kolom milik ibadah ini (format bersama: semua kolom; format per ibadah: hanya kelompoknya)
+    const svcCols = format.columns.filter((c) => c.service === undefined || c.service === n);
+    const seatKey = (ministryId: string, slotNo: number) => `${ministryId}:${slotNo}`;
+    const colKey = (c: (typeof svcCols)[number]) => seatKey(st.ministries.get(c.key)!.id, c.slotNo ?? 1);
+    const wanted = new Set(svcCols.map(colKey));
 
     const startsAt = zonedToUtc(b.date, tpl.startTime);
     if (addMinutes(startsAt, tpl.durationMin).getTime() < Date.now()) { res.state = "dilewati"; res.reason = "Tanggal sudah lewat."; continue; }
@@ -306,12 +332,13 @@ export async function applyDate(u: AuthUser, formatKey: string, b: z.infer<typeo
     }
     touched.push(ev.id);
 
-    // samakan kursi tim: hanya satu kursi per posisi di file
+    // samakan kursi tim: hanya kursi yang ada di file (satu per posisi dan nomor kursi)
     const seats = await prisma.eventAssignment.findMany({ where: { eventId: ev.id, teamTypeId: st.team.id }, orderBy: [{ slotNo: "asc" }, { sortOrder: "asc" }] });
     const seen = new Set<string>();
     const drop = seats.filter((s) => {
-      if (!keep.has(s.ministryId) || seen.has(s.ministryId)) return true;
-      seen.add(s.ministryId);
+      const k = seatKey(s.ministryId, s.slotNo);
+      if (!wanted.has(k) || seen.has(k)) return true;
+      seen.add(k);
       return false;
     });
     if (drop.length) {
@@ -322,21 +349,21 @@ export async function applyDate(u: AuthUser, formatKey: string, b: z.infer<typeo
       });
       res.changed += drop.filter((s) => s.personId).length;
     }
-    const hasKept = new Set(seats.filter((s) => !drop.includes(s)).map((s) => s.ministryId));
-    const toAdd = format.columns.filter((c) => !hasKept.has(st.ministries.get(c.key)!.id));
+    const hasKept = new Set(seats.filter((s) => !drop.includes(s)).map((s) => seatKey(s.ministryId, s.slotNo)));
+    const toAdd = svcCols.filter((c) => !hasKept.has(colKey(c)));
     if (toAdd.length) {
       const order = await prisma.eventAssignment.aggregate({ where: { eventId: ev.id }, _max: { sortOrder: true } });
       let o = (order._max.sortOrder ?? -1) + 1;
       if (!(await prisma.eventTeam.count({ where: { eventId: ev.id, teamTypeId: st.team.id } }))) await prisma.eventTeam.create({ data: { eventId: ev.id, teamTypeId: st.team.id } });
       await prisma.eventAssignment.createMany({
-        data: toAdd.map((c) => ({ tenantId: u.tenantId, eventId: ev!.id, teamTypeId: st.team.id, ministryId: st.ministries.get(c.key)!.id, slotNo: 1, sortOrder: o++, rehearsalRequired: false })),
+        data: toAdd.map((c) => ({ tenantId: u.tenantId, eventId: ev!.id, teamTypeId: st.team.id, ministryId: st.ministries.get(c.key)!.id, slotNo: c.slotNo ?? 1, sortOrder: o++, rehearsalRequired: false })),
       });
     }
 
     // isi: kosongkan dulu, baru isi, supaya perpindahan dalam satu acara tidak saling mengganjal
     const now = await prisma.eventAssignment.findMany({ where: { eventId: ev.id, teamTypeId: st.team.id, ministryId: { in: [...keep] } } });
-    const byMinistry = new Map(now.map((s) => [s.ministryId, s]));
-    const plan = format.columns.map((c) => ({ col: c, seat: byMinistry.get(st.ministries.get(c.key)!.id)!, want: b.cells[c.key] ?? null }));
+    const bySeat = new Map(now.map((s) => [seatKey(s.ministryId, s.slotNo), s]));
+    const plan = svcCols.map((c) => ({ col: c, seat: bySeat.get(colKey(c))!, want: b.cells[c.key] ?? null }));
     for (const pass of ["clear", "set"] as const) {
       for (const p of plan) {
         if (!p.seat || p.seat.personId === p.want) continue;
@@ -380,17 +407,45 @@ export async function saveAliases(u: AuthUser, formatKey: string, b: z.infer<typ
 const displayName = (p: { name: string; nickname: string | null } | null) => (p ? p.nickname?.trim() || p.name : "");
 
 export type ExportModel = {
-  format: string; title: string; year: number;
+  format: string; title: string; year: number; teamShort: string;
   columns: { key: string; label: string }[];
+  groups: { label: string; keys: string[] }[] | null; // format per ibadah: judul kelompok kolom (KU1, KU2)
   months: { month: number; name: string; rows: { date: string; day: number; cells: Record<string, string>; differs: boolean }[] }[];
   hasDiff: boolean;
 };
 
+/** Jumlah kursi KU1 dan KU2 untuk export/template: paling sedikit jumlah bawaan, lalu mengikuti template dan kursi yang sudah terisi di tahun itu. */
+async function slotCountsFor(tenantId: string, st: FormatState, format: TeamFormat, year: number): Promise<[number, number]> {
+  const out: [number, number] = [format.groups![0]!.slots, format.groups![1]!.slots];
+  const { from, to } = yearRange(year);
+  for (const n of [1, 2] as const) {
+    const tpl = st.templates.get(n)!;
+    const inTemplate = Math.max(0, ...tpl.slots.filter((x) => x.ministry.teamTypeId === st.team.id).map((x) => x.slotNo));
+    const agg = await prisma.eventAssignment.aggregate({
+      _max: { slotNo: true },
+      where: { tenantId, teamTypeId: st.team.id, personId: { not: null }, event: { deletedAt: null, status: { not: "CANCELLED" }, templateId: tpl.id, startsAt: { gte: from, lt: to } } },
+    });
+    out[n - 1] = Math.min(MAX_SLOTS, Math.max(out[n - 1]!, inTemplate, agg._max.slotNo ?? 0));
+  }
+  return out;
+}
+
+/** Format beserta keadaannya; untuk format per ibadah jumlah kolomnya disesuaikan dengan jumlah kursi tahun itu. */
+async function formatFor(tenantId: string, formatKey: string, year: number) {
+  const base = getFormat(formatKey);
+  const st0 = await inspect(tenantId, base);
+  if (!base.groups) return { format: base, st: st0 };
+  const format = withSlots(base, await slotCountsFor(tenantId, st0, base, year));
+  return { format, st: await inspect(tenantId, format) };
+}
+
+const groupsOf = (format: TeamFormat) => (format.groups ? format.groups.map((g) => ({ label: g.label, keys: format.columns.filter((c) => c.service === g.service).map((c) => c.key) })) : null);
+
 export async function exportSchedule(u: AuthUser, formatKey: string, year: number, months: number[]): Promise<ExportModel> {
-  const format = getFormat(formatKey);
-  const st = await inspect(u.tenantId, format);
+  const { format, st } = await formatFor(u.tenantId, formatKey, year);
   authorize(u, st.team);
-  const columns = [...format.columns.map((c) => ({ key: c.key, label: c.label })), ...(await scheduleExtras(u.tenantId, st, year)).map((x) => ({ key: x.key, label: x.label }))];
+  const extra = format.groups ? [] : await scheduleExtras(u.tenantId, st, year);
+  const columns = [...format.columns.map((c) => ({ key: c.key, label: c.label })), ...extra.map((x) => ({ key: x.key, label: x.label }))];
   const sel = [...new Set(months)].filter((m) => m >= 1 && m <= 12).sort((a, b) => a - b);
   if (!sel.length) throw badRequest("Pilih minimal satu bulan.");
 
@@ -400,12 +455,13 @@ export async function exportSchedule(u: AuthUser, formatKey: string, year: numbe
     where: { tenantId: u.tenantId, deletedAt: null, status: { not: "CANCELLED" }, templateId: { in: tplIds }, startsAt: { gte: from, lt: to } },
     select: { templateId: true, startsAt: true, assignments: { where: { teamTypeId: st.team.id }, select: { ministryId: true, slotNo: true, person: { select: { name: true, nickname: true } } } } },
   });
+  // tanggal → ibadah → "posisi:nomor kursi" → nama
   const byDate = new Map<string, { 1?: Map<string, string>; 2?: Map<string, string> }>();
   for (const e of events) {
     const n = e.templateId === tplIds[0] ? 1 : 2;
     const d = localParts(e.startsAt).date;
     const cur = byDate.get(d) ?? {};
-    cur[n] = new Map(e.assignments.filter((a) => a.slotNo === 1).map((a) => [a.ministryId, displayName(a.person)] as const));
+    cur[n] = new Map(e.assignments.map((a) => [`${a.ministryId}:${a.slotNo}`, displayName(a.person)] as const));
     byDate.set(d, cur);
   }
 
@@ -423,8 +479,13 @@ export async function exportSchedule(u: AuthUser, formatKey: string, year: numbe
       let differs = false;
       for (const c of columns) {
         const mid = ministryIdOf(st, c.key);
-        const a = (mid && src[1]?.get(mid)) || "";
-        const b2 = (mid && src[2]?.get(mid)) || "";
+        const fc = format.columns.find((x) => x.key === c.key);
+        if (fc?.service) { // format per ibadah: tiap kolom milik satu ibadah dan satu nomor kursi
+          cells[c.key] = (mid && src[fc.service]?.get(`${mid}:${fc.slotNo ?? 1}`)) || "";
+          continue;
+        }
+        const a = (mid && src[1]?.get(`${mid}:1`)) || "";
+        const b2 = (mid && src[2]?.get(`${mid}:1`)) || "";
         if (a && b2 && a !== b2) { cells[c.key] = `${a} / ${b2}`; differs = true; }
         else cells[c.key] = a || b2;
       }
@@ -433,19 +494,18 @@ export async function exportSchedule(u: AuthUser, formatKey: string, year: numbe
     }
     out.push({ month, name: MONTHS_ID[month - 1]!.toUpperCase(), rows });
   }
-  return { format: formatKey, title: format.title, year, columns, months: out, hasDiff };
+  return { format: formatKey, title: format.title, year, teamShort: format.teamShort, columns, groups: groupsOf(format), months: out, hasDiff };
 }
 
 // ───────── template Excel ─────────
 
-/** `filled`: isi kolom dengan petugas yang sudah dijadwalkan di tahun itu (Ibadah I; bila berbeda dengan Ibadah II, tetap yang I). */
+/** `filled`: isi kolom dengan petugas yang sudah dijadwalkan di tahun itu (format bersama: Ibadah I; bila berbeda dengan Ibadah II, tetap yang I). */
 export async function templateWorkbook(u: AuthUser, formatKey: string, year: number, filled = false): Promise<Buffer> {
-  const format = getFormat(formatKey);
-  const team = await findTeam(u.tenantId, format);
-  authorize(u, team);
   if (!Number.isInteger(year) || year < 2000 || year > 2100) throw badRequest("Tahun tidak valid.");
+  const { format, st } = await formatFor(u.tenantId, formatKey, year);
+  authorize(u, st.team);
 
-  const members = (await candidates(u.tenantId, team.id)).filter((p) => p.isMember).map((p) => displayName({ name: p.name, nickname: p.nickname }));
+  const members = (await candidates(u.tenantId, st.team.id, format.teamKind === "EBM")).filter((p) => p.isMember).map((p) => displayName({ name: p.name, nickname: p.nickname }));
   const current = new Map<string, Record<string, string>>(); // tanggal → kolom → nama
   let anyDiff = false;
   if (filled) {
@@ -458,19 +518,20 @@ export async function templateWorkbook(u: AuthUser, formatKey: string, year: num
   const cells: XCell[] = [];
   const merges: string[] = [];
   const lists: { sqref: string; formula: string }[] = [];
-  const st = await inspect(u.tenantId, format);
-  const cols = [...format.columns.map((c) => ({ key: c.key, label: c.label })), ...(await scheduleExtras(u.tenantId, st, year)).map((x) => ({ key: x.key, label: x.label }))];
+  const extra = format.groups ? [] : await scheduleExtras(u.tenantId, st, year);
+  const cols = [...format.columns.map((c) => ({ key: c.key, label: c.label })), ...extra.map((x) => ({ key: x.key, label: x.label }))];
+  const groups = groupsOf(format);
   const nc = cols.length;
   let r = 3;
   cells.push({ r: 1, c: 3, v: `${format.title} ${year}`, s: "bold" });
-  cells.push({ r: 2, c: 3, v: `Isi nama persis seperti di daftar pilihan (atau nama panggilan). Satu baris berlaku untuk Ibadah Minggu I dan II. Satu kursi satu nama.${filled ? " Terisi dari jadwal yang sudah ada." : ""}${anyDiff ? " Bila Ibadah I dan II berbeda, yang tertulis adalah petugas Ibadah I." : ""}`, s: "note" });
+  const how = format.groups ? "KU1 untuk Ibadah Minggu I, KU2 untuk Ibadah Minggu II. Satu kursi satu nama." : "Satu baris berlaku untuk Ibadah Minggu I dan II. Satu kursi satu nama.";
+  cells.push({ r: 2, c: 3, v: `Isi nama persis seperti di daftar pilihan (atau nama panggilan). ${how}${filled ? " Terisi dari jadwal yang sudah ada." : ""}${anyDiff ? " Bila Ibadah I dan II berbeda, yang tertulis adalah petugas Ibadah I." : ""}`, s: "note" });
   for (let month = 1; month <= 12; month++) {
     cells.push({ r, c: 3, v: MONTHS_ID[month - 1]!.toUpperCase(), s: "title" });
     for (let c = 4; c < 3 + nc + 1; c++) cells.push({ r, c, v: "", s: "title" });
-    merges.push(`C${r}:${String.fromCharCode(66 + nc + 1)}${r}`);
+    merges.push(`C${r}:${colLetter(3 + nc)}${r}`);
     r++;
-    cells.push({ r, c: 3, v: "TGL", s: "head" });
-    cols.forEach((c, i) => cells.push({ r, c: 4 + i, v: c.label, s: "head" }));
+    headerRow(cells, merges, r, cols, groups);
     r++;
     const first = r;
     for (let day = 1; day <= 31; day++) {
@@ -483,7 +544,7 @@ export async function templateWorkbook(u: AuthUser, formatKey: string, year: num
       for (let i = 0; i < nc; i++) cells.push({ r, c: 4 + i, v: (have && have[cols[i]!.key]) || "", s: "cell" });
       r++;
     }
-    if (list.length && r > first) lists.push({ sqref: `D${first}:${String.fromCharCode(67 + nc)}${r - 1}`, formula: `Daftar!$A$1:$A$${list.length}` });
+    if (list.length && r > first) lists.push({ sqref: `D${first}:${colLetter(3 + nc)}${r - 1}`, formula: `Daftar!$A$1:$A$${list.length}` });
     r += 2;
   }
   const main = { name: `Jadwal ${format.key.toUpperCase()} ${year}`, cols: [3, 3, 8, ...cols.map((c) => Math.max(14, c.label.length + 3))], cells, merges, lists };
@@ -494,6 +555,21 @@ export async function templateWorkbook(u: AuthUser, formatKey: string, year: num
 
 // izin tampilan tombol (dipakai halaman)
 export const canUploadSchedule = (u: AuthUser) => can(u, "assignment.write");
+
+/** Format jadwal yang boleh dipakai pengguna ini: timnya ada, dan pengguna boleh mengatur tim itu (Admin Tim dibatasi ke timnya). */
+export async function availableFormats(u: AuthUser): Promise<{ key: string; label: string; title: string; perService: boolean }[]> {
+  if (!can(u, "assignment.write")) return [];
+  const out: { key: string; label: string; title: string; perService: boolean }[] = [];
+  for (const f of Object.values(FORMATS)) {
+    try {
+      authorize(u, await findTeam(u.tenantId, f));
+      out.push({ key: f.key, label: f.teamShort, title: f.title, perService: !!f.groups });
+    } catch (e) {
+      if (!(e instanceof ApiError)) throw e; // tim belum ada atau bukan tanggung jawab pengguna: format ini tidak ditawarkan
+    }
+  }
+  return out;
+}
 
 /** Export ke Excel: satu blok per bulan, tata letak sama dengan template supaya bisa diunggah ulang. */
 export function exportWorkbook(m: ExportModel): Buffer {
@@ -506,10 +582,9 @@ export function exportWorkbook(m: ExportModel): Buffer {
   for (const mo of m.months) {
     cells.push({ r, c: 3, v: mo.name, s: "title" });
     for (let c = 4; c <= 3 + nc; c++) cells.push({ r, c, v: "", s: "title" });
-    merges.push(`C${r}:${String.fromCharCode(67 + nc)}${r}`);
+    merges.push(`C${r}:${colLetter(3 + nc)}${r}`);
     r++;
-    cells.push({ r, c: 3, v: "TGL", s: "head" });
-    m.columns.forEach((c, i) => cells.push({ r, c: 4 + i, v: c.label, s: "head" }));
+    headerRow(cells, merges, r, m.columns, m.groups);
     r++;
     for (const row of mo.rows) {
       cells.push({ r, c: 3, v: row.day, s: "center" });

@@ -8,6 +8,11 @@ const SHORT = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "O
 const FULL = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 const NOTE = "Tanda \"A / B\": petugas Ibadah Minggu I dan II berbeda (I / II).";
 
+/** Indeks kolom pertama tiap kelompok (KU1, KU2); kosong bila formatnya tidak berkelompok. */
+const groupStarts = (m: ExportModel) => (m.groups ?? []).map((g) => ({ g, i0: m.columns.findIndex((c) => c.key === g.keys[0]), n: g.keys.length }));
+/** Garis tegak di baris header hanya di batas kelompok; kolom di dalam kelompok bersatu seperti sel gabungan. */
+const headerEdge = (m: ExportModel, i: number) => !m.groups || i === 0 || i === m.columns.length || groupStarts(m).some((x) => x.i0 === i);
+
 // ───────── teks ─────────
 
 export function toText(m: ExportModel): string {
@@ -16,7 +21,11 @@ export function toText(m: ExportModel): string {
     out.push("", `*${mo.name}*`);
     for (const r of mo.rows) {
       out.push(`${r.day} ${SHORT[mo.month - 1]}`);
-      for (const c of m.columns) if (r.cells[c.key]) out.push(`- ${c.label}: ${r.cells[c.key]}`);
+      if (m.groups) {
+        for (const g of m.groups) { const names = g.keys.map((k) => r.cells[k]).filter(Boolean); if (names.length) out.push(`- ${g.label}: ${names.join(", ")}`); }
+      } else {
+        for (const c of m.columns) if (r.cells[c.key]) out.push(`- ${c.label}: ${r.cells[c.key]}`);
+      }
       if (!m.columns.some((c) => r.cells[c.key])) out.push("- (belum diisi)");
     }
   }
@@ -82,12 +91,17 @@ async function drawPage(m: ExportModel, mos: Month[], page: number, pages: numbe
     ctx.fillStyle = C.gold; ctx.fillRect(PAD, y, W - PAD * 2, headH);
     ctx.fillStyle = C.ink; ctx.font = `800 26px ${family}`;
     ctx.fillText("TGL", PAD + dateW / 2, y + headH / 2);
-    m.columns.forEach((c, i) => {
-      const x = PAD + dateW + i * colW;
-      ctx.font = `800 24px ${family}`;
-      const lines = wrapWords(ctx, c.label, colW - 16);
-      lines.forEach((l, k) => ctx.fillText(l, x + colW / 2, y + headH / 2 + (k - (lines.length - 1) / 2) * 30));
-    });
+    if (m.groups) {
+      ctx.font = `800 28px ${family}`;
+      for (const x of groupStarts(m)) ctx.fillText(x.g.label, PAD + dateW + (x.i0 + x.n / 2) * colW, y + headH / 2);
+    } else {
+      m.columns.forEach((c, i) => {
+        const x = PAD + dateW + i * colW;
+        ctx.font = `800 24px ${family}`;
+        const lines = wrapWords(ctx, c.label, colW - 16);
+        lines.forEach((l, k) => ctx.fillText(l, x + colW / 2, y + headH / 2 + (k - (lines.length - 1) / 2) * 30));
+      });
+    }
     y += headH;
 
     mo.rows.forEach((r, ri) => {
@@ -110,7 +124,7 @@ async function drawPage(m: ExportModel, mos: Month[], page: number, pages: numbe
     const bottom = y, head = top + bandH;
     ctx.strokeStyle = C.line; ctx.lineWidth = 2;
     ctx.strokeRect(PAD, top, W - PAD * 2, bottom - top);
-    for (let i = 0; i <= m.columns.length; i++) { const x = PAD + dateW + i * colW; ctx.beginPath(); ctx.moveTo(x, head); ctx.lineTo(x, bottom); ctx.stroke(); }
+    for (let i = 0; i <= m.columns.length; i++) { const x = PAD + dateW + i * colW; ctx.beginPath(); ctx.moveTo(x, headerEdge(m, i) ? head : head + headH); ctx.lineTo(x, bottom); ctx.stroke(); }
     for (let ri = 0; ri <= mo.rows.length; ri++) { const yy = head + headH + ri * rowH; ctx.beginPath(); ctx.moveTo(PAD, yy); ctx.lineTo(W - PAD, yy); ctx.stroke(); }
     ctx.beginPath(); ctx.moveTo(PAD, head); ctx.lineTo(W - PAD, head); ctx.stroke();
     y += gap;
@@ -170,15 +184,19 @@ export function buildPdf(m: ExportModel): Blob {
     const colW = (PW - M * 2 - dateW) / m.columns.length;
     rect(M, top, PW - M * 2, headH, "0.95 0.91 0.81");
     text("TGL", M + dateW / 2, top + headH / 2, 10, true);
-    m.columns.forEach((c, i) => {
-      const x = M + dateW + i * colW;
-      const words = c.label.split(" ");
-      const lines: string[] = [];
-      let cur = "";
-      for (const w of words) { const t = cur ? `${cur} ${w}` : w; if (tw(t, 9, true) <= colW - 8 || !cur) cur = t; else { lines.push(cur); cur = w; } }
-      if (cur) lines.push(cur);
-      lines.forEach((l, k) => text(l, x + colW / 2, top + headH / 2 + (k - (lines.length - 1) / 2) * 11, 9, true));
-    });
+    if (m.groups) {
+      for (const x of groupStarts(m)) text(x.g.label, M + dateW + (x.i0 + x.n / 2) * colW, top + headH / 2, 11, true);
+    } else {
+      m.columns.forEach((c, i) => {
+        const x = M + dateW + i * colW;
+        const words = c.label.split(" ");
+        const lines: string[] = [];
+        let cur = "";
+        for (const w of words) { const t = cur ? `${cur} ${w}` : w; if (tw(t, 9, true) <= colW - 8 || !cur) cur = t; else { lines.push(cur); cur = w; } }
+        if (cur) lines.push(cur);
+        lines.forEach((l, k) => text(l, x + colW / 2, top + headH / 2 + (k - (lines.length - 1) / 2) * 11, 9, true));
+      });
+    }
     mo.rows.forEach((r, ri) => {
       const y = top + headH + ri * rowH;
       if (ri % 2 === 1) rect(M, y, PW - M * 2, rowH, "0.96 0.97 0.99");
@@ -193,7 +211,7 @@ export function buildPdf(m: ExportModel): Blob {
     });
     const bottom = top + headH + rows * rowH;
     rect(M, top, PW - M * 2, bottom - top, undefined, "0.73 0.74 0.88");
-    for (let i = 0; i <= m.columns.length; i++) { const x = M + dateW + i * colW; ops.push(`0.73 0.74 0.88 RG 0.7 w ${x.toFixed(1)} ${(PH - top).toFixed(1)} m ${x.toFixed(1)} ${(PH - bottom).toFixed(1)} l S`); }
+    for (let i = 0; i <= m.columns.length; i++) { const x = M + dateW + i * colW; ops.push(`0.73 0.74 0.88 RG 0.7 w ${x.toFixed(1)} ${(PH - (headerEdge(m, i) ? top : top + headH)).toFixed(1)} m ${x.toFixed(1)} ${(PH - bottom).toFixed(1)} l S`); }
     for (let ri = 0; ri <= rows; ri++) { const y = top + headH + ri * rowH; ops.push(`0.73 0.74 0.88 RG 0.7 w ${M} ${(PH - y).toFixed(1)} m ${PW - M} ${(PH - y).toFixed(1)} l S`); }
     ops.push(`0.73 0.74 0.88 RG 0.7 w ${M} ${(PH - top - headH).toFixed(1)} m ${PW - M} ${(PH - top - headH).toFixed(1)} l S`);
     if (m.hasDiff) text(NOTE, M, bottom + 12, 8, false, "0.34 0.36 0.46", false);
