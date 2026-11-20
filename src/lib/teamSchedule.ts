@@ -34,6 +34,25 @@ function templateExtras(st: FormatState) {
   for (const t of st.templates.values()) for (const sl of t.slots) if (sl.ministry.teamTypeId === st.team.id && !known.has(sl.ministryId)) out.set(sl.ministryId, sl.ministry.name);
   return [...out.entries()].map(([id, name]) => ({ key: `m:${id}`, label: name.toUpperCase(), id }));
 }
+/**
+ * Kolom tambahan yang dinamis: posisi tim yang ada di template Ibadah Minggu, ditambah posisi mana pun yang sudah punya orang
+ * terjadwal di tahun itu (mis. posisi baru yang ditambahkan manual ke satu acara), supaya tidak ada yang hilang dari template/export.
+ */
+async function scheduleExtras(tenantId: string, st: FormatState, year: number) {
+  const base = templateExtras(st);
+  const known = new Set([...[...st.ministries.values()].filter((m) => !!m).map((m) => m!.id), ...base.map((b) => b.id)]);
+  const { from, to } = yearRange(year);
+  const seats = await prisma.eventAssignment.findMany({
+    where: {
+      tenantId, teamTypeId: st.team.id, personId: { not: null }, ministryId: { notIn: [...known] },
+      event: { deletedAt: null, status: { not: "CANCELLED" }, templateId: { in: [st.templates.get(1)!.id, st.templates.get(2)!.id] }, startsAt: { gte: from, lt: to } },
+    },
+    select: { ministry: { select: { id: true, name: true, sortOrder: true, deletedAt: true } } },
+  });
+  const byId = new Map(seats.filter((x) => !x.ministry.deletedAt).map((x) => [x.ministry.id, x.ministry] as const));
+  const dyn = [...byId.values()].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "id")).map((m) => ({ key: `m:${m.id}`, label: m.name.toUpperCase(), id: m.id }));
+  return [...base, ...dyn];
+}
 const ministryIdOf = (st: FormatState, key: string) => (key.startsWith("m:") ? key.slice(2) : st.ministries.get(key)?.id);
 
 /** Format dasar ditambah kolom pelayanan baru dari file (kunci x_…). */
@@ -371,7 +390,7 @@ export async function exportSchedule(u: AuthUser, formatKey: string, year: numbe
   const format = getFormat(formatKey);
   const st = await inspect(u.tenantId, format);
   authorize(u, st.team);
-  const columns = [...format.columns.map((c) => ({ key: c.key, label: c.label })), ...templateExtras(st).map((x) => ({ key: x.key, label: x.label }))];
+  const columns = [...format.columns.map((c) => ({ key: c.key, label: c.label })), ...(await scheduleExtras(u.tenantId, st, year)).map((x) => ({ key: x.key, label: x.label }))];
   const sel = [...new Set(months)].filter((m) => m >= 1 && m <= 12).sort((a, b) => a - b);
   if (!sel.length) throw badRequest("Pilih minimal satu bulan.");
 
@@ -440,7 +459,7 @@ export async function templateWorkbook(u: AuthUser, formatKey: string, year: num
   const merges: string[] = [];
   const lists: { sqref: string; formula: string }[] = [];
   const st = await inspect(u.tenantId, format);
-  const cols = [...format.columns.map((c) => ({ key: c.key, label: c.label })), ...templateExtras(st).map((x) => ({ key: x.key, label: x.label }))];
+  const cols = [...format.columns.map((c) => ({ key: c.key, label: c.label })), ...(await scheduleExtras(u.tenantId, st, year)).map((x) => ({ key: x.key, label: x.label }))];
   const nc = cols.length;
   let r = 3;
   cells.push({ r: 1, c: 3, v: `${format.title} ${year}`, s: "bold" });

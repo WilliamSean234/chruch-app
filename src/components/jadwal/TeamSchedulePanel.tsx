@@ -358,7 +358,15 @@ function UploadTab({ goExport }: { goExport: () => void }) {
                         return (
                           <tr key={r.date} className={i % 2 ? "bg-[#F6F7FC]" : ""}>
                             <td className="sticky left-0 whitespace-nowrap bg-inherit px-2.5 py-2 font-extrabold">{dayText(r.date)}</td>
-                            <td className="whitespace-nowrap px-2.5 py-2">{s1 === s2 ? stateChip(s1) : <>{stateChip(s1)} {stateChip(s2)}</>}</td>
+                            <td className="px-2.5 py-2">
+                              <div className="whitespace-nowrap">{s1 === s2 ? stateChip(s1) : <>{stateChip(s1)} {stateChip(s2)}</>}</div>
+                              {(() => {
+                                // kursi tim EBM yang ada orangnya tetapi tidak punya kolom di file ini: akan dihapus saat disimpan
+                                const ids = new Set(cols.map((c) => c.ministryId).filter(Boolean));
+                                const gone = ex && !ex.past && ex.status !== "CANCELLED" ? ex.seats.filter((x) => x.personId && !ids.has(x.ministryId)) : [];
+                                return gone.length ? <div className="mt-1 max-w-[190px] text-[11.5px] font-semibold leading-snug text-[#A12B2B]">hapus: {gone.map((x) => `${x.ministryName} (${x.personName})`).join(", ")}</div> : null;
+                              })()}
+                            </td>
                             {cols.map((c) => {
                               const now = cells[c.key] ? disp(people.get(cells[c.key]!)) : "";
                               const old = ex?.seats.find((s) => s.ministryId === c.ministryId && s.slotNo === 1);
