@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { prisma } from "./prisma";
 import { conflict, notFound } from "./errors";
-import { assertTransition } from "./eventStatusFlow";
+import { assertNotLocked, assertTransition } from "./eventStatusFlow";
 import { assertRoomFree, assertRoomUsable, bookRoom, personConflicts, releaseBookings, translateOverlap } from "./booking";
 import { getEvent } from "./events";
 import { localParts } from "./time";
@@ -12,6 +12,7 @@ export const cancelBody = z.object({ reason: z.string().trim().min(3, "Alasan pe
 async function load(tenantId: string, id: string) {
   const e = await prisma.event.findFirst({ where: { id, tenantId, deletedAt: null, kind: "IBADAH" } });
   if (!e) throw notFound("Acara");
+  assertNotLocked(e.startsAt);
   return e;
 }
 

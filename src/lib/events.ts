@@ -7,7 +7,7 @@ import { assertRoomFree, assertRoomUsable, bookRoom, promoteOrphanOverrides, rel
 import { isSundayPair } from "./seatRules";
 import { nextDocNumber } from "./docNumber";
 import { creatorNames } from "./creators";
-import { assertTransition, isEditable } from "./eventStatusFlow";
+import { assertNotLocked, assertTransition, isEditable, isLockedByAge } from "./eventStatusFlow";
 import { teamScope, type AuthUser } from "./rbac";
 import { pageOf, pagingQuery, resolvePaging } from "./paging";
 
@@ -57,7 +57,7 @@ type EventFull = Prisma.EventGetPayload<{ include: typeof include }>;
 
 export const toDto = (e: EventFull) => ({
   id: e.id, number: e.number, title: e.title, status: e.status, attendanceMode: e.attendanceMode,
-  theme: e.theme, padus: e.padus, bandMode: e.bandMode,
+  theme: e.theme, padus: e.padus, bandMode: e.bandMode, locked: isLockedByAge(e.startsAt),
   startsAt: e.startsAt.toISOString(), endsAt: e.endsAt.toISOString(),
   durationMin: Math.round((e.endsAt.getTime() - e.startsAt.getTime()) / 60_000),
   room: { id: e.room.id, name: e.room.name },
@@ -117,6 +117,7 @@ export async function attendanceBrief(eventId: string) {
 async function loadEditable(tenantId: string, id: string) {
   const e = await load(tenantId, id);
   if (!isEditable(e.status)) throw conflict("Acara yang sudah dibatalkan tidak bisa diubah.");
+  assertNotLocked(e.startsAt);
   return e;
 }
 

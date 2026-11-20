@@ -5,6 +5,7 @@ import { ApiError, conflict, forbidden, notFound } from "./errors";
 import { can, requirePermission, type AuthUser } from "./rbac";
 import { nameKey } from "./names";
 import { createPerson } from "./persons";
+import { attendanceWriteBlock } from "./eventStatusFlow";
 
 export const summaryBody = z.object({ total: z.number().int().min(0).max(100000), note: z.string().trim().max(300).nullish() });
 export const checkinBody = z.object({ personId: z.string().uuid() });
@@ -14,14 +15,13 @@ export const batchBody = z.object({
 });
 export const guestBody = z.object({ name: z.string().trim().min(1).max(120), gender: z.enum(["L", "P"]), confirmDuplicate: z.boolean().optional() });
 
-const HOUR = 3_600_000;
-
 /**
  * Aturan akses kehadiran:
  * - perlu permission attendance.write
  * - hanya acara PUBLISHED yang bisa dicatat
  * - Superadmin/Penjadwal bebas; Petugas Absen hanya untuk acara tempat ia ditugaskan,
- *   dan hanya dari 1 jam sebelum acara sampai 7 hari sesudahnya.
+ *   (Penjadwal dan Superadmin boleh semua acara)
+ * - diisi/diubah mulai tanggal ibadah sampai 1 bulan sesudahnya (lihat attendanceWriteBlock)
  */
 async function access(u: AuthUser, eventId: string, write: boolean) {
   requirePermission(u, "attendance.write");
@@ -31,10 +31,13 @@ async function access(u: AuthUser, eventId: string, write: boolean) {
   if (!can(u, "event.write")) {
     const assigned = u.personId ? await prisma.eventAssignment.count({ where: { eventId, personId: u.personId } }) : 0;
     if (!assigned) throw forbidden("Anda hanya boleh mencatat kehadiran acara tempat Anda ditugaskan.");
-    const now = Date.now();
-    if (write && (now < e.startsAt.getTime() - HOUR || now > e.endsAt.getTime() + 7 * 24 * HOUR)) {
-      throw conflict("Pencatatan kehadiran dibuka 1 jam sebelum acara sampai 7 hari sesudahnya.");
-    }
+  }
+  if (write) {
+    const hasData = e.attendanceMode === "COUNT"
+      ? (await prisma.eventAttendanceSummary.count({ where: { eventId } })) > 0
+      : (await prisma.eventAttendance.count({ where: { eventId } })) > 0;
+    const block = attendanceWriteBlock(e.startsAt, hasData);
+    if (block) throw conflict(block);
   }
   return e;
 }

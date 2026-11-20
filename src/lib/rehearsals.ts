@@ -3,7 +3,7 @@ import { prisma } from "./prisma";
 import { ApiError, conflict, notFound } from "./errors";
 import { addMinutes, DATE_RE, localParts, TIME_RE, zonedToUtc } from "./time";
 import { assertRoomFree, assertRoomUsable, bookRoom, personConflicts, promoteOrphanOverrides, rangesOverlap, releaseBookings, translateOverlap, type PersonConflict, type Range } from "./booking";
-import { isEditable } from "./eventStatusFlow";
+import { assertNotLocked, isEditable } from "./eventStatusFlow";
 import { audit } from "./audit";
 import { judgePair } from "./seatRules";
 import { can, requirePermission, requireTeamAccess, teamScope, type AuthUser } from "./rbac";
@@ -26,6 +26,7 @@ async function loadEvent(tenantId: string, eventId: string) {
   const e = await prisma.event.findFirst({ where: { id: eventId, tenantId, deletedAt: null, kind: "IBADAH" } });
   if (!e) throw notFound("Acara");
   if (!isEditable(e.status)) throw conflict("Acara yang sudah dibatalkan tidak bisa diubah.");
+  assertNotLocked(e.startsAt);
   return e;
 }
 

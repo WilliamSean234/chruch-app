@@ -5,6 +5,7 @@ import { can, requirePermission } from "@/lib/rbac";
 import { canSeeDrafts } from "@/lib/calendar";
 import { attendanceBrief, eventUpdateBody, getEvent, updateEvent } from "@/lib/events";
 import { audit } from "@/lib/audit";
+import { attendanceWriteBlock } from "@/lib/eventStatusFlow";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -15,7 +16,9 @@ export const GET = handle(async (req: Request, { params }: Ctx) => {
   if (e.status === "DRAFT" && !canSeeDrafts(u)) throw notFound("Acara"); // draf belum untuk umum
   // jumlah kehadiran hanya untuk yang boleh mencatat atau mengatur acara
   const attendance = can(u, "attendance.write") || can(u, "event.write") ? await attendanceBrief(e.id) : null;
-  return NextResponse.json({ ...e, attendance });
+  // attendanceOpen: boleh mengisi/mengubah kehadiran sekarang (acara terbit + aturan tanggal)
+  const attendanceOpen = e.status === "PUBLISHED" && attendanceWriteBlock(new Date(e.startsAt), !!attendance) === null;
+  return NextResponse.json({ ...e, attendance, attendanceOpen });
 });
 
 export const PATCH = handle(async (req: Request, { params }: Ctx) => {

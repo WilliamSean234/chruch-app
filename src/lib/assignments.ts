@@ -3,7 +3,7 @@ import { prisma } from "./prisma";
 import { ApiError, badRequest, conflict, notFound } from "./errors";
 import { personConflicts, promoteOrphanOverrides, rangesOverlap, releaseBookings, translateOverlap, type PersonConflict, type Range } from "./booking";
 import { ebmOutsideWarning, judgePair, teamKind, type OutsideSeat } from "./seatRules";
-import { isEditable } from "./eventStatusFlow";
+import { assertNotLocked, isEditable, isLockedByAge } from "./eventStatusFlow";
 import { audit } from "./audit";
 import { findPairEvent, getEvent } from "./events";
 import { can, requirePermission, requireTeamAccess, type AuthUser } from "./rbac";
@@ -89,6 +89,7 @@ export async function assignPerson(u: AuthUser, eventId: string, assignmentId: s
 export async function assignCore(u: AuthUser, eventId: string, assignmentId: string, body: z.infer<typeof assignBody>, opts: { mirror?: boolean } = {}): Promise<{ warnings: string[] }> {
   const seat = await loadSeat(u, eventId, assignmentId);
   if (!isEditable(seat.event.status)) throw conflict("Acara yang sudah dibatalkan tidak bisa diubah.");
+  assertNotLocked(seat.event.startsAt);
   if (body.personId !== null && seat.event.bandMode === "NO_BAND" && seat.ministry.bandOnly) throw conflict(`Ibadah ini No Band, jadi posisi ${seat.ministry.name} tidak dipakai. Ubah ke Band dulu bila perlu.`);
 
   if (body.personId === null) {
@@ -170,7 +171,7 @@ async function mirrorToPair(u: AuthUser, seat: Awaited<ReturnType<typeof loadSea
   const before = seat.personId; // isi kursi ini sebelum diubah
   if ((person?.id ?? null) === before) return [];
   const pair = await findPairEvent(u.tenantId, seat.event);
-  if (!pair || !isEditable(pair.status)) return [];
+  if (!pair || !isEditable(pair.status) || isLockedByAge(pair.startsAt)) return [];
   const twin = pair.assignments.find((a) => a.ministryId === seat.ministryId && a.slotNo === seat.slotNo);
   if (!twin || twin.personId !== before) return []; // tidak ada kursi kembar, atau sudah dibedakan
   try {
@@ -266,6 +267,7 @@ export async function copyPersonnel(u: AuthUser, targetEventId: string, sourceEv
   ]);
   if (!target || !source) throw notFound("Acara");
   if (!isEditable(target.status)) throw conflict("Acara yang sudah dibatalkan tidak bisa diubah.");
+  assertNotLocked(target.startsAt);
 
   const from = new Map(source.assignments.filter((a) => a.personId).map((a) => [`${a.ministryId}:${a.slotNo}`, a]));
   let filled = 0;

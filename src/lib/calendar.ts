@@ -4,6 +4,7 @@ import { creatorNames } from "./creators";
 import { addMinutes, zonedToUtc } from "./time";
 import { can, type AuthUser } from "./rbac";
 import { listMeetings } from "./meetings";
+import { attendanceWriteBlock } from "./eventStatusFlow";
 import { canSeeMeetingSchedule } from "./groups";
 
 /** Hanya penjadwal yang boleh melihat acara DRAFT; semua orang lain hanya melihat yang sudah diterbitkan. */
@@ -35,7 +36,7 @@ export async function listCalendar(u: AuthUser, q: CalendarQuery) {
       status: q.status ?? (drafts ? (q.cancelled && canSeeCancelled(u) ? undefined : { not: "CANCELLED" }) : "PUBLISHED"),
       ...(Object.keys(assignmentFilter).length ? { assignments: { some: assignmentFilter } } : {}),
     },
-    include: { room: true, teams: { include: { teamType: true } }, assignments: { include: { ministry: true } } },
+    include: { room: true, teams: { include: { teamType: true } }, assignments: { include: { ministry: true } }, attendanceSummary: { select: { id: true } }, attendances: { select: { id: true }, take: 1 } },
     orderBy: { startsAt: "asc" },
     take: 500,
   });
@@ -95,12 +96,11 @@ export async function listCalendar(u: AuthUser, q: CalendarQuery) {
   };
 }
 
-/** Boleh mencatat kehadiran acara ini? Sama dengan aturan di lib/attendance: izin, acara terbit, dan jendela waktunya. */
-function canRecordAttendance(u: AuthUser, e: { kind: string; status: string; startsAt: Date; endsAt: Date }) {
+/** Boleh mencatat kehadiran acara ini? Sama dengan aturan di lib/attendance: izin, acara terbit, dan aturan tanggal (pertama hanya pada hari ibadah, ubah sampai 1 bulan). */
+function canRecordAttendance(u: AuthUser, e: { kind: string; status: string; startsAt: Date; attendanceSummary?: { id: string } | null; attendances?: { id: string }[] }) {
   if (!can(u, "attendance.write") || e.kind !== "IBADAH" || e.status !== "PUBLISHED") return false;
-  if (can(u, "event.write")) return true;
-  const now = Date.now();
-  return now >= e.startsAt.getTime() - 3_600_000 && now <= e.endsAt.getTime() + 7 * 24 * 3_600_000;
+  const hasData = !!e.attendanceSummary || (e.attendances?.length ?? 0) > 0;
+  return attendanceWriteBlock(e.startsAt, hasData) === null;
 }
 
 /** "Jadwal saya": tugas dan latihan wajib milik orang yang terhubung ke akun ini. */
@@ -113,7 +113,7 @@ export async function mySchedule(u: AuthUser, range: { from?: string; to?: strin
       tenantId: u.tenantId, personId: u.personId,
       event: { deletedAt: null, startsAt: { gte: from, lte: to }, status: canSeeDrafts(u) ? { not: "CANCELLED" } : "PUBLISHED" },
     },
-    include: { ministry: true, event: { include: { room: true, rehearsals: { where: { deletedAt: null }, include: { room: true }, orderBy: { seq: "asc" } } } } },
+    include: { ministry: true, event: { include: { room: true, attendanceSummary: { select: { id: true } }, attendances: { select: { id: true }, take: 1 }, rehearsals: { where: { deletedAt: null }, include: { room: true }, orderBy: { seq: "asc" } } } } },
     orderBy: { event: { startsAt: "asc" } },
   });
   return {

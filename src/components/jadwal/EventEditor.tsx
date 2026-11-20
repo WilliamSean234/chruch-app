@@ -16,7 +16,7 @@ type Seat = {
 };
 type Detail = {
   createdBy: string | null; createdAt: string;
-  id: string; number: string; title: string; status: string; attendanceMode: string; theme: string | null; padus: string | null; bandMode: "BAND" | "NO_BAND"; attendance?: { mode: "COUNT" | "NAMES"; total: number; note: string | null; recordedAt: string | null } | null; startsAt: string; endsAt: string; durationMin: number;
+  id: string; number: string; title: string; status: string; attendanceMode: string; theme: string | null; padus: string | null; bandMode: "BAND" | "NO_BAND"; locked?: boolean; attendanceOpen?: boolean; attendance?: { mode: "COUNT" | "NAMES"; total: number; note: string | null; recordedAt: string | null } | null; startsAt: string; endsAt: string; durationMin: number;
   room: { id: string; name: string }; teams: { teamTypeId: string; name: string }[]; seats: Seat[];
   /** Ibadah pasangan di hari yang sama (Minggu 1 dan 2): personelnya biasanya sama. */
   pair: { id: string; number: string; title: string; startsAt: string; filled: number } | null;
@@ -64,7 +64,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
     callApi("GET", "/api/v1/lookups/rooms").then((r) => r.ok && setRooms(r.data.items));
   }, []);
 
-  const editable = !!d && d.status !== "CANCELLED";
+  const editable = !!d && d.status !== "CANCELLED" && !d.locked;
   const infoDirty = JSON.stringify(f) !== JSON.stringify(base);
   const seatEditable = (s: Seat) => editable && perms.assign && (perms.scope === null || perms.scope.includes(s.teamTypeId));
 
@@ -269,6 +269,10 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
         </div>
       )}
 
+      {d.locked && (
+        <div role="status" className="rounded-2xl border border-[#EAD9AE] bg-[#FFFBF0] px-4 py-3 text-sm font-semibold text-[#6F4304]">Ibadah ini sudah lewat 2 bulan, jadi hanya bisa dilihat dan tidak bisa diubah lagi.</div>
+      )}
+
       <div className="flex flex-wrap items-start gap-5">
         {/* Kiri */}
         <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-5">
@@ -316,7 +320,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
               <div className="flex flex-wrap items-center gap-3">
                 <SectionTitle>Kehadiran</SectionTitle>
                 <span className="flex-1" />
-                {perms.editEvent && d.status === "PUBLISHED" && <Link href={`/hadir/${d.id}`} className={btnGhost}>{d.attendance ? "Ubah kehadiran" : "Isi kehadiran"}</Link>}
+                {perms.editEvent && d.attendanceOpen && <Link href={`/hadir/${d.id}`} className={btnGhost}>{d.attendance ? "Ubah kehadiran" : "Isi kehadiran"}</Link>}
               </div>
               {d.attendance ? (
                 <p className="mt-2 text-sm font-semibold">
@@ -325,6 +329,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
                   {d.attendance.note && <span className="mt-1 block text-xs font-medium text-[var(--ink-2)]">Catatan: {d.attendance.note}</span>}
                 </p>
               ) : <p className="mt-2 text-sm font-medium text-[var(--ink-2)]">Belum ada kehadiran yang dicatat.</p>}
+              <p className="mt-2 text-xs font-semibold text-[var(--ink-2)]">Bisa diisi atau diubah mulai tanggal ibadah sampai 1 bulan sesudahnya.</p>
             </section>
           )}
 
