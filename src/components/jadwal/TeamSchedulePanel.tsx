@@ -497,7 +497,7 @@ function ExportTab() {
           <p className="mt-1 text-sm font-medium text-[var(--ink-2)]">Sumbernya adalah jadwal acara saat ini, jadi perubahan manual ikut tampil. Nama memakai nama panggilan bila ada.</p>
           <div className="mt-3 flex flex-wrap gap-2.5">
             {canShareFiles && <button type="button" className={btnPrimary} disabled={busy === "img"} onClick={() => images("share")}>{busy === "img" ? "Membuat gambar…" : "Bagikan gambar"}</button>}
-            <button type="button" className={canShareFiles ? btnGhost : btnPrimary} disabled={busy === "img"} onClick={() => images("download")}>{busy === "img" && !canShareFiles ? "Membuat gambar…" : model.months.length > 1 ? `Unduh ${model.months.length} gambar` : "Unduh gambar"}</button>
+            <button type="button" className={canShareFiles ? btnGhost : btnPrimary} disabled={busy === "img"} onClick={() => images("download")}>{busy === "img" && !canShareFiles ? "Membuat gambar…" : "Unduh gambar"}</button>
             <button type="button" className={btnGhost} onClick={pdf}>Unduh PDF</button>
             <button type="button" className={btnGhost} onClick={copyText}>Salin teks WhatsApp</button>
             <a className={`${btnGhost} inline-flex items-center`} href={`/api/v1/team-schedule/${FORMAT}/export?year=${year}&months=${monthsParam}&as=xlsx`}>Unduh Excel</a>

@@ -45,72 +45,93 @@ function wrapWords(ctx: CanvasRenderingContext2D, text: string, maxW: number): s
   return out;
 }
 
-async function drawMonth(m: ExportModel, mo: Month): Promise<Blob> {
+const PER_IMAGE = 4; // jumlah bulan dalam satu gambar
+const APP_NAME = "Penjadwalan Elyon App";
+const today = () => { const d = new Date(); return `${d.getDate()} ${FULL[d.getMonth()]} ${d.getFullYear()}`; };
+const footerText = (page: number, pages: number) => `Dibuat dengan ${APP_NAME} · ${today()} · Halaman ${page}/${pages}`;
+
+async function drawPage(m: ExportModel, mos: Month[], page: number, pages: number): Promise<Blob> {
   const family = getComputedStyle(document.body).fontFamily || "system-ui, sans-serif";
   try { await Promise.all([600, 700, 800].map((w) => document.fonts.load(`${w} 28px ${family}`))); await document.fonts.ready; } catch { /* huruf cadangan */ }
 
-  const W = 1600, PAD = 44, dateW = 130, rowH = 66, headH = 96, titleH = 150;
+  const W = 1600, PAD = 44, dateW = 130, rowH = 60, headH = 84, bandH = 54, gap = 30, titleH = 130, footH = 70;
   const colW = (W - PAD * 2 - dateW) / m.columns.length;
-  const foot = m.hasDiff ? 64 : 36;
-  const H = titleH + headH + mo.rows.length * rowH + foot + 20;
+  const noteH = m.hasDiff ? 34 : 0;
+  const H = titleH + mos.reduce((n, mo) => n + bandH + headH + mo.rows.length * rowH + gap, 0) + noteH + footH;
   const cv = document.createElement("canvas");
   cv.width = W; cv.height = H;
   const ctx = cv.getContext("2d")!;
   ctx.fillStyle = "#FFFFFF"; ctx.fillRect(0, 0, W, H);
-
   ctx.textBaseline = "middle"; ctx.textAlign = "center";
-  ctx.fillStyle = C.indigo; ctx.fillRect(PAD, 30, W - PAD * 2, 90);
+
+  // judul halaman
+  ctx.fillStyle = C.indigo; ctx.fillRect(PAD, 30, W - PAD * 2, 84);
   ctx.fillStyle = "#FFFFFF"; ctx.font = `800 40px ${family}`;
   ctx.fillText(`${m.title} ${m.year}`, W / 2, 62);
-  ctx.font = `700 28px ${family}`; ctx.fillText(mo.name, W / 2, 98);
+  const period = mos.length > 1 ? `${mos[0]!.name} – ${mos[mos.length - 1]!.name}` : mos[0]!.name;
+  ctx.font = `700 24px ${family}`; ctx.fillText(period, W / 2, 98);
 
   let y = titleH;
-  ctx.fillStyle = C.gold; ctx.fillRect(PAD, y, W - PAD * 2, headH);
-  ctx.strokeStyle = C.line; ctx.lineWidth = 2;
-  ctx.fillStyle = C.ink; ctx.font = `800 26px ${family}`;
-  ctx.fillText("TGL", PAD + dateW / 2, y + headH / 2);
-  m.columns.forEach((c, i) => {
-    const x = PAD + dateW + i * colW;
-    ctx.font = `800 24px ${family}`;
-    const lines = wrapWords(ctx, c.label, colW - 16);
-    lines.forEach((l, k) => ctx.fillText(l, x + colW / 2, y + headH / 2 + (k - (lines.length - 1) / 2) * 30));
-  });
-  y += headH;
+  for (const mo of mos) {
+    const top = y;
+    ctx.fillStyle = "#4B52C4"; ctx.fillRect(PAD, y, W - PAD * 2, bandH);
+    ctx.fillStyle = "#FFFFFF"; ctx.font = `800 28px ${family}`; ctx.textAlign = "center";
+    ctx.fillText(mo.name, W / 2, y + bandH / 2);
+    y += bandH;
 
-  mo.rows.forEach((r, ri) => {
-    if (ri % 2 === 1) { ctx.fillStyle = C.zebra; ctx.fillRect(PAD, y, W - PAD * 2, rowH); }
-    ctx.fillStyle = C.ink; ctx.font = `800 30px ${family}`;
-    ctx.fillText(String(r.day), PAD + dateW / 2, y + rowH / 2);
+    ctx.fillStyle = C.gold; ctx.fillRect(PAD, y, W - PAD * 2, headH);
+    ctx.fillStyle = C.ink; ctx.font = `800 26px ${family}`;
+    ctx.fillText("TGL", PAD + dateW / 2, y + headH / 2);
     m.columns.forEach((c, i) => {
       const x = PAD + dateW + i * colW;
-      const t = r.cells[c.key] ?? "";
-      if (!t) return;
-      const diff = t.includes(" / ");
-      if (diff) { ctx.fillStyle = C.diff; ctx.fillRect(x + 1, y + 1, colW - 2, rowH - 2); }
-      ctx.fillStyle = C.ink;
-      const size = fit(ctx, t, colW - 16, 27, 600, family);
-      ctx.fillText(t, x + colW / 2, y + rowH / 2);
-      void size;
+      ctx.font = `800 24px ${family}`;
+      const lines = wrapWords(ctx, c.label, colW - 16);
+      lines.forEach((l, k) => ctx.fillText(l, x + colW / 2, y + headH / 2 + (k - (lines.length - 1) / 2) * 30));
     });
-    y += rowH;
-  });
+    y += headH;
 
-  // garis tabel
-  const top = titleH, bottom = y;
-  ctx.strokeStyle = C.line; ctx.lineWidth = 2;
-  ctx.strokeRect(PAD, top, W - PAD * 2, bottom - top);
-  for (let i = 0; i <= m.columns.length; i++) { const x = PAD + dateW + i * colW; ctx.beginPath(); ctx.moveTo(i === 0 ? x : x, top); ctx.lineTo(x, bottom); ctx.stroke(); }
-  for (let ri = 0; ri <= mo.rows.length; ri++) { const yy = top + headH + ri * rowH; ctx.beginPath(); ctx.moveTo(PAD, yy); ctx.lineTo(W - PAD, yy); ctx.stroke(); }
-  ctx.beginPath(); ctx.moveTo(PAD, top + headH); ctx.lineTo(W - PAD, top + headH); ctx.stroke();
+    mo.rows.forEach((r, ri) => {
+      if (ri % 2 === 1) { ctx.fillStyle = C.zebra; ctx.fillRect(PAD, y, W - PAD * 2, rowH); }
+      ctx.fillStyle = C.ink; ctx.font = `800 30px ${family}`;
+      ctx.fillText(String(r.day), PAD + dateW / 2, y + rowH / 2);
+      m.columns.forEach((c, i) => {
+        const x = PAD + dateW + i * colW;
+        const t = r.cells[c.key] ?? "";
+        if (!t) return;
+        if (t.includes(" / ")) { ctx.fillStyle = C.diff; ctx.fillRect(x + 1, y + 1, colW - 2, rowH - 2); }
+        ctx.fillStyle = C.ink;
+        fit(ctx, t, colW - 16, 27, 600, family);
+        ctx.fillText(t, x + colW / 2, y + rowH / 2);
+      });
+      y += rowH;
+    });
+
+    // garis tabel bulan ini
+    const bottom = y, head = top + bandH;
+    ctx.strokeStyle = C.line; ctx.lineWidth = 2;
+    ctx.strokeRect(PAD, top, W - PAD * 2, bottom - top);
+    for (let i = 0; i <= m.columns.length; i++) { const x = PAD + dateW + i * colW; ctx.beginPath(); ctx.moveTo(x, head); ctx.lineTo(x, bottom); ctx.stroke(); }
+    for (let ri = 0; ri <= mo.rows.length; ri++) { const yy = head + headH + ri * rowH; ctx.beginPath(); ctx.moveTo(PAD, yy); ctx.lineTo(W - PAD, yy); ctx.stroke(); }
+    ctx.beginPath(); ctx.moveTo(PAD, head); ctx.lineTo(W - PAD, head); ctx.stroke();
+    y += gap;
+  }
 
   ctx.textAlign = "left"; ctx.fillStyle = C.muted; ctx.font = `600 22px ${family}`;
-  if (m.hasDiff) ctx.fillText(NOTE, PAD, y + 28);
+  if (m.hasDiff) ctx.fillText(NOTE, PAD, y - gap + 30);
+  ctx.textAlign = "center"; ctx.font = `600 21px ${family}`;
+  ctx.fillText(footerText(page, pages), W / 2, H - footH / 2 + 4);
   return await new Promise<Blob>((res, rej) => cv.toBlob((b) => (b ? res(b) : rej(new Error("Gagal membuat gambar."))), "image/png"));
 }
 
+/** Beberapa bulan digabung ke satu gambar (maks 4 per gambar), jadi 12 bulan = 3 gambar. */
 export async function renderPngs(m: ExportModel): Promise<{ name: string; blob: Blob }[]> {
+  const chunks: Month[][] = [];
+  for (let i = 0; i < m.months.length; i += PER_IMAGE) chunks.push(m.months.slice(i, i + PER_IMAGE));
   const out: { name: string; blob: Blob }[] = [];
-  for (const mo of m.months) out.push({ name: `jadwal-${m.format}-${m.year}-${String(mo.month).padStart(2, "0")}-${FULL[mo.month - 1]!.toLowerCase()}.png`, blob: await drawMonth(m, mo) });
+  for (const [i, ch] of chunks.entries()) {
+    const span = ch.length > 1 ? `${FULL[ch[0]!.month - 1]!.toLowerCase()}-${FULL[ch[ch.length - 1]!.month - 1]!.toLowerCase()}` : FULL[ch[0]!.month - 1]!.toLowerCase();
+    out.push({ name: `jadwal-${m.format}-${m.year}-${span}${chunks.length > 1 ? `-hal${i + 1}dari${chunks.length}` : ""}.png`, blob: await drawPage(m, ch, i + 1, chunks.length) });
+  }
   return out;
 }
 
@@ -125,7 +146,7 @@ const tw = (s: string, size: number, bold = false) => ([...s].reduce((n, ch) => 
 export function buildPdf(m: ExportModel): Blob {
   const PW = 842, PH = 595, M = 36;
   const pages: string[] = [];
-  for (const mo of m.months) {
+  for (const [pi, mo] of m.months.entries()) {
     const ops: string[] = [];
     const rect = (x: number, y: number, w: number, h: number, fill?: string, stroke?: string) => {
       if (fill) ops.push(`${fill} rg ${x.toFixed(1)} ${(PH - y - h).toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)} re f`);
@@ -176,6 +197,7 @@ export function buildPdf(m: ExportModel): Blob {
     for (let ri = 0; ri <= rows; ri++) { const y = top + headH + ri * rowH; ops.push(`0.73 0.74 0.88 RG 0.7 w ${M} ${(PH - y).toFixed(1)} m ${PW - M} ${(PH - y).toFixed(1)} l S`); }
     ops.push(`0.73 0.74 0.88 RG 0.7 w ${M} ${(PH - top - headH).toFixed(1)} m ${PW - M} ${(PH - top - headH).toFixed(1)} l S`);
     if (m.hasDiff) text(NOTE, M, bottom + 12, 8, false, "0.34 0.36 0.46", false);
+    text(footerText(pi + 1, m.months.length), PW / 2, PH - 20, 8, false, "0.34 0.36 0.46");
     pages.push(ops.join("\n"));
   }
 
