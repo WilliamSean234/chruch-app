@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { askConfirm } from "@/components/ui/Confirm";
-import Modal, { Field } from "@/components/master/Modal";
+import Modal, { confirmDiscard, Field } from "@/components/master/Modal";
 import NewPersonInline from "@/components/master/NewPersonInline";
 import { btnGhost, btnPrimary, callApi, errMsg, inputCls } from "@/components/jadwal/api";
 import { FilterBar, FSearch, FSelect } from "@/components/ui/Filters";
@@ -275,6 +275,10 @@ function GroupDialog({ create, detail, onClose, onDone }: { create: boolean; det
   const [pct, setPct] = useState(String(detail?.quorumMin ?? 50));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const sig = JSON.stringify([name, useQuorum, pct]);
+  const [initialSig] = useState(sig);
+  const dirty = sig !== initialSig;
+  const cancel = async () => { if (await confirmDiscard(dirty)) onClose(); };
 
   const save = async () => {
     setBusy(true); setErr("");
@@ -292,10 +296,10 @@ function GroupDialog({ create, detail, onClose, onDone }: { create: boolean; det
   };
 
   return (
-    <Modal title={create ? "Kelompok baru" : "Ubah nama & kuorum"} onClose={onClose}
+    <Modal title={create ? "Kelompok baru" : "Ubah nama & kuorum"} onClose={onClose} dirty={dirty}
       footer={<>
         {!create && <button type="button" onClick={remove} disabled={busy} className="mr-auto h-11 rounded-xl px-3 text-sm font-bold text-[#9b1c1c] hover:bg-[#fdf1f1] disabled:opacity-50">Hapus kelompok</button>}
-        <button type="button" onClick={onClose} className={btnGhost}>Batal</button>
+        <button type="button" onClick={() => void cancel()} className={btnGhost}>Batal</button>
         <button type="button" onClick={save} disabled={busy || !name.trim()} className={btnPrimary}>{busy ? "Menyimpan…" : "Simpan"}</button>
       </>}>
       <div className="flex flex-col gap-4">
@@ -326,6 +330,10 @@ function PositionDialog({ groupId, pos, onClose, onDone }: { groupId: string; po
   const [caps, setCaps] = useState({ canSchedule: pos?.canSchedule ?? false, canWriteMinutes: pos?.canWriteMinutes ?? false, canFinalize: pos?.canFinalize ?? false, canManageMembers: pos?.canManageMembers ?? false });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const sig = JSON.stringify([name, caps]);
+  const [initialSig] = useState(sig);
+  const dirty = sig !== initialSig;
+  const cancel = async () => { if (await confirmDiscard(dirty)) onClose(); };
 
   const save = async () => {
     setBusy(true); setErr("");
@@ -343,10 +351,10 @@ function PositionDialog({ groupId, pos, onClose, onDone }: { groupId: string; po
   };
 
   return (
-    <Modal title={pos ? `Ubah jabatan ${pos.name}` : "Jabatan baru"} onClose={onClose}
+    <Modal title={pos ? `Ubah jabatan ${pos.name}` : "Jabatan baru"} onClose={onClose} dirty={dirty}
       footer={<>
         {pos && <button type="button" onClick={remove} disabled={busy} className="mr-auto h-11 rounded-xl px-3 text-sm font-bold text-[#9b1c1c] hover:bg-[#fdf1f1] disabled:opacity-50">Hapus jabatan</button>}
-        <button type="button" onClick={onClose} className={btnGhost}>Batal</button>
+        <button type="button" onClick={() => void cancel()} className={btnGhost}>Batal</button>
         <button type="button" onClick={save} disabled={busy || !name.trim()} className={btnPrimary}>{busy ? "Menyimpan…" : "Simpan"}</button>
       </>}>
       <div className="flex flex-col gap-4">

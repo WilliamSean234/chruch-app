@@ -8,7 +8,7 @@ import { Alert, FilterBar, FSearch, FSelect, listCard } from "@/components/ui/Fi
 import Pager from "@/components/ui/Pager";
 import { useDebounced, usePagedList } from "@/components/ui/usePagedList";
 import { floorText } from "@/lib/ui";
-import Modal, { Field } from "./Modal";
+import Modal, { confirmDiscard, Field } from "./Modal";
 
 export type RoomRow = { id: string; name: string; floor: number | null; isActive: boolean; upcoming: number };
 type Options = { floors: number[]; hasNoFloor: boolean };
@@ -20,6 +20,11 @@ export function RoomDialog({ room, onClose, onSaved }: { room: RoomRow | null; o
   const [touched, setTouched] = useState(!!room);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  const sig = JSON.stringify([name, floor]);
+  const [initialSig] = useState(sig);
+  const dirty = sig !== initialSig;
+  const cancel = async () => { if (await confirmDiscard(dirty)) onClose(); };
 
   // kode seperti 401A / 301B: angka pertama = lantai (hanya mengisi bila lantai belum disentuh)
   function onName(v: string) {
@@ -40,9 +45,9 @@ export function RoomDialog({ room, onClose, onSaved }: { room: RoomRow | null; o
   }
 
   return (
-    <Modal title={room ? "Ubah ruangan" : "Ruangan baru"} onClose={onClose} footer={
+    <Modal title={room ? "Ubah ruangan" : "Ruangan baru"} onClose={onClose} dirty={dirty} footer={
       <>
-        <button type="button" className={btnGhost} onClick={onClose}>Batal</button>
+        <button type="button" className={btnGhost} onClick={() => void cancel()}>Batal</button>
         <button type="button" className={btnPrimary} disabled={busy} onClick={save}>{busy ? "Menyimpan…" : "Simpan"}</button>
       </>
     }>

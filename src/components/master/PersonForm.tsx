@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { askConfirm } from "@/components/ui/Confirm";
-import Modal, { Field } from "./Modal";
+import Modal, { confirmDiscard, Field } from "./Modal";
 import PasswordField, { genPassword, IssuedPassword } from "./PasswordField";
 import { btnGhost, btnPrimary, callApi, errMsg, inputCls } from "@/components/jadwal/api";
 import { ROLE_LABEL } from "@/lib/ui";
@@ -40,6 +40,11 @@ export default function PersonForm({ person, lookups, scope, canAccount, isSuper
   const [error, setError] = useState("");
   const [dups, setDups] = useState<Dup[]>([]);
 
+  const sig = JSON.stringify([name, title, nickname, aliasText, gender, birth, positionId, cgId, origin, church, [...comm].sort(), [...mins].sort()]);
+  const [initialSig] = useState(sig);
+  const dirty = sig !== initialSig; // ada isian yang belum disimpan
+  const cancel = async () => { if (await confirmDiscard(dirty)) onClose(); };
+
   const flip = (set: Set<string>, id: string, fn: (s: Set<string>) => void) => { const n = new Set(set); if (n.has(id)) n.delete(id); else n.add(id); fn(n); };
   const teamOpen = (teamId: string) => scope === null || scope.includes(teamId);
 
@@ -70,10 +75,10 @@ export default function PersonForm({ person, lookups, scope, canAccount, isSuper
   }
 
   return (
-    <Modal wide title={person ? `Ubah ${person.name}` : "Tambah orang"} onClose={onClose} footer={
+    <Modal wide title={person ? `Ubah ${person.name}` : "Tambah orang"} onClose={onClose} dirty={dirty} footer={
       <>
         {person && isSuper && <button type="button" onClick={remove} disabled={busy} className="mr-auto rounded-xl px-3 py-2 text-sm font-bold text-[#9B1C1C] hover:bg-[#FFF5F5]">Hapus orang</button>}
-        <button type="button" className={btnGhost} onClick={onClose}>Batal</button>
+        <button type="button" className={btnGhost} onClick={() => void cancel()}>Batal</button>
         <button type="button" className={btnPrimary} disabled={busy} onClick={() => save()}>{busy ? "Menyimpan…" : "Simpan"}</button>
       </>
     }>
