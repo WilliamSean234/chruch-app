@@ -11,6 +11,7 @@ import { askConfirm } from "@/components/ui/Confirm";
 import { showToast } from "@/components/ui/Toast";
 import MembershipChips from "@/components/ui/MembershipChips";
 import Pager from "@/components/ui/Pager";
+import { CompactList, CompactRow, Detail, useOpenRows } from "@/components/ui/CompactList";
 import { useDebounced, usePagedList } from "@/components/ui/usePagedList";
 import { initials, ROLE_LABEL } from "@/lib/ui";
 
@@ -61,6 +62,8 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
   const [ageMin, setAgeMin] = useState("");
   const [ageMax, setAgeMax] = useState("");
   const [selId, setSelId] = useState<string | null>(null);
+  const rows = useOpenRows(); // HP: baris orang yang dibuka
+  const [sheetId, setSheetId] = useState<string | null>(null); // HP: detail orang dibuka sebagai dialog
   const [form, setForm] = useState<{ person: PersonDto | null } | null>(null);
   const [manage, setManage] = useState<null | "ministry" | keyof typeof PICKLISTS>(null);
 
@@ -171,7 +174,31 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
           {!items && !error && <p className="p-6 text-sm text-[var(--ink-2)]">Memuat…</p>}
           {items && items.length === 0 && <p className="p-10 text-center text-sm font-semibold text-[var(--ink-2)]">{dirty ? "Tidak ada orang yang cocok dengan filter ini." : "Belum ada orang."}</p>}
           {items && items.length > 0 && (
-            <div className="relative">
+            <>
+            {/* HP: daftar ringkas, satu baris per orang; ketuk untuk membuka pelayanan, CG, dan role */}
+            <CompactList label="Daftar orang">
+              {items.map((p) => (
+                <CompactRow key={p.id} id={p.id} open={rows.open.has(p.id)} onToggle={rows.toggle}
+                  lead={<span className={`grid size-9 place-items-center rounded-full text-xs font-bold ${p.origin === "LUAR" ? "bg-[var(--gold-soft)] text-[var(--gold-ink)]" : "bg-[var(--primary-soft)] text-[var(--primary-ink)]"}`} aria-hidden="true">{initials(p.name)}</span>}
+                  title={fullName(p)}
+                  sub={[p.position.name, p.age != null ? `${p.age} th` : null, p.gender].filter(Boolean).join(" · ")}>
+                  <div className="flex flex-wrap gap-1.5">
+                    {p.ministries.length === 0 && <span className="text-xs font-medium text-[var(--ink-2)]">Belum ada pelayanan</span>}
+                    {p.ministries.map((m) => <span key={m.id} className="whitespace-nowrap rounded-full bg-[var(--primary-soft)] px-2.5 py-0.5 text-xs font-bold text-[var(--primary-ink)]">{m.name.replace(/ \(WL\)$/, "")}</span>)}
+                  </div>
+                  <Detail label="CG">
+                    <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                      {p.cgGroup?.name ?? "–"}
+                      {leaderOf.has(p.id) && <span className="whitespace-nowrap rounded-full bg-[#E3F4E8] px-2.5 py-0.5 text-xs font-bold text-[#1B6B34]">Leader CG</span>}
+                    </span>
+                  </Detail>
+                  {canAccount && <Detail label="Role"><RoleChips account={p.account} /></Detail>}
+                  {canGroups && p.memberships && p.memberships.length > 0 && <Detail label="Kelompok"><MembershipChips items={p.memberships} /></Detail>}
+                  <button type="button" onClick={() => setSheetId(p.id)} className="h-9 self-start rounded-xl border border-[var(--line)] bg-white px-3.5 text-[13px] font-bold text-[var(--primary-ink)] hover:bg-[var(--bg)]">Detail &amp; ubah</button>
+                </CompactRow>
+              ))}
+            </CompactList>
+            <div className="relative max-md:hidden">
               {/* Header yang menempel: salinan visual, ikut bergeser saat tabel digeser ke samping; hilang bersama tabelnya */}
               <div className="sticky z-10 overflow-hidden border-b border-[var(--line-2)] bg-white" style={{ top: headTop }} aria-hidden="true">
                 <div ref={headScroll} style={{ width: tableW }}>
@@ -227,13 +254,16 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
               </table>
             </div>
             </div>
+            </>
           )}
           {items && <Pager page={list.page} pageSize={list.pageSize} total={total} onPage={list.setPage} onPageSize={list.setPageSize} noun="orang" />}
         </section>
 
         {/* Detail */}
         {selected && lookups && (
-          <PersonDetail key={selected.id} canAccount={canAccount} person={selected} teams={lookups.teams} cgs={lookups.cgs} scope={scope} onEdit={() => setForm({ person: selected })} onChanged={() => void reload()} />
+          <div className="contents max-md:hidden">
+            <PersonDetail key={selected.id} canAccount={canAccount} person={selected} teams={lookups.teams} cgs={lookups.cgs} scope={scope} onEdit={() => setForm({ person: selected })} onChanged={() => void reload()} />
+          </div>
         )}
       </div>
 
@@ -246,6 +276,14 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
         </div>
       )}
 
+      {sheetId && lookups && items?.find((x) => x.id === sheetId) && (() => {
+        const sp = items.find((x) => x.id === sheetId)!;
+        return (
+          <Modal title={fullName(sp)} onClose={() => setSheetId(null)} footer={<button type="button" className={btnPrimary} onClick={() => setSheetId(null)}>Tutup</button>}>
+            <PersonDetail bare canAccount={canAccount} person={sp} teams={lookups.teams} cgs={lookups.cgs} scope={scope} onEdit={() => { setSheetId(null); setForm({ person: sp }); }} onChanged={() => void reload()} />
+          </Modal>
+        );
+      })()}
       {manage === "ministry" && <MinistryManager onClose={() => { setManage(null); void loadLookups(); void reload(); }} onChange={() => void loadLookups()} />}
       {manage && manage !== "ministry" && (
         <Modal title={PICKLISTS[manage].title} onClose={() => { setManage(null); void loadLookups(); void reload(); }} footer={<button type="button" className={btnPrimary} onClick={() => { setManage(null); void loadLookups(); void reload(); }}>Selesai</button>}>
@@ -261,7 +299,7 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
 }
 
 /** Kartu ringkasan di kanan: data orang yang dipilih, plus tambah/cabut pelayanan dengan cepat. */
-function PersonDetail({ person: p, canAccount, teams, cgs, scope, onEdit, onChanged }: { person: PersonDto; canAccount: boolean; teams: Team[]; cgs: CgOpt[]; scope: string[] | null; onEdit: () => void; onChanged: () => void }) {
+function PersonDetail({ person: p, bare, canAccount, teams, cgs, scope, onEdit, onChanged }: { bare?: boolean; person: PersonDto; canAccount: boolean; teams: Team[]; cgs: CgOpt[]; scope: string[] | null; onEdit: () => void; onChanged: () => void }) {
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -292,7 +330,7 @@ function PersonDetail({ person: p, canAccount, teams, cgs, scope, onEdit, onChan
   );
 
   return (
-    <aside className="flex min-w-[300px] max-md:min-w-0 max-w-[400px] flex-[1_1_320px] flex-col gap-4 rounded-[20px] border border-[var(--line)] bg-white p-[22px] lg:sticky lg:top-[calc(var(--header-h)+16px)] lg:max-h-[calc(100vh-var(--header-h)-32px)] lg:self-start lg:overflow-y-auto">
+    <aside className={bare ? "flex flex-col gap-4" : "flex min-w-[300px] max-md:min-w-0 max-w-[400px] flex-[1_1_320px] flex-col gap-4 rounded-[20px] border border-[var(--line)] bg-white p-[22px] lg:sticky lg:top-[calc(var(--header-h)+16px)] lg:max-h-[calc(100vh-var(--header-h)-32px)] lg:self-start lg:overflow-y-auto"}>
       <div className="flex items-center gap-4">
         <span className="grid size-[68px] flex-none place-items-center rounded-[18px] bg-[var(--primary-soft)] text-3xl font-extrabold text-[var(--primary-ink)]" aria-hidden="true">{initials(p.name).slice(0, 1)}</span>
         <div className="flex min-w-0 flex-col gap-1.5">
