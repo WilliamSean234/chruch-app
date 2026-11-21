@@ -146,9 +146,9 @@ export default function MeetingMinutes({ meeting: m, minutes, churchName }: { me
         ...(status === "FINAL" && viewer.canFinalize ? [{ key: "revise", label: "Buat revisi", icon: "edit" as const, tone: "neutral" as const, disabled: busy, onClick: () => setReviseOpen(true) }] : []),
       ]} />
 
-      <div role="status" className="rounded-[14px] border px-4 py-3 text-[13.5px] font-semibold leading-relaxed" style={{ background: banner.bg, borderColor: banner.bd, color: banner.fg }}>{banner.t}</div>
+      <div role="status" data-keep className="rounded-[14px] border px-4 py-3 text-[13.5px] font-semibold leading-relaxed" style={{ background: banner.bg, borderColor: banner.bd, color: banner.fg }}>{banner.t}</div>
       {dirty && <p className="-mt-3 text-[12.5px] font-bold text-[#6f4304]">Ada perubahan yang belum disimpan.</p>}
-      {saved && !dirty && <p role="status" className="-mt-3 text-[12.5px] font-bold text-[#1b6b34]">{saved}</p>}
+      {saved && !dirty && <p role="status" data-keep className="-mt-3 text-[12.5px] font-bold text-[#1b6b34]">{saved}</p>}
       {error && <p role="alert" className="rounded-xl border border-[#f0c7c7] bg-[#fdf1f1] px-4 py-3 text-sm font-semibold text-[#9b1c1c]">{error}</p>}
 
       <div className="flex flex-wrap items-start gap-5">

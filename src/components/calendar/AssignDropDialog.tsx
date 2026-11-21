@@ -270,7 +270,9 @@ export default function AssignDropDialog({ person, eventId, perms, onClose, onDo
           )}
 
           {fail && (
-            <div role="alert" className="flex flex-col gap-3 rounded-2xl border border-[#F0C9C9] bg-[#FFF5F5] p-4">
+            <>
+            <div className="fixed inset-0 z-[74] bg-[#171a2c]/45 md:hidden" aria-hidden="true" />
+            <div role="alert" data-keep className="flex flex-col gap-3 rounded-2xl border border-[#F0C9C9] bg-[#FFF5F5] p-4 max-md:fixed max-md:inset-x-4 max-md:top-1/2 max-md:z-[75] max-md:max-h-[80vh] max-md:-translate-y-1/2 max-md:overflow-y-auto max-md:shadow-[0_24px_60px_-20px_rgba(30,34,90,0.5)]">
               <span className="text-sm font-medium text-[#3A3F58]">{fail.message}</span>
               {fail.canOverride && (
                 <div className="flex flex-wrap items-end gap-3 border-t border-[#F0C9C9] pt-3">
@@ -281,6 +283,7 @@ export default function AssignDropDialog({ person, eventId, perms, onClose, onDo
                 </div>
               )}
             </div>
+            </>
           )}
         </div>
       )}

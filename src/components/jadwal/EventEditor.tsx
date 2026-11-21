@@ -279,7 +279,10 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
       )}
 
       {banner && (
-        <div role="alert" className={`flex flex-col gap-3 rounded-2xl border p-4 ${banner.kind === "error" ? "border-[#F0C9C9] bg-[#FFF5F5]" : "border-[#EAD9AE] bg-[#FFFBF0]"}`}>
+        <>
+        {/* HP: kartu ini menjadi dialog melayang di tengah layar, jadi tidak terlewat saat halaman digulir */}
+        <div className="fixed inset-0 z-[74] bg-[#171a2c]/45 backdrop-blur-[2px] md:hidden" onClick={() => setBanner(null)} aria-hidden="true" />
+        <div role="alert" data-keep className={`flex flex-col gap-3 rounded-2xl border p-4 max-md:fixed max-md:inset-x-4 max-md:top-1/2 max-md:z-[75] max-md:max-h-[80vh] max-md:-translate-y-1/2 max-md:overflow-y-auto max-md:shadow-[0_24px_60px_-20px_rgba(30,34,90,0.5)] ${banner.kind === "error" ? "border-[#F0C9C9] bg-[#FFF5F5]" : "border-[#EAD9AE] bg-[#FFFBF0]"}`}>
           <div className="flex items-start gap-3">
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className={`text-sm font-extrabold ${banner.kind === "error" ? "text-[#9B1C1C]" : "text-[#6F4304]"}`}>{banner.title}</span>
@@ -296,6 +299,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
             </div>
           )}
         </div>
+        </>
       )}
 
       {d.locked && (

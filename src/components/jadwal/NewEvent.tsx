@@ -109,7 +109,7 @@ export default function NewEvent() {
           <label className="mt-3 flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={range} onChange={(e) => setRange(e.target.checked)} /> Buat banyak sekaligus (rentang tanggal, hanya tanggal yang cocok pola template)</label>
           <div className="mt-5 max-md:hidden"><button className={btnPrimary} disabled={busy || !tplId} onClick={() => generate()}>{busy ? "Membuat…" : range ? "Buat jadwal" : "Buat dan buka"}</button></div>
           {result && (
-            <div className="mt-4 flex flex-col gap-3 text-sm" role="status">
+            <div className="mt-4 flex flex-col gap-3 text-sm" role="status" data-keep>
               {result.mismatch && (
                 <div className="flex flex-col gap-3 rounded-xl border border-[#EAD9AE] bg-[#FFFBF0] p-4">
                   <span className="font-semibold text-[#6F4304]">{result.mismatch.message}</span>

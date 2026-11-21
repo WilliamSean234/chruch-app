@@ -88,7 +88,7 @@ export default function ShareNotulen({ data, dateIso, disabled }: { data: Notule
             <p className="m-0 rounded-xl border border-[#EAD9AE] bg-[#FFFBF0] px-3.5 py-2.5 text-[12.5px] font-semibold leading-relaxed text-[#6F4304]">
               Notulen ini tertutup untuk anggota {data.group}. Kirim hanya ke orang atau grup yang memang berhak membacanya.
             </p>
-            {busy && <p role="status" className="m-0 text-sm font-semibold text-[var(--ink-2)]">Menyiapkan gambar…</p>}
+            {busy && <p role="status" data-keep className="m-0 text-sm font-semibold text-[var(--ink-2)]">Menyiapkan gambar…</p>}
             {error && <p role="alert" className="m-0 text-sm font-semibold text-[#9b1c1c]">{error}</p>}
             <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
               {urls.map((u, i) => (

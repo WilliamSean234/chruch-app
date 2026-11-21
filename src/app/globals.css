@@ -86,3 +86,12 @@ input[type="datetime-local"]::-webkit-datetime-edit {
     overflow-x: clip;
   }
 }
+
+/* HP: kartu pemberitahuan di halaman (role alert/status) disembunyikan; isinya tampil sebagai popup lewat NoticeHost.
+   Beri atribut data-keep pada kartu yang harus tetap di halaman (mis. punya tombol aksi sendiri). */
+@media (max-width: 767px) {
+  [role="alert"]:not([data-keep]):not([data-keep] *),
+  [role="status"]:not([data-keep]):not([data-keep] *) {
+    display: none !important;
+  }
+}

@@ -18,15 +18,15 @@ export default function ToastHost() {
     push = (message, kind) => {
       const id = ++n;
       setItems((cur) => [...cur.slice(-2), { id, message, kind }]);
-      setTimeout(() => setItems((cur) => cur.filter((x) => x.id !== id)), kind === "error" ? 6000 : 3500);
+      setTimeout(() => setItems((cur) => cur.filter((x) => x.id !== id)), Math.max(kind === "error" ? 6000 : 3500, message.length * 60));
     };
     return () => { push = null; };
   }, []);
   if (items.length === 0) return null;
   return (
-    <div className="pointer-events-none fixed bottom-5 right-5 z-[80] flex max-w-[calc(100vw-2.5rem)] flex-col gap-2.5" aria-live="polite">
+    <div className="pointer-events-none fixed bottom-5 right-5 z-[80] flex max-w-[calc(100vw-2.5rem)] flex-col gap-2.5 max-md:bottom-[calc(5.5rem+env(safe-area-inset-bottom))] max-md:left-4 max-md:right-4 max-md:max-w-none" aria-live="polite">
       {items.map((t) => (
-        <div key={t.id} role={t.kind === "error" ? "alert" : "status"}
+        <div key={t.id} data-keep role={t.kind === "error" ? "alert" : "status"}
           className="pointer-events-auto flex items-center gap-3 rounded-2xl border bg-white py-3 pl-3.5 pr-4 text-sm font-bold shadow-[0_16px_40px_-16px_rgba(30,34,90,0.5)]"
           style={{ borderColor: t.kind === "error" ? "#F0C7C7" : "#BFE0C7" }}>
           <span className="grid size-7 flex-none place-items-center rounded-full" style={t.kind === "error" ? { background: "#FDF1F1", color: "#9B1C1C" } : { background: "#E3F3E7", color: "#1B6B34" }} aria-hidden="true">
