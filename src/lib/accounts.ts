@@ -7,12 +7,14 @@ import { isSuperadmin, type AuthUser } from "./rbac";
 import { nameKey } from "./names";
 import { pagingQuery, resolvePaging } from "./paging";
 import { membershipsOf } from "./groups";
+import { assertEbmSchedulerAllowed, grantEbmScheduler } from "./ebmScheduler";
 
 export const accountBody = z.object({
   email: z.string().trim().toLowerCase().email(),
   password: z.string().min(8, "Kata sandi minimal 8 karakter").max(100),
   roleCodes: z.array(z.enum(["SUPERADMIN", "PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN"])).default([]), // kosong = hanya bisa melihat kalender dan jadwal sendiri
   teamTypeId: z.string().uuid().nullish(), // wajib bila ADMIN_TIM
+  ebmScheduler: z.boolean().optional(), // Admin Tim EBM sekaligus jadi anggota kelompok EBM dengan jabatan Penjadwal EBM (hanya Superadmin)
 });
 
 /** Buat akun login dan hubungkan ke Person. Satu orang paling banyak satu akun. */
@@ -34,17 +36,23 @@ export async function createAccountForPerson(
   const roles = await prisma.role.findMany({ where: { tenantId: actor.tenantId, code: { in: b.roleCodes } } });
   if (roles.length !== new Set(b.roleCodes).size) throw badRequest("Role tidak ditemukan. Jalankan seed terlebih dahulu.");
 
+  if (b.ebmScheduler) await assertEbmSchedulerAllowed(prisma, actor, b.roleCodes, b.teamTypeId);
+
   const passwordHash = own?.passwordHash ?? (await bcrypt.hash(b.password, 10));
   try {
-    const user = await prisma.user.create({
-      data: {
-        tenantId: actor.tenantId,
-        email: b.email,
-        passwordHash,
-        mustChangePassword: !own, // kata sandi awal dari admin: wajib diganti saat login pertama
-        personId,
-        roles: { create: roles.map((r) => ({ roleId: r.id, teamTypeId: r.code === "ADMIN_TIM" ? b.teamTypeId! : null })) },
-      },
+    const user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          tenantId: actor.tenantId,
+          email: b.email,
+          passwordHash,
+          mustChangePassword: !own, // kata sandi awal dari admin: wajib diganti saat login pertama
+          personId,
+          roles: { create: roles.map((r) => ({ roleId: r.id, teamTypeId: r.code === "ADMIN_TIM" ? b.teamTypeId! : null })) },
+        },
+      });
+      if (b.ebmScheduler) await grantEbmScheduler(tx, actor.tenantId, personId, actor.userId);
+      return created;
     });
     return { id: user.id, email: user.email, roles: b.roleCodes };
   } catch (e) {
@@ -65,9 +73,10 @@ export const accountPatch = z
     roleCodes: z.array(z.enum(["SUPERADMIN", "PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN"])).optional(),
     teamTypeId: z.string().uuid().nullish(),
     isActive: z.boolean().optional(),
+    ebmScheduler: z.boolean().optional(), // beri jabatan Penjadwal EBM di kelompok EBM (hanya menambah; mencabutnya lewat halaman Kelompok)
     newPassword: z.string().min(8, "Kata sandi minimal 8 karakter").max(100).optional(), // reset oleh admin
   })
-  .refine((b) => b.roleCodes !== undefined || b.isActive !== undefined || b.newPassword !== undefined, { message: "Tidak ada yang diubah." });
+  .refine((b) => b.roleCodes !== undefined || b.isActive !== undefined || b.newPassword !== undefined || b.ebmScheduler !== undefined, { message: "Tidak ada yang diubah." });
 
 /** Ubah role, aktif/nonaktif, atau reset kata sandi akun yang sudah ada. */
 export async function updateAccount(actor: AuthUser, target: string | { userId: string }, b: z.infer<typeof accountPatch>) {
@@ -81,6 +90,10 @@ export async function updateAccount(actor: AuthUser, target: string | { userId: 
   if (targetIsSuper && !isSuperadmin(actor)) throw forbidden("Akun Superadmin hanya bisa diubah oleh Superadmin.");
   if (b.roleCodes?.includes("SUPERADMIN") && !isSuperadmin(actor)) throw forbidden("Hanya Superadmin yang boleh memberi role Superadmin.");
   if (b.roleCodes?.includes("ADMIN_TIM") && !b.teamTypeId) throw badRequest("Pilih tim yang dikelola untuk Admin Tim.");
+  if (b.ebmScheduler) {
+    if (!user.personId) throw badRequest("Akun ini tidak terhubung ke data orang.");
+    await assertEbmSchedulerAllowed(prisma, actor, b.roleCodes ?? user.roles.map((r) => r.role.code), b.teamTypeId ?? user.roles.find((r) => r.role.code === "ADMIN_TIM")?.teamTypeId);
+  }
 
   // Jangan sampai aplikasi kehilangan Superadmin terakhirnya.
   const losesSuper = targetIsSuper && ((b.roleCodes !== undefined && !b.roleCodes.includes("SUPERADMIN")) || b.isActive === false);
@@ -109,12 +122,14 @@ export async function updateAccount(actor: AuthUser, target: string | { userId: 
     roleRows = roles.map((r) => ({ roleId: r.id, teamTypeId: r.code === "ADMIN_TIM" ? b.teamTypeId! : null }));
   }
 
-  await prisma.$transaction([
-    prisma.user.update({ where: { id: user.id }, data }),
-    ...(roleRows
-      ? [prisma.userRole.deleteMany({ where: { userId: user.id } }), prisma.userRole.createMany({ data: roleRows.map((r) => ({ userId: user.id, ...r })) })]
-      : []),
-  ]);
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({ where: { id: user.id }, data });
+    if (roleRows) {
+      await tx.userRole.deleteMany({ where: { userId: user.id } });
+      await tx.userRole.createMany({ data: roleRows.map((r) => ({ userId: user.id, ...r })) });
+    }
+    if (b.ebmScheduler) await grantEbmScheduler(tx, actor.tenantId, user.personId!, actor.userId);
+  });
   return { id: user.id, email: user.email };
 }
 

@@ -172,6 +172,7 @@ function AccountSection({ person, teams, isSuper, onChanged }: { person: PersonD
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("NONE");
   const [teamId, setTeamId] = useState("");
+  const [ebmSched, setEbmSched] = useState(false); // jadikan juga Penjadwal EBM (anggota kelompok EBM, bisa menjadwalkan rapat)
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
@@ -181,11 +182,12 @@ function AccountSection({ person, teams, isSuper, onChanged }: { person: PersonD
   const accRoles = acc?.roleCodes ?? [];
   const roleText = accRoles.length ? accRoles.map((c) => ROLE_LABEL[c] ?? c).join(", ") : "Tanpa role (hanya melihat jadwal)";
   const lockedSuper = accRoles.includes("SUPERADMIN") && !isSuper; // hanya Superadmin yang boleh mengubah akun Superadmin
-  const roleBody = () => ({ roleCodes: role === "NONE" ? [] : [role], teamTypeId: role === "ADMIN_TIM" ? teamId || null : null });
   const teamName = (id: string | null | undefined) => teams.find((t) => t.id === id)?.name;
+  const isEbmTeam = role === "ADMIN_TIM" && /\bebm\b/i.test(teamName(teamId) ?? "");
+  const roleBody = () => ({ roleCodes: role === "NONE" ? [] : [role], teamTypeId: role === "ADMIN_TIM" ? teamId || null : null, ...(isSuper && isEbmTeam && ebmSched ? { ebmScheduler: true } : {}) });
 
   function open(m: "create" | "role" | "reset") {
-    setError(""); setNote(""); setIssued(null); setPassword(m === "create" || m === "reset" ? genPassword() : "");
+    setError(""); setNote(""); setIssued(null); setEbmSched(false); setPassword(m === "create" || m === "reset" ? genPassword() : "");
     if (m === "role") { setRole(accRoles.find((c) => c !== "NONE") ?? "NONE"); setTeamId(acc?.teamTypeId ?? ""); }
     setMode(m);
   }
@@ -229,6 +231,15 @@ function AccountSection({ person, teams, isSuper, onChanged }: { person: PersonD
         <Field label="Tim yang dikelola">
           <select className={inputCls} value={teamId} onChange={(e) => setTeamId(e.target.value)}><option value="">Pilih tim…</option>{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
         </Field>
+      )}
+      {isSuper && isEbmTeam && (
+        <label className="flex items-start gap-2.5 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3.5 py-3 text-[13px] font-semibold">
+          <input type="checkbox" className="mt-0.5 size-4 flex-none accent-[var(--primary)]" checked={ebmSched} onChange={(e) => setEbmSched(e.target.checked)} />
+          <span>
+            Jadikan juga Penjadwal EBM
+            <span className="mt-0.5 block text-xs font-medium text-[var(--ink-2)]">Dimasukkan ke kelompok EBM dengan jabatan yang hanya boleh menjadwalkan rapat. Tanpa ini, Admin Tim EBM tidak otomatis ikut kelompok rapat EBM.</span>
+          </span>
+        </label>
       )}
     </>
   );
