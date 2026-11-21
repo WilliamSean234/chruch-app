@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Fragment, useState } from "react";
 import { FDateRange, FilterBar, FSearch, FSelect, listCard, Alert } from "@/components/ui/Filters";
 import Pager from "@/components/ui/Pager";
+import { CompactList, CompactRow, Detail, useOpenRows } from "@/components/ui/CompactList";
 import RoomOptions from "@/components/ui/RoomOptions";
 import { useDebounced, usePagedList } from "@/components/ui/usePagedList";
 import { dayShort, floorText, hm, monthRange, REHEARSAL_TONE, STATUS_LABEL, toneFor, ymd } from "@/lib/ui";
@@ -37,6 +38,7 @@ export default function EventList() {
   const [rehearsal, setRehearsal] = useState("");
   const [order, setOrder] = useState("asc");
   const search = useDebounced(q.trim());
+  const rows = useOpenRows(); // HP: baris acara yang dibuka
   // Sesi latihan: default tersembunyi. allOpen membalik default; flipped = acara yang dikecualikan dari default.
   const [allOpen, setAllOpen] = useState(false);
   const [flipped, setFlipped] = useState<Set<string>>(new Set());
@@ -74,13 +76,42 @@ export default function EventList() {
 
       <div className={listCard} aria-busy={list.loading}>
         {(list.items ?? []).some((e) => e.rehearsals.length > 0) && (
-          <div className="flex items-center justify-end border-b border-[var(--line-2)] px-4 py-2">
+          <div className="flex items-center justify-end border-b border-[var(--line-2)] px-4 py-2 max-md:hidden">
             <button type="button" onClick={toggleAll} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold text-[var(--primary-ink)] hover:bg-[var(--primary-soft)]">
               <Chevron open={allOpen} />{allOpen ? "Sembunyikan semua latihan" : "Tampilkan semua latihan"}
             </button>
           </div>
         )}
-        <div className="overflow-x-auto">
+        {/* HP: daftar ringkas, satu baris per acara */}
+        {list.items === null && <p className="px-4 py-8 text-center text-sm text-[var(--ink-2)] md:hidden">Memuat…</p>}
+        {list.items?.length === 0 && <p className="px-4 py-8 text-center text-sm font-semibold text-[var(--ink-2)] md:hidden">{dirty ? "Tidak ada acara yang cocok dengan filter ini." : "Belum ada acara."}</p>}
+        {!!list.items?.length && (
+          <CompactList label="Daftar acara">
+            {list.items.map((e) => {
+              const t = toneFor(e.title);
+              const st = STATUS_LABEL[e.status] ?? STATUS_LABEL.DRAFT;
+              return (
+                <CompactRow key={e.id} id={e.id} open={rows.open.has(e.id)} onToggle={rows.toggle}
+                  title={<span className="inline-flex items-center gap-2"><span className="size-2 flex-none rounded-full" style={{ background: t.dot }} />{e.title}</span>}
+                  sub={`${dayShort(e.startsAt)} · ${dot(hm(e.startsAt))}–${dot(hm(e.endsAt))} · ${e.room.name}`}
+                  trailing={<span className="whitespace-nowrap rounded-full px-2.5 py-[3px] text-xs font-bold" style={{ background: st.bg, color: st.fg }}>{st.text}</span>}>
+                  <Detail label="Nomor">{e.number}</Detail>
+                  <Detail label="Ruangan">{e.room.name}{e.room.floor !== null && ` · ${floorText(e.room.floor)}`}</Detail>
+                  <Detail label="Kursi terisi">{e.seatsFilled}/{e.seatsTotal}</Detail>
+                  {e.createdBy && <Detail label="Dibuat oleh">{e.createdBy}</Detail>}
+                  {e.rehearsals.map((r) => (
+                    <div key={r.id} className="rounded-lg px-2.5 py-1.5 text-xs" style={{ background: REHEARSAL_TONE.bg, color: REHEARSAL_TONE.fg }}>
+                      <span className="font-extrabold">Latihan {r.seq}</span> · {dayShort(r.startsAt)} · {dot(hm(r.startsAt))}–{dot(hm(r.endsAt))} · {r.room.name}
+                      {r.note && <span className="block font-medium">{r.note}</span>}
+                    </div>
+                  ))}
+                  <Link href={`/jadwal/${e.id}`} className="h-9 self-start rounded-xl bg-[var(--primary)] px-4 text-[13px] font-bold leading-9 text-white">Buka acara</Link>
+                </CompactRow>
+              );
+            })}
+          </CompactList>
+        )}
+        <div className="overflow-x-auto max-md:hidden">
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="bg-[var(--surface-2)] text-xs font-bold uppercase tracking-[0.06em] text-[var(--ink-2)]">
               <tr><th className="px-4 py-3">Tanggal</th><th className="px-4 py-3">Acara</th><th className="px-4 py-3">Ruangan</th><th className="px-4 py-3">Kursi</th><th className="px-4 py-3">Status</th><th className="px-4 py-3" /></tr>
