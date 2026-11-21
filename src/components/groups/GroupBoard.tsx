@@ -8,6 +8,7 @@ import NewPersonInline from "@/components/master/NewPersonInline";
 import { btnGhost, btnPrimary, callApi, errMsg, inputCls } from "@/components/jadwal/api";
 import { FilterBar, FSearch, FSelect } from "@/components/ui/Filters";
 import Pager from "@/components/ui/Pager";
+import { CompactList, CompactRow } from "@/components/ui/CompactList";
 import { useClientPaging } from "@/components/ui/usePagedList";
 
 export const NEW_GROUP_EVENT = "groups:new";
@@ -255,7 +256,22 @@ function MemberList({ detail, posName, onEdit, onChanged }: { detail: Detail; po
           </span>
         </div>
       )}
-      <div className="overflow-x-auto">
+      {/* HP: satu baris per anggota; ketuk untuk mengubah jabatan atau (kelompok EBM) mengatur pelayanan */}
+      {shown.length === 0 && <p className="py-4 text-sm font-semibold text-[var(--ink-2)] md:hidden">Tidak ada anggota yang cocok dengan filter ini.</p>}
+      {shown.length > 0 && (
+        <CompactList label="Anggota kelompok">
+          {pg.slice.map((m) => (
+            <CompactRow key={m.id} id={m.id} open={open.has(m.id)} onToggle={toggleOpen} expandable={detail.canManageMembers || !!ebm}
+              lead={<span className="grid size-9 place-items-center rounded-full bg-[var(--primary-soft)] text-[13px] font-extrabold text-[var(--primary-ink)]" aria-hidden="true">{m.name.charAt(0).toUpperCase()}</span>}
+              title={fullName(m)}
+              sub={m.positionIds.length ? m.positionIds.map(posName).join(" · ") : "Belum ada jabatan"}>
+              {detail.canManageMembers && <button type="button" onClick={() => onEdit(m)} className="h-9 self-start rounded-xl border border-[var(--line)] bg-white px-3.5 text-[13px] font-bold text-[var(--ink-2)]">Ubah jabatan</button>}
+              {ebm && <EbmPanel flush member={m} ebm={ebm} onChanged={onChanged} />}
+            </CompactRow>
+          ))}
+        </CompactList>
+      )}
+      <div className="overflow-x-auto max-md:hidden">
         <div className="flex min-w-[520px] flex-col">
           {shown.length === 0 && <p className="py-4 text-sm font-semibold text-[var(--ink-2)]">Tidak ada anggota yang cocok dengan filter ini.</p>}
           {pg.slice.map((m) => (
@@ -288,7 +304,7 @@ function MemberList({ detail, posName, onEdit, onChanged }: { detail: Detail; po
 }
 
 /** Pelayanan EBM satu anggota (khusus kelompok EBM). Yang berhak mengubah bisa menambah atau mencabut; yang lain hanya melihat. */
-function EbmPanel({ member, ebm, onChanged }: { member: Member; ebm: EbmInfo; onChanged: () => void }) {
+function EbmPanel({ member, ebm, onChanged, flush }: { member: Member; ebm: EbmInfo; onChanged: () => void; flush?: boolean }) {
   const [busy, setBusy] = useState(false);
   const mine = member.ebmMinistryIds ?? [];
   const name = (id: string) => ebm.ministries.find((x) => x.id === id)?.name ?? "pelayanan";
@@ -309,7 +325,7 @@ function EbmPanel({ member, ebm, onChanged }: { member: Member; ebm: EbmInfo; on
   }
 
   return (
-    <div className="mb-3 ml-[2.75rem] flex flex-col gap-2 rounded-xl border border-[var(--line-2)] bg-[var(--surface-2)] px-3.5 py-3">
+    <div className={`${flush ? "" : "mb-3 ml-[2.75rem] "}flex flex-col gap-2 rounded-xl border border-[var(--line-2)] bg-[var(--surface-2)] px-3.5 py-3`}>
       <span className="text-[11.5px] font-extrabold tracking-[0.06em] text-[var(--ink-2)]">PELAYANAN DI TIM EBM</span>
       <div className="flex flex-wrap items-center gap-1.5">
         {mine.length === 0 && <span className="text-[12.5px] font-medium text-[var(--ink-2)]">Belum melayani di posisi EBM mana pun.</span>}
