@@ -5,6 +5,7 @@ import Link from "next/link";
 import Fab from "@/components/ui/Fab";
 import SavedDialog from "@/components/ui/SavedDialog";
 import { showToast } from "@/components/ui/Toast";
+import { CompactList, CompactRow, Detail, useOpenRows } from "@/components/ui/CompactList";
 import { btnGhost, btnPrimary, card, errMsg, inputCls } from "@/components/jadwal/api";
 import { normName } from "@/lib/teamFormats";
 import { buildPdf, renderPngs, toText } from "@/lib/scheduleExport";
@@ -76,6 +77,7 @@ function UploadTab({ fmt, goExport }: { fmt: FormatInfo; goExport: () => void })
   const [choice, setChoice] = useState<Record<string, string>>({}); // kunci nama → id orang | "skip" | ""
   const [extraOn, setExtraOn] = useState<Record<string, { on: boolean; name: string }>>({}); // pelayanan baru dari kolom file
   const [dropped, setDropped] = useState<Set<string>>(new Set()); // `${tanggal}|${kolom}` yang tidak jadi diisi karena merangkap
+  const prevRows = useOpenRows(); // HP: tanggal pratinjau yang dibuka
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [results, setResults] = useState<DateResult[] | null>(null);
   const [saved, setSaved] = useState(false);
@@ -364,7 +366,52 @@ function UploadTab({ fmt, goExport }: { fmt: FormatInfo; goExport: () => void })
                 {progress && <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#E4E6F2]"><div className="h-full bg-[var(--primary)] transition-all" style={{ width: `${(progress.done / Math.max(progress.total, 1)) * 100}%` }} /></div>}
                 {view.unresolved > 0 && <p className="mt-2 text-[13px] font-bold text-[#7A5200]">Pilih semua nama di langkah 2 dulu sebelum menyimpan.</p>}
                 {extraErr && <p className="mt-2 text-[13px] font-bold text-[#A12B2B]">{extraErr}</p>}
-                <div className="mt-3 overflow-x-auto rounded-xl border border-[var(--line)]">
+                {/* HP: satu baris per tanggal; ketuk untuk melihat petugas tiap kolom */}
+                <div className="mt-3 overflow-hidden rounded-xl border border-[var(--line)] md:hidden">
+                  <CompactList label="Pratinjau per tanggal">
+                    {view.rows.map(({ r, cells, s1, s2 }) => {
+                      const exOf = (c: Col) => (c.service ? r.existing[c.service] : (r.existing[1] ?? r.existing[2]));
+                      const filled = cols.filter((c) => cells[c.key]).length;
+                      const gone = new Set<string>();
+                      for (const n of [1, 2] as const) {
+                        const e = r.existing[n];
+                        if (!e || e.past || e.status === "CANCELLED") continue;
+                        const cn = cols.filter((c) => !c.service || c.service === n);
+                        for (const x of e.seats) if (x.personId && !cn.some((c) => c.ministryId === x.ministryId && (c.slotNo ?? 1) === x.slotNo)) gone.add(`${x.ministryName}${x.slotNo > 1 ? ` ${x.slotNo}` : ""} (${x.personName})`);
+                      }
+                      return (
+                        <CompactRow key={r.date} id={r.date} open={prevRows.open.has(r.date)} onToggle={prevRows.toggle}
+                          title={dayText(r.date)} sub={`${filled}/${cols.length} kolom terisi`}
+                          trailing={<span className="whitespace-nowrap">{s1 === s2 ? stateChip(s1) : <>{stateChip(s1)} {stateChip(s2)}</>}</span>}>
+                          {cols.map((c) => {
+                            const now = cells[c.key] ? disp(people.get(cells[c.key]!)) : "";
+                            const ex = exOf(c);
+                            const old = ex?.seats.find((x) => x.ministryId === c.ministryId && x.slotNo === (c.slotNo ?? 1));
+                            const oldName = old?.personId && old.personId !== cells[c.key] ? old.personName : null;
+                            return (
+                              <Detail key={c.key} label={c.label}>
+                                {now || <span className="text-[#A0A4BC]">—</span>}
+                                {oldName && ex && !ex.past && <span className="block text-[11.5px] font-semibold text-[#8A6119]">dulu: {oldName}</span>}
+                              </Detail>
+                            );
+                          })}
+                          {pv.pen && (() => {
+                            const ex = r.existing[1] ?? r.existing[2];
+                            const a = r.attrs;
+                            const band = a?.band ? (a.band === "NO_BAND" ? "No Band" : "Band") : "";
+                            return <>
+                              <Detail label="Band">{band || <span className="text-[#A0A4BC]">—</span>}</Detail>
+                              <Detail label="Padus">{a?.padus || <span className="text-[#A0A4BC]">—</span>}{ex && !ex.past && ex.padus && a?.padus !== undefined && a.padus.trim() !== ex.padus && <span className="block text-[11.5px] font-semibold text-[#8A6119]">dulu: {ex.padus}</span>}</Detail>
+                              <Detail label="Tema"><span className="whitespace-pre-line">{a?.theme || <span className="text-[#A0A4BC]">—</span>}</span></Detail>
+                            </>;
+                          })()}
+                          {gone.size > 0 && <p className="text-[11.5px] font-semibold leading-snug text-[#A12B2B]">hapus: {[...gone].join(", ")}</p>}
+                        </CompactRow>
+                      );
+                    })}
+                  </CompactList>
+                </div>
+                <div className="mt-3 overflow-x-auto rounded-xl border border-[var(--line)] max-md:hidden">
                   <table className="w-full min-w-[760px] border-collapse text-[13px]">
                     <thead>
                       <tr className="bg-[#F3E9CF] text-left">
@@ -502,6 +549,7 @@ function ExportTab({ fmt }: { fmt: FormatInfo }) {
   const [busy, setBusy] = useState("");
   const [fail, setFail] = useState("");
   const [canShareFiles, setCanShareFiles] = useState(false);
+  const monthRows = useOpenRows(); // HP: tanggal yang dibuka di pratinjau bagikan
 
   const monthsParam = [...months].sort((a, b) => a - b).join(",");
   const toggle = (m: number) => { setModel(null); setMonths((s) => { const n = new Set(s); if (n.has(m)) n.delete(m); else n.add(m); return n; }); };
@@ -581,9 +629,24 @@ function ExportTab({ fmt }: { fmt: FormatInfo }) {
           {model.hasDiff && <p className="mt-3 text-[13px] font-semibold text-[#7A5200]">Ada tanggal yang petugas Ibadah I dan II-nya berbeda; ditulis "I / II" dan diberi warna.</p>}
           <div className="mt-4 flex flex-col gap-4">
             {model.months.map((mo) => (
-              <div key={mo.month} className="overflow-x-auto rounded-xl border border-[var(--line)]">
+              <div key={mo.month} className="overflow-hidden rounded-xl border border-[var(--line)] md:overflow-x-auto">
                 <div className="bg-[var(--primary)] px-3 py-2 text-center text-sm font-extrabold text-white">{mo.name} {model.year}</div>
-                <table className="w-full min-w-[720px] border-collapse text-[13px]">
+                {/* HP: satu baris per tanggal; ketuk untuk melihat petugas tiap kolom */}
+                <CompactList label={`Jadwal ${mo.name}`}>
+                  {mo.rows.map((r) => {
+                    const id = `${mo.month}-${r.date}`;
+                    const names = model.columns.filter((c) => !c.key.startsWith("@") && r.cells[c.key]).map((c) => r.cells[c.key]);
+                    return (
+                      <CompactRow key={id} id={id} open={monthRows.open.has(id)} onToggle={monthRows.toggle} tone={r.differs ? "bg-[#FFF8E6]" : ""}
+                        title={`Tanggal ${r.day}`} sub={names.length ? names.join(" · ") : "Belum ada petugas"}>
+                        {model.columns.map((c) => (
+                          <Detail key={c.key} label={c.label}><span className="whitespace-pre-line">{r.cells[c.key] || <span className="text-[#A0A4BC]">—</span>}</span></Detail>
+                        ))}
+                      </CompactRow>
+                    );
+                  })}
+                </CompactList>
+                <table className="w-full min-w-[720px] border-collapse text-[13px] max-md:hidden">
                   {model.pen && model.groups ? <PenHead model={model} /> : <thead><tr className="bg-[#F3E9CF]"><th className="px-2.5 py-2 text-left font-extrabold">TGL</th>{model.groups ? model.groups.map((g) => <th key={g.label} colSpan={g.keys.length} className="border-l border-[var(--line)] px-2.5 py-2 text-center font-extrabold">{g.label}</th>) : model.columns.map((c) => <th key={c.key} className="px-2.5 py-2 text-left font-extrabold">{c.label}</th>)}</tr></thead>}
                   <tbody>
                     {mo.rows.map((r, i) => (
