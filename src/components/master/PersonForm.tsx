@@ -72,7 +72,7 @@ export default function PersonForm({ person, lookups, scope, canAccount, isSuper
   return (
     <Modal wide title={person ? `Ubah ${person.name}` : "Tambah orang"} onClose={onClose} footer={
       <>
-        {person && <button type="button" onClick={remove} disabled={busy} className="mr-auto rounded-xl px-3 py-2 text-sm font-bold text-[#9B1C1C] hover:bg-[#FFF5F5]">Hapus orang</button>}
+        {person && isSuper && <button type="button" onClick={remove} disabled={busy} className="mr-auto rounded-xl px-3 py-2 text-sm font-bold text-[#9B1C1C] hover:bg-[#FFF5F5]">Hapus orang</button>}
         <button type="button" className={btnGhost} onClick={onClose}>Batal</button>
         <button type="button" className={btnPrimary} disabled={busy} onClick={() => save()}>{busy ? "Menyimpan…" : "Simpan"}</button>
       </>

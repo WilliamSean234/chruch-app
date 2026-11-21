@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "./prisma";
 import { ApiError, badRequest, conflict, notFound } from "./errors";
 import { ageFrom, nameKey } from "./names";
-import { can, requirePermission, requireTeamAccess, teamScope, type AuthUser } from "./rbac";
+import { can, requirePermission, requirePersonInScope, requireTeamAccess, teamScope, type AuthUser } from "./rbac";
 import { membershipsOf } from "./groups";
 import { syncEbmGroup } from "./ebmGroup";
 import { pageOf, resolvePaging, type PagingInput } from "./paging";
@@ -165,6 +165,8 @@ export async function createPerson(u: AuthUser, b: PersonInput) {
   const key = nameKey(b.name);
   await checkDuplicate(u.tenantId, key, b);
   await checkMinistryScope(u, u.tenantId, b.ministryIds);
+  // Orang baru buatan Admin Tim wajib punya pelayanan di timnya, supaya tetap ada yang berhak mengubah datanya.
+  if (teamScope(u) !== null && new Set(b.ministryIds).size === 0) throw badRequest("Orang baru harus punya minimal satu pelayanan di tim Anda.");
   const p = await prisma.$transaction(async (tx) => {
     const created = await tx.person.create({
     data: {
@@ -193,8 +195,9 @@ export async function createPerson(u: AuthUser, b: PersonInput) {
 }
 
 export async function updatePerson(u: AuthUser, id: string, b: PersonInput) {
-  const cur = await prisma.person.findFirst({ where: { id, tenantId: u.tenantId, deletedAt: null }, include: { ministries: true } });
+  const cur = await prisma.person.findFirst({ where: { id, tenantId: u.tenantId, deletedAt: null }, include: { ministries: { include: { ministry: { select: { teamTypeId: true } } } } } });
   if (!cur) throw notFound("Orang");
+  requirePersonInScope(u, cur.ministries.map((m) => m.ministry.teamTypeId));
   await checkRefs(u.tenantId, b);
   const key = nameKey(b.name);
   if (key !== cur.nameKey) await checkDuplicate(u.tenantId, key, b, id);
@@ -228,6 +231,41 @@ export async function updatePerson(u: AuthUser, id: string, b: PersonInput) {
     });
     if ([...after].some((x) => !before.has(x))) await syncEbmGroup(tx, u.tenantId, { only: [id], rejoin: true, userId: u.userId }); // baru ditambahkan ke satu posisi
     return updated;
+  });
+  return toDto(p);
+}
+
+export const ministryChangeBody = z
+  .object({
+    add: z.array(z.string().uuid()).max(50).default([]),
+    remove: z.array(z.string().uuid()).max(50).default([]),
+  })
+  .superRefine((v, ctx) => {
+    if (v.add.length === 0 && v.remove.length === 0) ctx.addIssue({ code: "custom", path: ["add"], message: "Tidak ada pelayanan yang diubah." });
+    if (v.add.some((x) => v.remove.includes(x))) ctx.addIssue({ code: "custom", path: ["add"], message: "Satu pelayanan tidak bisa ditambah dan dicabut sekaligus." });
+  });
+export type MinistryChange = z.infer<typeof ministryChangeBody>;
+
+/**
+ * Tambah atau cabut pelayanan satu orang tanpa menyentuh data lain. Dipakai chip pelayanan (✕ dan "+ pelayanan"):
+ * hanya selisihnya yang dikirim, jadi tidak menimpa perubahan orang lain pada nama atau data lainnya.
+ * Admin Tim hanya boleh mengubah pelayanan di timnya sendiri, tetapi boleh menambahkannya ke siapa pun.
+ */
+export async function changePersonMinistries(u: AuthUser, id: string, b: MinistryChange) {
+  const cur = await prisma.person.findFirst({ where: { id, tenantId: u.tenantId, deletedAt: null }, select: { id: true, name: true } });
+  if (!cur) throw notFound("Orang");
+  const add = [...new Set(b.add)];
+  const remove = [...new Set(b.remove)];
+  const all = [...add, ...remove];
+  const found = await prisma.ministry.count({ where: { id: { in: all }, tenantId: u.tenantId, deletedAt: null } });
+  if (found !== all.length) throw badRequest("Ada posisi pelayanan yang tidak valid.");
+  await checkMinistryScope(u, u.tenantId, all);
+
+  const p = await prisma.$transaction(async (tx) => {
+    if (remove.length) await tx.personMinistry.deleteMany({ where: { personId: id, ministryId: { in: remove } } });
+    if (add.length) await tx.personMinistry.createMany({ data: add.map((ministryId) => ({ personId: id, ministryId })), skipDuplicates: true });
+    if (add.length) await syncEbmGroup(tx, u.tenantId, { only: [id], rejoin: true, userId: u.userId }); // yang melayani di EBM otomatis masuk kelompok EBM
+    return tx.person.findFirstOrThrow({ where: { id }, include });
   });
   return toDto(p);
 }

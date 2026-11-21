@@ -7,6 +7,8 @@ import Modal from "./Modal";
 import PersonForm, { type CgOpt, type Lookups, type Opt, type PersonDto, type Team } from "./PersonForm";
 import { btnGhost, btnPrimary, callApi, errMsg } from "@/components/jadwal/api";
 import { Alert, FilterBar, FNumber, FSearch, FSelect } from "@/components/ui/Filters";
+import { askConfirm } from "@/components/ui/Confirm";
+import { showToast } from "@/components/ui/Toast";
 import MembershipChips from "@/components/ui/MembershipChips";
 import Pager from "@/components/ui/Pager";
 import { useDebounced, usePagedList } from "@/components/ui/usePagedList";
@@ -264,19 +266,25 @@ function PersonDetail({ person: p, canAccount, teams, cgs, scope, onEdit, onChan
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const open = (teamId: string) => scope === null || scope.includes(teamId);
+  const canEditIdentity = scope === null || p.ministries.some((m) => scope.includes(m.teamTypeId)); // Admin Tim: hanya orang yang melayani di timnya
   const have = new Set(p.ministries.map((m) => m.id));
   const who = fullName;
   const myLeaders = cgs.find((c) => c.id === p.cgGroup?.id)?.leaders ?? [];
   const leads = cgs.filter((c) => c.leaders?.some((l) => l.id === p.id)).map((c) => c.name);
 
-  async function setMinistries(ids: string[]) {
+  /** Tambah atau cabut satu pelayanan. Yang dikirim hanya selisihnya, jadi tidak menimpa data lain yang baru diubah orang lain. */
+  async function changeMinistry(kind: "add" | "remove", ministryId: string, label: string) {
+    const name = fullName(p);
+    const ok = kind === "remove"
+      ? await askConfirm(`Cabut ${label} dari ${name}? Perubahan langsung tersimpan.`, { danger: true, confirmLabel: "Cabut" })
+      : await askConfirm(`Tambah ${label} ke ${name}? Perubahan langsung tersimpan.`, { confirmLabel: "Tambah" });
+    setAdding(false);
+    if (!ok) return;
     setBusy(true); setError("");
-    const r = await callApi("PUT", `/api/v1/persons/${p.id}`, {
-      name: p.name, title: p.title, gender: p.gender, birthDate: p.birthDate, positionId: p.position.id, cgGroupId: p.cgGroup?.id ?? null,
-      origin: p.origin, originChurch: p.originChurch, communityIds: p.communities.map((c) => c.id), ministryIds: ids,
-    });
+    const r = await callApi("PATCH", `/api/v1/persons/${p.id}/ministries`, kind === "add" ? { add: [ministryId] } : { remove: [ministryId] });
     setBusy(false);
-    if (r.ok) { setAdding(false); onChanged(); } else setError(errMsg(r.data));
+    if (r.ok) { showToast(kind === "add" ? `${label} ditambahkan ke ${name}` : `${label} dicabut dari ${name}`); onChanged(); }
+    else { setError(errMsg(r.data)); showToast("Perubahan gagal disimpan", "error"); }
   }
 
   const row = (label: string, value: React.ReactNode) => (
@@ -328,7 +336,7 @@ function PersonDetail({ person: p, canAccount, teams, cgs, scope, onEdit, onChan
             <span key={m.id} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[var(--primary-soft)] pl-4 pr-2 text-[13px] font-bold text-[var(--primary-ink)]" title={m.teamName}>
               {m.name.replace(/ \(WL\)$/, "")}
               {open(m.teamTypeId) && (
-                <button type="button" disabled={busy} onClick={() => void setMinistries(p.ministries.filter((x) => x.id !== m.id).map((x) => x.id))} aria-label={`Cabut ${m.name}`} className="grid size-5 place-items-center rounded-full text-xs hover:bg-white/70">✕</button>
+                <button type="button" disabled={busy} onClick={() => void changeMinistry("remove", m.id, m.name.replace(/ \(WL\)$/, ""))} aria-label={`Cabut ${m.name}`} className="grid size-5 place-items-center rounded-full text-xs hover:bg-white/70">✕</button>
               )}
               {!open(m.teamTypeId) && <span className="pr-2" />}
             </span>
@@ -337,7 +345,7 @@ function PersonDetail({ person: p, canAccount, teams, cgs, scope, onEdit, onChan
             <button type="button" onClick={() => setAdding(true)} className="h-9 rounded-full border border-dashed border-[#B9BDDA] px-4 text-[13px] font-bold text-[var(--primary-ink)] hover:bg-[#f3f4fb]">＋ pelayanan</button>
           ) : (
             <select autoFocus aria-label="Tambah pelayanan" defaultValue="" disabled={busy} onBlur={() => setAdding(false)}
-              onChange={(e) => e.target.value && void setMinistries([...have, e.target.value])} className="h-9 rounded-full border border-[var(--primary)] bg-white px-3 text-[13px] font-bold">
+              onChange={(e) => { const id = e.target.value; if (id) void changeMinistry("add", id, teams.flatMap((t) => t.ministries).find((m) => m.id === id)?.name ?? "pelayanan"); }} className="h-9 rounded-full border border-[var(--primary)] bg-white px-3 text-[13px] font-bold">
               <option value="">Pilih…</option>
               {teams.filter((t) => open(t.id)).map((t) => {
                 const rest = t.ministries.filter((m) => !have.has(m.id));
@@ -349,7 +357,9 @@ function PersonDetail({ person: p, canAccount, teams, cgs, scope, onEdit, onChan
         {error && <p className="text-sm font-semibold text-[#9B1C1C]" role="alert">{error}</p>}
         <p className="text-xs font-medium leading-relaxed text-[var(--ink-2)]">Nama pembicara luar disimpan di sini agar penulisannya tidak berubah atau dobel saat diundang lagi.</p>
       </div>
-      <button type="button" className={btnGhost} onClick={onEdit}>Ubah data lengkap</button>
+      {canEditIdentity
+        ? <button type="button" className={btnGhost} onClick={onEdit}>Ubah data lengkap</button>
+        : <p className="text-xs font-medium leading-relaxed text-[var(--ink-2)]">Data lengkap orang ini hanya bisa diubah oleh Penjadwal atau Admin Tim dari tim tempat ia melayani.</p>}
     </aside>
   );
 }

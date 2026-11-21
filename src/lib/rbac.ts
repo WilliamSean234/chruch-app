@@ -48,3 +48,12 @@ export function requireTeamAccess(u: AuthUser, teamTypeId: string): void {
     throw new ApiError(403, "FORBIDDEN_TEAM", "Anda hanya boleh mengatur tim yang menjadi tanggung jawab Anda.");
   }
 }
+
+/** Admin Tim hanya boleh mengubah data identitas orang yang punya pelayanan di tim miliknya (`personTeamIds` = tim dari pelayanan orang itu). */
+export function requirePersonInScope(u: AuthUser, personTeamIds: string[]): void {
+  const scope = teamScope(u);
+  if (scope === null) return;
+  if (!personTeamIds.some((t) => scope.includes(t))) {
+    throw new ApiError(403, "FORBIDDEN_TEAM", "Anda hanya boleh mengubah data orang yang melayani di tim Anda.");
+  }
+}

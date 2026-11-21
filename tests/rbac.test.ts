@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { can, isSuperadmin, requirePermission, teamScope, type AuthUser } from "../src/lib/rbac";
+import { can, isSuperadmin, requirePermission, requirePersonInScope, teamScope, type AuthUser } from "../src/lib/rbac";
 
 const user = (roles: AuthUser["roles"], permissions: string[] = []): AuthUser => ({ userId: "u", tenantId: "t", personId: null, roles, permissions });
 const role = (code: string, teamTypeId: string | null = null, isSuperadmin = false) => ({ code, isSuperadmin, teamTypeId });
@@ -32,4 +32,16 @@ test("cakupan tim: Penjadwal tanpa batas, Admin Tim dibatasi", () => {
   assert.deepEqual(teamScope(user([role("ADMIN_TIM", "tim-1"), role("ADMIN_TIM", "tim-2")])), ["tim-1", "tim-2"]);
   assert.equal(teamScope(user([role("ADMIN_TIM", null)])), null);
   assert.deepEqual(teamScope(user([role("ADMIN_TIM", "tim-1"), role("PELAYAN")])), ["tim-1"]);
+});
+
+test("Admin Tim hanya boleh mengubah data orang yang melayani di timnya", () => {
+  const ebm = user([role("ADMIN_TIM", "tim-ebm")], ["person.write"]);
+  assert.doesNotThrow(() => requirePersonInScope(ebm, ["tim-usher", "tim-ebm"])); // salah satu pelayanannya di tim EBM
+  assert.throws(() => requirePersonInScope(ebm, ["tim-usher"]), /tim Anda/);
+  assert.throws(() => requirePersonInScope(ebm, []), /tim Anda/); // belum punya pelayanan: Admin Tim tidak boleh mengubah
+});
+
+test("Penjadwal dan Superadmin boleh mengubah data siapa pun", () => {
+  assert.doesNotThrow(() => requirePersonInScope(user([role("PENJADWAL")], ["person.write"]), []));
+  assert.doesNotThrow(() => requirePersonInScope(user([role("SUPERADMIN", null, true)]), ["tim-usher"]));
 });
