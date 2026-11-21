@@ -2,7 +2,9 @@ import { z } from "zod";
 import { prisma } from "./prisma";
 import { audit } from "./audit";
 import { badRequest, conflict, forbidden, notFound } from "./errors";
-import { isSuperadmin, type AuthUser } from "./rbac";
+import { can, isSuperadmin, teamScope, type AuthUser } from "./rbac";
+import { EBM_GROUP } from "./ebmGroup";
+import { teamKind } from "./seatRules";
 
 /**
  * Kelompok rapat (Majelis, Pengurus Pemuda, Tim EBM, ...).
@@ -152,15 +154,39 @@ export async function getGroup(u: AuthUser, id: string) {
       return { id: m.id, personId: m.personId, name: m.person.name, title: m.person.title, positionIds: pos };
     })
     .sort((a, b) => (a.positionIds[0] !== undefined ? order.get(a.positionIds[0])! : 999) - (b.positionIds[0] !== undefined ? order.get(b.positionIds[0])! : 999) || a.name.localeCompare(b.name));
+  const ebm = EBM_GROUP.test(g.name.trim()) ? await ebmInfo(u, items.map((m) => m.personId)) : null;
   return {
     id: g.id,
     name: g.name,
     quorumMin: g.quorumMin,
+    ebm: ebm ? { canEdit: ebm.canEdit, ministries: ebm.ministries } : null, // null = bukan kelompok EBM
     canAdmin: sa, // ubah nama/kuorum, kelola jabatan
     canManageMembers: sa || mine.canManageMembers,
     positions: positions.map((p) => ({ id: p.id, name: p.name, canSchedule: p.canSchedule, canWriteMinutes: p.canWriteMinutes, canFinalize: p.canFinalize, canManageMembers: p.canManageMembers })),
-    members: items,
+    members: ebm ? items.map((m) => ({ ...m, ebmMinistryIds: ebm.byPerson[m.personId] ?? [] })) : items,
   };
+}
+
+/**
+ * Khusus kelompok EBM: daftar pelayanan di tim EBM dan pelayanan EBM tiap anggota.
+ * `canEdit` = boleh menambah/mencabut pelayanan EBM (butuh person.write; Admin Tim hanya bila timnya EBM).
+ * Perubahannya tetap divalidasi ulang di PATCH /persons/:id/ministries.
+ */
+async function ebmInfo(u: AuthUser, personIds: string[]) {
+  const teams = (await prisma.teamType.findMany({ where: { tenantId: u.tenantId, deletedAt: null }, select: { id: true, name: true } })).filter((t) => teamKind(t.name) === "EBM");
+  const ministries = teams.length
+    ? await prisma.ministry.findMany({ where: { tenantId: u.tenantId, deletedAt: null, teamTypeId: { in: teams.map((t) => t.id) } }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } })
+    : [];
+  const scope = teamScope(u);
+  const canEdit = can(u, "person.write") && ministries.length > 0 && (scope === null || teams.some((t) => scope.includes(t.id)));
+  const rows = ministries.length && personIds.length
+    ? await prisma.personMinistry.findMany({ where: { personId: { in: personIds }, ministryId: { in: ministries.map((m) => m.id) } }, select: { personId: true, ministryId: true } })
+    : [];
+  const byPerson: Record<string, string[]> = {};
+  for (const r of rows) (byPerson[r.personId] ??= []).push(r.ministryId);
+  const order = new Map(ministries.map((m, i) => [m.id, i]));
+  for (const k of Object.keys(byPerson)) byPerson[k]!.sort((a, b) => order.get(a)! - order.get(b)!);
+  return { canEdit, ministries, byPerson };
 }
 
 // ───────── Kelompok ─────────

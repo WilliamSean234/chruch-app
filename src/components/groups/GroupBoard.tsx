@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { askConfirm } from "@/components/ui/Confirm";
+import { showToast } from "@/components/ui/Toast";
 import Modal, { confirmDiscard, Field } from "@/components/master/Modal";
 import NewPersonInline from "@/components/master/NewPersonInline";
 import { btnGhost, btnPrimary, callApi, errMsg, inputCls } from "@/components/jadwal/api";
@@ -13,8 +14,9 @@ export const NEW_GROUP_EVENT = "groups:new";
 
 type GroupRow = { id: string; name: string; quorumMin: number | null; memberCount: number; positionCount: number };
 type Position = { id: string; name: string; canSchedule: boolean; canWriteMinutes: boolean; canFinalize: boolean; canManageMembers: boolean };
-type Member = { id: string; personId: string; name: string; title: string | null; positionIds: string[] };
-type Detail = { id: string; name: string; quorumMin: number | null; canAdmin: boolean; canManageMembers: boolean; positions: Position[]; members: Member[] };
+type Member = { id: string; personId: string; name: string; title: string | null; positionIds: string[]; ebmMinistryIds?: string[] };
+type EbmInfo = { canEdit: boolean; ministries: { id: string; name: string }[] };
+type Detail = { id: string; name: string; quorumMin: number | null; ebm: EbmInfo | null; canAdmin: boolean; canManageMembers: boolean; positions: Position[]; members: Member[] };
 type PersonHit = { id: string; name: string; title: string | null };
 
 const CAPS: { key: keyof Omit<Position, "id" | "name">; head: string; label: string; hint: string }[] = [
@@ -206,7 +208,7 @@ export default function GroupBoard({ isSuperadmin, canAddPerson }: { isSuperadmi
                   <div className="flex min-w-[200px] flex-1 items-center gap-2.5"><span className={eyebrow}>ANGGOTA</span><span className="h-px flex-1 bg-[#e8e4d6]" /></div>
                   {detail.canManageMembers && <button type="button" onClick={() => setModal({ t: "add" })} className="flex h-10 items-center gap-2 rounded-xl bg-[var(--primary)] px-4 text-[13.5px] font-bold text-white hover:brightness-110">＋ Tambah anggota</button>}
                 </div>
-                <MemberList detail={detail} posName={posName} onEdit={(m) => setModal({ t: "member", m })} />
+                <MemberList detail={detail} posName={posName} onEdit={(m) => setModal({ t: "member", m })} onChanged={reload} />
                 <span className="text-[12.5px] font-medium leading-relaxed text-[var(--ink-2)]">Anggota yang keluar tidak lagi bisa membuka notulen, tetapi riwayat keanggotaannya tetap tersimpan.</span>
               </div>
             </section>
@@ -223,9 +225,12 @@ export default function GroupBoard({ isSuperadmin, canAddPerson }: { isSuperadmi
 }
 
 /** Anggota kelompok: cari nama, saring per jabatan, dan berhalaman (kelompok seperti Majelis bisa puluhan orang). */
-function MemberList({ detail, posName, onEdit }: { detail: Detail; posName: (id: string) => string; onEdit: (m: Member) => void }) {
+function MemberList({ detail, posName, onEdit, onChanged }: { detail: Detail; posName: (id: string) => string; onEdit: (m: Member) => void; onChanged: () => void }) {
   const [q, setQ] = useState("");
   const [pos, setPos] = useState("");
+  const ebm = detail.ebm; // hanya ada di kelompok EBM
+  const [open, setOpen] = useState<Set<string>>(new Set()); // anggota yang daftar pelayanannya dibuka; bawaan tertutup
+  const toggleOpen = (id: string) => setOpen((cur) => { const n = new Set(cur); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const shown = useMemo(
     () => detail.members.filter((m) => (!q.trim() || fullName(m).toLowerCase().includes(q.trim().toLowerCase())) && (!pos || (pos === "NONE" ? m.positionIds.length === 0 : m.positionIds.includes(pos)))),
     [detail.members, q, pos],
@@ -241,12 +246,28 @@ function MemberList({ detail, posName, onEdit }: { detail: Detail; posName: (id:
           <option value="NONE">Belum ada jabatan</option>
         </FSelect>
       </FilterBar>
+      {ebm && shown.length > 0 && (
+        <div className="flex items-center justify-between gap-3 pb-1 pt-3">
+          <p className="text-xs font-semibold text-[var(--ink-2)]">Buka satu anggota untuk melihat{ebm.canEdit ? " dan mengatur" : ""} pelayanan EBM-nya.</p>
+          <span className="flex flex-none gap-1.5">
+            <button type="button" onClick={() => setOpen(new Set(shown.map((m) => m.id)))} className="h-8 rounded-lg border border-[var(--line)] bg-white px-3 text-xs font-bold text-[var(--ink-2)] hover:bg-[var(--bg)]">Buka semua</button>
+            <button type="button" onClick={() => setOpen(new Set())} className="h-8 rounded-lg border border-[var(--line)] bg-white px-3 text-xs font-bold text-[var(--ink-2)] hover:bg-[var(--bg)]">Tutup semua</button>
+          </span>
+        </div>
+      )}
       <div className="overflow-x-auto">
         <div className="flex min-w-[520px] flex-col">
           {shown.length === 0 && <p className="py-4 text-sm font-semibold text-[var(--ink-2)]">Tidak ada anggota yang cocok dengan filter ini.</p>}
           {pg.slice.map((m) => (
-            <div key={m.id} className="grid grid-cols-[2fr_3fr_auto] items-center gap-3 border-b border-[var(--line-2)] py-2.5">
+            <div key={m.id} className="border-b border-[var(--line-2)]">
+            <div className="grid grid-cols-[2fr_3fr_auto] items-center gap-3 py-2.5">
               <span className="flex min-w-0 items-center gap-3">
+                {ebm && (
+                  <button type="button" onClick={() => toggleOpen(m.id)} aria-expanded={open.has(m.id)} aria-label={`${open.has(m.id) ? "Tutup" : "Buka"} pelayanan EBM ${fullName(m)}`}
+                    className="grid size-7 flex-none place-items-center rounded-lg text-[var(--ink-2)] hover:bg-[var(--bg)]">
+                    <span aria-hidden="true" className={`text-xs transition-transform ${open.has(m.id) ? "rotate-90" : ""}`}>▶</span>
+                  </button>
+                )}
                 <span className="grid size-9 flex-none place-items-center rounded-full bg-[var(--primary-soft)] text-[13px] font-extrabold text-[var(--primary-ink)]" aria-hidden="true">{m.name.charAt(0).toUpperCase()}</span>
                 <span className="truncate text-sm font-bold">{fullName(m)}</span>
               </span>
@@ -256,11 +277,57 @@ function MemberList({ detail, posName, onEdit }: { detail: Detail; posName: (id:
               </span>
               {detail.canManageMembers ? <button type="button" onClick={() => onEdit(m)} className="h-[34px] rounded-[10px] border border-[var(--line)] bg-white px-3 text-[12.5px] font-semibold text-[var(--ink-2)] hover:bg-[var(--bg)]">Ubah jabatan</button> : <span />}
             </div>
+            {ebm && open.has(m.id) && <EbmPanel member={m} ebm={ebm} onChanged={onChanged} />}
+            </div>
           ))}
         </div>
       </div>
       {shown.length > 0 && <Pager className="rounded-xl border" page={pg.page} pageSize={pg.pageSize} total={pg.total} onPage={pg.setPage} onPageSize={pg.setPageSize} noun="anggota" />}
     </>
+  );
+}
+
+/** Pelayanan EBM satu anggota (khusus kelompok EBM). Yang berhak mengubah bisa menambah atau mencabut; yang lain hanya melihat. */
+function EbmPanel({ member, ebm, onChanged }: { member: Member; ebm: EbmInfo; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const mine = member.ebmMinistryIds ?? [];
+  const name = (id: string) => ebm.ministries.find((x) => x.id === id)?.name ?? "pelayanan";
+  const free = ebm.ministries.filter((x) => !mine.includes(x.id));
+
+  async function change(kind: "add" | "remove", ministryId: string) {
+    const label = name(ministryId);
+    const ok = kind === "remove"
+      ? await askConfirm(`Cabut ${fullName(member)} dari pelayanan ${label}? Ia tidak dijadwalkan lagi di posisi ini. Keanggotaan kelompok tidak berubah.`, { danger: true, confirmLabel: "Cabut" })
+      : await askConfirm(`Tambah pelayanan ${label} untuk ${fullName(member)}?`, { confirmLabel: "Tambah" });
+    if (!ok) return;
+    setBusy(true);
+    const r = await callApi("PATCH", `/api/v1/persons/${member.personId}/ministries`, kind === "add" ? { add: [ministryId], remove: [] } : { add: [], remove: [ministryId] });
+    setBusy(false);
+    if (!r.ok) { showToast(errMsg(r.data), "error"); return; }
+    showToast(kind === "add" ? `Pelayanan ${label} ditambahkan` : `Pelayanan ${label} dicabut`);
+    onChanged();
+  }
+
+  return (
+    <div className="mb-3 ml-[2.75rem] flex flex-col gap-2 rounded-xl border border-[var(--line-2)] bg-[var(--surface-2)] px-3.5 py-3">
+      <span className="text-[11.5px] font-extrabold tracking-[0.06em] text-[var(--ink-2)]">PELAYANAN DI TIM EBM</span>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {mine.length === 0 && <span className="text-[12.5px] font-medium text-[var(--ink-2)]">Belum melayani di posisi EBM mana pun.</span>}
+        {mine.map((id) => (
+          <span key={id} className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-[var(--primary-soft)] py-[3px] pl-[11px] pr-2 text-[12.5px] font-bold text-[var(--primary-ink)]">
+            {name(id)}
+            {ebm.canEdit && <button type="button" disabled={busy} onClick={() => void change("remove", id)} aria-label={`Cabut ${name(id)}`} className="grid size-5 place-items-center rounded-full hover:bg-white/70 disabled:opacity-50">✕</button>}
+          </span>
+        ))}
+        {ebm.canEdit && free.length > 0 && (
+          <select aria-label="Tambah pelayanan EBM" disabled={busy} value="" onChange={(e) => { const v = e.target.value; e.target.value = ""; if (v) void change("add", v); }}
+            className="h-8 rounded-full border border-dashed border-[var(--line)] bg-white px-3 text-[12.5px] font-bold text-[var(--ink-2)]">
+            <option value="">+ pelayanan</option>
+            {free.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+          </select>
+        )}
+      </div>
+    </div>
   );
 }
 
