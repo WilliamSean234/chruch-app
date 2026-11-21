@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { DEFAULT_PAGE_SIZE } from "@/lib/paging";
 import { askConfirm } from "@/components/ui/Confirm";
+import { CompactList, CompactRow, Detail, useOpenRows } from "@/components/ui/CompactList";
 import Modal, { Field } from "@/components/master/Modal";
 import PasswordField, { genPassword, IssuedPassword } from "@/components/master/PasswordField";
 import { btnGhost, btnPrimary, callApi, card, errMsg, inputCls } from "@/components/jadwal/api";
@@ -16,6 +17,7 @@ type Team = { id: string; name: string };
 const rolesText = (a: Acc) => (a.roleCodes.length ? a.roleCodes.map((c) => ROLE_LABEL[c] ?? c).join(", ") + (a.teamName ? ` · ${a.teamName}` : "") : "Anggota (tanpa role)");
 
 export default function AccountsPanel({ selfId, isSuper }: { selfId: string; isSuper: boolean }) {
+  const rows = useOpenRows(); // HP: baris akun yang dibuka
   const [items, setItems] = useState<Acc[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -89,7 +91,38 @@ export default function AccountsPanel({ selfId, isSuper }: { selfId: string; isS
       {error && <p role="alert" className="rounded-xl bg-[#fdecec] px-3.5 py-2.5 text-sm font-semibold text-[#a12b2b]">{error}</p>}
 
       <section className="overflow-hidden rounded-[20px] border border-[var(--line)] bg-white">
-        <div className="overflow-x-auto">
+        {/* HP: daftar ringkas, satu baris per akun */}
+        {loading && items.length === 0 && <p className="px-4 py-8 text-center text-sm font-semibold text-[var(--ink-2)] md:hidden">Memuat…</p>}
+        {!loading && items.length === 0 && <p className="px-4 py-8 text-center text-sm font-semibold text-[var(--ink-2)] md:hidden">Tidak ada akun yang cocok.</p>}
+        {items.length > 0 && (
+          <CompactList label="Daftar akun">
+            {items.map((a) => {
+              const self = a.id === selfId;
+              const locked = a.roleCodes.includes("SUPERADMIN") && !isSuper;
+              return (
+                <CompactRow key={a.id} id={a.id} open={rows.open.has(a.id)} onToggle={rows.toggle} tone={a.isActive ? "" : "bg-[var(--surface-2)]"}
+                  title={<>{a.name ?? a.email}{self && <span className="ml-2 whitespace-nowrap rounded-full bg-[var(--primary-soft)] px-2 py-0.5 text-[11px] font-bold text-[var(--primary-ink)]">Anda</span>}</>}
+                  sub={rolesText(a)}
+                  trailing={<span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-bold ${a.isActive ? "bg-[#E3F4E8] text-[#1B6B34]" : "bg-[#ECEEF4] text-[#565b76]"}`}>{a.isActive ? "Aktif" : "Nonaktif"}</span>}>
+                  {a.name && <Detail label="Email"><span className="break-all">{a.email}</span></Detail>}
+                  {!a.personId && <p className="text-xs font-medium text-[var(--ink-2)]">Tidak terhubung ke data orang</p>}
+                  {a.mustChangePassword && <Detail label="Sandi"><span className="whitespace-nowrap rounded-full bg-[var(--gold-soft)] px-2.5 py-0.5 text-xs font-bold text-[#6F4304]">Belum ganti sandi</span></Detail>}
+                  {a.memberships && a.memberships.length > 0 && <Detail label="Kelompok"><MembershipChips items={a.memberships} /></Detail>}
+                  {locked ? <p className="text-xs font-medium text-[var(--ink-2)]">Hanya Superadmin yang bisa mengubah akun ini.</p> : (
+                    <div className="flex flex-wrap gap-0.5">
+                      <button type="button" className={link} onClick={() => { setMsg(""); setDlg({ kind: "role", acc: a }); }}>Ubah role</button>
+                      <button type="button" className={link} onClick={() => { setMsg(""); setDlg({ kind: "reset", acc: a }); }}>Reset sandi</button>
+                      {a.isActive
+                        ? <button type="button" disabled={self} onClick={() => void toggle(a, false)} className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-[#9B1C1C] hover:bg-[#FFF5F5] disabled:cursor-not-allowed disabled:opacity-40">Nonaktifkan</button>
+                        : <button type="button" className={link} onClick={() => void toggle(a, true)}>Aktifkan</button>}
+                    </div>
+                  )}
+                </CompactRow>
+              );
+            })}
+          </CompactList>
+        )}
+        <div className="overflow-x-auto max-md:hidden">
           <table className="w-full min-w-[900px] text-left text-sm">
             <thead className="bg-[var(--surface-2)] text-xs font-bold uppercase tracking-wide text-[var(--ink-2)]">
               <tr><th className="px-4 py-3">Akun</th><th className="px-4 py-3">Role</th><th className="px-4 py-3">Kelompok &amp; jabatan</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Aksi</th></tr>
