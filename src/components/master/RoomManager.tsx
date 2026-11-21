@@ -9,6 +9,7 @@ import Pager from "@/components/ui/Pager";
 import { useDebounced, usePagedList } from "@/components/ui/usePagedList";
 import { floorText } from "@/lib/ui";
 import Modal, { confirmDiscard, Field } from "./Modal";
+import { CompactList, CompactRow, Detail, useOpenRows } from "@/components/ui/CompactList";
 
 export type RoomRow = { id: string; name: string; floor: number | null; isActive: boolean; upcoming: number };
 type Options = { floors: number[]; hasNoFloor: boolean };
@@ -70,6 +71,7 @@ export default function RoomManager({ canManage, version, onChange }: { canManag
   const [edit, setEdit] = useState<RoomRow | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const rows = useOpenRows();
   const search = useDebounced(q.trim());
   const list = usePagedList<RoomRow, { options: Options }>("/api/v1/rooms", { search, floor, status });
   const first = useRef(true);
@@ -103,7 +105,26 @@ export default function RoomManager({ canManage, version, onChange }: { canManag
       {(error || list.error) && <Alert>{error || list.error}</Alert>}
 
       <div className={listCard} aria-busy={list.loading}>
-        <div className="overflow-x-auto">
+        {/* HP: daftar ringkas */}
+        {list.items === null && <p className="px-4 py-8 text-center text-sm text-[var(--ink-2)] md:hidden">Memuat…</p>}
+        {list.items?.length === 0 && <p className="px-4 py-8 text-center text-sm font-semibold text-[var(--ink-2)] md:hidden">{dirty ? "Tidak ada ruangan yang cocok dengan filter ini." : "Belum ada ruangan."}</p>}
+        {!!list.items?.length && (
+          <CompactList label="Daftar ruangan">
+            {list.items.map((r) => (
+              <CompactRow key={r.id} id={r.id} open={rows.open.has(r.id)} onToggle={rows.toggle} expandable={canManage}
+                title={<span className={r.isActive ? "" : "text-[#8B90AA]"}>{r.name}</span>}
+                sub={[r.floor === null ? null : floorText(r.floor), r.upcoming === 0 ? "Kosong" : `${r.upcoming} pemakaian`].filter(Boolean).join(" · ")}
+                trailing={<span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-bold ${r.isActive ? "bg-[#E3F4E8] text-[#1B6B34]" : "bg-[#ECEEF4] text-[#565B76]"}`}>{r.isActive ? "Aktif" : "Nonaktif"}</span>}>
+                <Detail label="Ruangan aktif"><Switch checked={r.isActive} onChange={(v) => void toggle(r, v)} label={`Ruangan ${r.name} aktif`} disabled={busy} /></Detail>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setEdit(r)} className="h-9 rounded-xl border border-[var(--line)] bg-white px-3.5 text-[13px] font-bold text-[var(--primary-ink)]">Ubah</button>
+                  <button type="button" onClick={() => remove(r)} className="h-9 rounded-xl px-3.5 text-[13px] font-bold text-[#9B1C1C] hover:bg-[#FFF5F5]">Hapus</button>
+                </div>
+              </CompactRow>
+            ))}
+          </CompactList>
+        )}
+        <div className="overflow-x-auto max-md:hidden">
           <table className="w-full min-w-[560px] text-left text-sm">
             <thead className="bg-[var(--surface-2)] text-xs font-bold uppercase tracking-[0.06em] text-[var(--ink-2)]">
               <tr><th className="px-4 py-3">Ruangan</th><th className="px-4 py-3">Lantai</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Pemakaian mendatang</th>{canManage && <th className="px-4 py-3" />}</tr>
