@@ -54,7 +54,10 @@ export default function AccountsPanel({ selfId, isSuper }: { selfId: string; isS
     return r;
   }
   async function toggle(a: Acc, on: boolean) {
-    if (!on && !(await askConfirm(`Nonaktifkan akun ${a.email}? ${a.name ?? "Pemiliknya"} tidak bisa masuk lagi sampai diaktifkan kembali.`))) return;
+    const ok = on
+      ? await askConfirm(`Aktifkan kembali akun ${a.email}? ${a.name ?? "Pemiliknya"} bisa masuk lagi.`, { confirmLabel: "Aktifkan" })
+      : await askConfirm(`Nonaktifkan akun ${a.email}? ${a.name ?? "Pemiliknya"} tidak bisa masuk lagi sampai diaktifkan kembali.`);
+    if (!ok) return;
     setMsg(""); setError("");
     const r = await patch(a, { isActive: on });
     if (!r.ok) setError(errMsg(r.data)); else setMsg(on ? `Akun ${a.email} diaktifkan kembali.` : `Akun ${a.email} dinonaktifkan.`);

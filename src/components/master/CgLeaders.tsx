@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { callApi, errMsg, inputCls } from "@/components/jadwal/api";
+import { askConfirm } from "@/components/ui/Confirm";
+import { showToast } from "@/components/ui/Toast";
 
 export type Leader = { id: string; name: string; title?: string | null };
 const label = (p: Leader) => (p.title && !p.name.toLowerCase().startsWith(p.title.toLowerCase()) ? `${p.title} ${p.name}` : p.name);
@@ -24,12 +26,24 @@ export default function CgLeaders({ cgId, leaders, canWrite, onSaved }: { cgId: 
     return () => { off = true; };
   }, [adding, cgId]);
 
-  async function save(ids: string[]) {
+  async function save(ids: string[], done: string) {
     setBusy(true); setError("");
     const r = await callApi("PUT", `/api/v1/cg-groups/${cgId}/leaders`, { personIds: ids });
     setBusy(false);
-    if (!r.ok) return setError(errMsg(r.data));
-    setAdding(false); onSaved();
+    if (!r.ok) { setError(errMsg(r.data)); showToast("Perubahan gagal disimpan", "error"); return; }
+    setAdding(false); showToast(done); onSaved();
+  }
+
+  async function removeLeader(l: Leader) {
+    if (!(await askConfirm(`Cabut ${label(l)} sebagai leader? Perubahan langsung tersimpan.`, { danger: true, confirmLabel: "Cabut" }))) return;
+    await save(leaders.filter((x) => x.id !== l.id).map((x) => x.id), `${label(l)} dicabut sebagai leader`);
+  }
+
+  async function addLeader(id: string) {
+    const p = (members ?? []).find((x) => x.id === id);
+    if (!p) return;
+    if (!(await askConfirm(`Jadikan ${label(p)} leader CG ini? Perubahan langsung tersimpan.`, { confirmLabel: "Jadikan" }))) { setAdding(false); return; }
+    await save([...leaders.map((x) => x.id), id], `${label(p)} menjadi leader CG`);
   }
 
   const options = (members ?? []).filter((p) => !leaders.some((l) => l.id === p.id));
@@ -42,7 +56,7 @@ export default function CgLeaders({ cgId, leaders, canWrite, onSaved }: { cgId: 
         {leaders.map((l) => (
           <span key={l.id} className="inline-flex h-8 items-center gap-1.5 rounded-full bg-[var(--primary-soft)] pl-3.5 pr-2 text-[13px] font-bold text-[var(--primary-ink)]">
             {label(l)}
-            {canWrite && <button type="button" disabled={busy} aria-label={`Cabut ${l.name} sebagai leader`} onClick={() => void save(leaders.filter((x) => x.id !== l.id).map((x) => x.id))} className="grid size-5 place-items-center rounded-full text-xs hover:bg-white/70">✕</button>}
+            {canWrite && <button type="button" disabled={busy} aria-label={`Cabut ${l.name} sebagai leader`} onClick={() => void removeLeader(l)} className="grid size-5 place-items-center rounded-full text-xs hover:bg-white/70">✕</button>}
           </span>
         ))}
         {canWrite && !adding && <button type="button" onClick={() => { setError(""); setMembers(null); setAdding(true); }} className="h-8 rounded-full border border-dashed border-[#B9BDDA] px-3.5 text-[13px] font-bold text-[var(--primary-ink)] hover:bg-[#f3f4fb]">＋ leader</button>}
@@ -57,7 +71,7 @@ export default function CgLeaders({ cgId, leaders, canWrite, onSaved }: { cgId: 
           )}
           {members && options.length > 0 && (
             <select autoFocus disabled={busy} defaultValue="" aria-label="Pilih leader dari anggota CG" className={`${inputCls} !h-10 flex-1`}
-              onChange={(e) => e.target.value && void save([...leaders.map((x) => x.id), e.target.value])}>
+              onChange={(e) => e.target.value && void addLeader(e.target.value)}>
               <option value="">Pilih anggota CG…</option>
               {options.map((p) => <option key={p.id} value={p.id}>{label(p)}</option>)}
             </select>

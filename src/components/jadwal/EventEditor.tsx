@@ -3,6 +3,7 @@
 import Fab from "@/components/ui/Fab";
 import Link from "next/link";
 import { askConfirm } from "@/components/ui/Confirm";
+import { showToast } from "@/components/ui/Toast";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Switch from "./Switch";
 import SeatPicker from "./SeatPicker";
@@ -105,26 +106,45 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
   };
 
   // ───────── status
-  const publish = () => run(() => callApi("POST", `/api/v1/events/${eventId}/publish`));
-  const reopen = () => run(() => callApi("POST", `/api/v1/events/${eventId}/reopen`));
-  const unpublish = () => run(() => callApi("POST", `/api/v1/events/${eventId}/unpublish`));
+  const changeStatus = async (action: "publish" | "reopen" | "unpublish", ask: string, confirmLabel: string, done: string) => {
+    if (!(await askConfirm(ask, { confirmLabel }))) return;
+    if (await run(() => callApi("POST", `/api/v1/events/${eventId}/${action}`))) showToast(done);
+  };
+  const publish = () => changeStatus("publish", "Terbitkan jadwal ini? Status acara menjadi terbit.", "Terbitkan", "Jadwal diterbitkan");
+  const reopen = () => changeStatus("reopen", "Aktifkan kembali acara ini? Acara yang tadinya dibatalkan menjadi aktif lagi.", "Aktifkan", "Acara diaktifkan kembali");
+  const unpublish = () => changeStatus("unpublish", "Tarik jadwal ini ke draf? Status acara kembali menjadi draf.", "Tarik ke draf", "Jadwal ditarik ke draf");
   const cancel = () => run(() => callApi("POST", `/api/v1/events/${eventId}/cancel`, { reason: cancelReason }), () => { setCancelOpen(false); setCancelReason(""); });
 
   // ───────── kursi & orang
   const assign = (seatId: string, personId: string | null, ov?: { reason: string }): Promise<boolean> =>
     run(() => callApi("PUT", `/api/v1/events/${eventId}/seats/${seatId}/person`, { personId, override: ov }), () => setPicker(null), personId ? (reason) => assign(seatId, personId, { reason }).then(() => undefined) : undefined);
 
+  /** Isi, ganti, atau kosongkan satu kursi. Mengganti atau mengosongkan orang yang sudah ada meminta konfirmasi dulu. */
+  async function assignSeat(s: Seat, personId: string | null): Promise<boolean> {
+    if (s.person) {
+      const clearing = personId === null;
+      const q = clearing ? `Kosongkan ${s.label}? ${s.person.name} dilepas dari posisi ini.` : `Ganti ${s.person.name} di ${s.label}? Orang yang dipilih akan menggantikannya.`;
+      if (!(await askConfirm(q, { danger: clearing, confirmLabel: clearing ? "Kosongkan" : "Ganti" }))) { setPicker(null); return false; }
+    }
+    const ok = await assign(s.id, personId);
+    if (ok) showToast(personId === null ? `${s.label} dikosongkan` : `${s.label} diperbarui`);
+    return ok;
+  }
+
   const setRequired = (seatId: string, required: boolean) =>
     run(() => callApi("PUT", `/api/v1/events/${eventId}/seats/${seatId}/rehearsal`, { required }), undefined, (reason) => setRequiredOv(seatId, required, reason));
   const setRequiredOv = async (seatId: string, required: boolean, reason: string) => { await run(() => callApi("PUT", `/api/v1/events/${eventId}/seats/${seatId}/rehearsal`, { required, override: { reason } })); };
 
-  async function bulkRequired(teamTypeId: string, required: boolean) {
+  async function bulkRequired(teamTypeId: string, required: boolean, teamName: string) {
+    const q = required ? `Wajibkan latihan untuk semua posisi ${teamName}? Perubahan langsung tersimpan.` : `Hapus kewajiban latihan untuk semua posisi ${teamName}? Perubahan langsung tersimpan.`;
+    if (!(await askConfirm(q, { danger: false, confirmLabel: required ? "Wajibkan" : "Hapus kewajiban" }))) return;
     setBusy(true);
     const r = await callApi("PUT", `/api/v1/events/${eventId}/rehearsal-required`, { required, teamTypeId });
     setBusy(false);
     if (!r.ok) return setBanner({ kind: "error", title: "Gagal", message: errMsg(r.data) });
     const blocked = r.data.blocked as { label: string; person: string | null; reason: string }[];
     setBanner(blocked.length ? { kind: "info", title: `${blocked.length} kursi tidak diubah karena bentrok`, message: blocked.map((b) => `${b.label}${b.person ? ` (${b.person})` : ""}: ${b.reason}`).join(" ") } : null);
+    showToast(required ? `Latihan diwajibkan untuk semua posisi ${teamName}` : `Kewajiban latihan dihapus untuk semua posisi ${teamName}`);
     await load();
   }
 
@@ -173,7 +193,11 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
     }
     await addSeat(ministryId, count);
   };
-  const addTeam = (teamTypeId: string) => run(() => callApi("POST", `/api/v1/events/${eventId}/teams`, { teamTypeId }));
+  const addTeam = async (teamTypeId: string) => {
+    const name = teams.find((t) => t.id === teamTypeId)?.name ?? "tim";
+    if (!(await askConfirm(`Tambahkan tim ${name} ke acara ini? Posisi bawaan tim ikut ditambahkan.`, { confirmLabel: "Tambahkan" }))) return;
+    if (await run(() => callApi("POST", `/api/v1/events/${eventId}/teams`, { teamTypeId }))) showToast(`Tim ${name} ditambahkan`);
+  };
   const removeTeam = async (teamTypeId: string, name: string) => { if (await askConfirm(`Hapus tim ${name} beserta semua posisinya dari acara ini?`)) void run(() => callApi("DELETE", `/api/v1/events/${eventId}/teams/${teamTypeId}`)); };
 
   // ───────── latihan
@@ -388,7 +412,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
                   <span className="flex-1" />
                   {perms.rehearsal && mayEditTeam && t.seats.length > 0 && (
                     <label className="flex items-center gap-2.5 text-[12.5px] font-bold text-[var(--ink-2)]">Wajib latihan
-                      <Switch checked={allReq} disabled={busy} onChange={(v) => bulkRequired(t.teamTypeId, v)} label={`Wajib latihan semua posisi ${t.name}`} />
+                      <Switch checked={allReq} disabled={busy} onChange={(v) => void bulkRequired(t.teamTypeId, v, t.name)} label={`Wajib latihan semua posisi ${t.name}`} />
                     </label>
                   )}
                   {perms.editEvent && editable && <button onClick={() => removeTeam(t.teamTypeId, t.name)} className="rounded-lg px-2 py-1 text-xs font-bold text-[#9B1C1C] hover:bg-[#FFF5F5]">Hapus tim</button>}
@@ -416,18 +440,18 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
                         {s.person && seatEditable(s) && (
                           <div className="flex items-center gap-1 max-md:order-4 max-md:flex-1">
                             <button onClick={() => setPicker(picker === s.id ? null : s.id)} className="rounded-lg px-2.5 py-1 text-xs font-bold text-[var(--primary-ink)] hover:bg-[var(--primary-soft)]">Ganti</button>
-                            <button onClick={() => assign(s.id, null)} className="rounded-lg px-2.5 py-1 text-xs font-bold text-[var(--ink-2)] hover:bg-[var(--bg)]">Kosongkan</button>
+                            <button onClick={() => void assignSeat(s, null)} className="rounded-lg px-2.5 py-1 text-xs font-bold text-[var(--ink-2)] hover:bg-[var(--bg)]">Kosongkan</button>
                           </div>
                         )}
                         {perms.rehearsal && seatEditable(s) && (
                           <label className="flex items-center gap-2 text-xs font-bold text-[var(--ink-2)] max-md:order-5">Wajib latihan
-                            <Switch checked={s.rehearsalRequired} disabled={busy} onChange={(v) => setRequired(s.id, v)} label={`Wajib latihan ${s.label}`} />
+                            <Switch checked={s.rehearsalRequired} disabled={busy} onChange={(v) => void setRequired(s.id, v).then((ok) => ok && showToast(v ? `Wajib latihan ${s.label}` : `Tidak wajib latihan ${s.label}`))} label={`Wajib latihan ${s.label}`} />
                           </label>
                         )}
                         {perms.editEvent && editable && <button onClick={() => removeSeat(s.id, s.label)} aria-label={`Hapus posisi ${s.label}`} className="grid size-7 flex-none place-items-center rounded-lg max-md:order-2 text-[var(--ink-2)] hover:bg-[#FFF5F5] hover:text-[#9B1C1C]">✕</button>}
                       </div>
                       {picker === s.id && (
-                        <SeatPicker canAddPerson={perms.addPerson} eventId={eventId} seatId={s.id} seatLabel={s.label} timeLabel={timeLabel} onClose={() => setPicker(null)} onPick={(pid) => assign(s.id, pid)} />
+                        <SeatPicker canAddPerson={perms.addPerson} eventId={eventId} seatId={s.id} seatLabel={s.label} timeLabel={timeLabel} onClose={() => setPicker(null)} onPick={(pid) => void assignSeat(s, pid)} />
                       )}
                     </div>
                   ))}

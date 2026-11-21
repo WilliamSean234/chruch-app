@@ -212,7 +212,10 @@ function AccountSection({ person, teams, isSuper, onChanged }: { person: PersonD
       setMode("view"); setIssued({ email: acc?.email ?? "", password }); setPassword(""); setNote("Kata sandi direset. Berikan kata sandi sementara ini ke orangnya; ia akan diminta menggantinya saat masuk.");
     });
   const toggle = async (on: boolean) => {
-    if (!on && !(await askConfirm(`Nonaktifkan akun ${acc?.email}? ${person.name} tidak bisa masuk lagi.`))) return;
+    const ok = on
+      ? await askConfirm(`Aktifkan kembali akun ${acc?.email}? ${person.name} bisa masuk lagi.`, { confirmLabel: "Aktifkan" })
+      : await askConfirm(`Nonaktifkan akun ${acc?.email}? ${person.name} tidak bisa masuk lagi.`);
+    if (!ok) return;
     void send("PATCH", { isActive: on }, () => { if (acc) setAcc({ ...acc, isActive: on }); setNote(on ? "Akun diaktifkan kembali." : ""); });
   };
 
