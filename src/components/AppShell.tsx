@@ -36,7 +36,7 @@ const NAV: { key: NavKey; label: string; href: string; ready: boolean; show: (u:
   { key: "kelompok", label: "Kelompok", href: "/kelompok", ready: true, show: (u, g) => isSuperadmin(u) || g },
   { key: "template", label: "Template acara", href: "/template", ready: true, show: (u) => can(u, "template.write") },
   { key: "orang", label: "Orang & pelayanan", href: "/orang", ready: true, show: (u) => can(u, "person.write") },
-  { key: "ruangan", label: "Ruangan", href: "/ruangan", ready: true, show: (u, _g, s) => can(u, "event.write") || can(u, "master.write") || s },
+  { key: "ruangan", label: "Ruangan", href: "/ruangan", ready: true, show: () => true }, // semua orang boleh melihat ruangan; mengubah tetap dibatasi
   { key: "pengaturan", label: "Pengaturan", href: "/pengaturan", ready: true, show: (u) => can(u, "user.manage") },
 ];
 
