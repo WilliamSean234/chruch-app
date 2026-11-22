@@ -12,7 +12,7 @@ import { dayLong, dayShort, hm, initials, MONTHS, STATUS_LABEL, toneFor, WEEKDAY
 import RoomOptions from "@/components/ui/RoomOptions";
 
 type Seat = {
-  id: string; teamTypeId: string; ministryId: string; ministryName: string; label: string; rehearsalRequired: boolean; bandOnly?: boolean;
+  id: string; teamTypeId: string; ministryId: string; ministryName: string; slotNo: number; label: string; rehearsalRequired: boolean; bandOnly?: boolean;
   person: { id: string; name: string; origin: string; originChurch: string | null } | null;
 };
 type Detail = {
@@ -20,7 +20,7 @@ type Detail = {
   id: string; number: string; title: string; status: string; attendanceMode: string; theme: string | null; padus: string | null; bandMode: "BAND" | "NO_BAND"; locked?: boolean; attendanceOpen?: boolean; attendance?: { mode: "COUNT" | "NAMES"; total: number; note: string | null; recordedAt: string | null } | null; startsAt: string; endsAt: string; durationMin: number;
   room: { id: string; name: string }; teams: { teamTypeId: string; name: string }[]; seats: Seat[];
   /** Ibadah pasangan di hari yang sama (Minggu 1 dan 2): personelnya biasanya sama. */
-  pair: { id: string; number: string; title: string; startsAt: string; filled: number } | null;
+  pair: { id: string; number: string; title: string; startsAt: string; filled: number; seats: { ministryId: string; slotNo: number; personId: string | null }[] } | null;
 };
 /** "2026-12-20", 3 → "2026-12-17" */
 const daysBefore = (ymdText: string, n: number) => {
@@ -98,12 +98,18 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
   }
 
   // ───────── info acara
-  const saveInfo = () => {
+  const saveInfo = async () => {
     if (!d) return;
     const dur = diffMin(f.start, f.end);
     if (dur <= 0) return setBanner({ kind: "error", title: "Waktu tidak valid", message: "Jam selesai harus setelah jam mulai." });
-    return run(() => callApi("PATCH", `/api/v1/events/${eventId}`, { title: f.title, date: f.date, startTime: f.start, durationMin: dur, roomId: f.roomId, attendanceMode: f.mode, theme: f.theme, padus: f.padus }), () => setSaved(true));
+    // tema dan padus biasanya sama untuk kedua ibadah: tanyakan apakah ikut disimpan di ibadah satunya
+    const sharedChanged = f.theme !== base.theme || f.padus !== base.padus;
+    const alsoPair = !!d.pair && sharedChanged && (await askPair(`Tema atau catatan padus diubah. Simpan juga di ${d.pair.title}? Judul, jam, dan ruangan tidak ikut diubah.`));
+    return run(() => callApi("PATCH", `/api/v1/events/${eventId}`, { title: f.title, date: f.date, startTime: f.start, durationMin: dur, roomId: f.roomId, attendanceMode: f.mode, theme: f.theme, padus: f.padus, alsoPair }), () => setSaved(true));
   };
+
+  /** Pilihan untuk Ibadah Minggu 1 dan 2: true = berlaku di kedua ibadah, false = hanya ibadah ini (juga bila ditutup dengan Esc). */
+  const askPair = (message: string) => askConfirm(message, { title: "Ibadah Minggu pasangan", confirmLabel: "Kedua ibadah", cancelLabel: "Hanya ini" });
 
   // ───────── status
   const changeStatus = async (action: "publish" | "reopen" | "unpublish", ask: string, confirmLabel: string, done: string) => {
@@ -116,8 +122,8 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
   const cancel = () => run(() => callApi("POST", `/api/v1/events/${eventId}/cancel`, { reason: cancelReason }), () => { setCancelOpen(false); setCancelReason(""); });
 
   // ───────── kursi & orang
-  const assign = (seatId: string, personId: string | null, ov?: { reason: string }): Promise<boolean> =>
-    run(() => callApi("PUT", `/api/v1/events/${eventId}/seats/${seatId}/person`, { personId, override: ov }), () => setPicker(null), personId ? (reason) => assign(seatId, personId, { reason }).then(() => undefined) : undefined);
+  const assign = (seatId: string, personId: string | null, ov?: { reason: string }, mirror = false): Promise<boolean> =>
+    run(() => callApi("PUT", `/api/v1/events/${eventId}/seats/${seatId}/person`, { personId, override: ov, mirror }), () => setPicker(null), personId ? (reason) => assign(seatId, personId, { reason }, mirror).then(() => undefined) : undefined);
 
   /** Isi, ganti, atau kosongkan satu kursi. Mengganti atau mengosongkan orang yang sudah ada meminta konfirmasi dulu. */
   async function assignSeat(s: Seat, personId: string | null): Promise<boolean> {
@@ -126,7 +132,15 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
       const q = clearing ? `Kosongkan ${s.label}? ${s.person.name} dilepas dari posisi ini.` : `Ganti ${s.person.name} di ${s.label}? Orang yang dipilih akan menggantikannya.`;
       if (!(await askConfirm(q, { danger: clearing, confirmLabel: clearing ? "Kosongkan" : "Ganti" }))) { setPicker(null); return false; }
     }
-    const ok = await assign(s.id, personId);
+    // kursi yang sama di ibadah pasangan masih sama dengan sebelum diubah: tanyakan apakah ikut diubah
+    const twin = d?.pair?.seats.find((x) => x.ministryId === s.ministryId && x.slotNo === s.slotNo);
+    let mirror = false;
+    if (d?.pair && twin && twin.personId === (s.person?.id ?? null) && (personId ?? null) !== (s.person?.id ?? null)) {
+      const what = personId === null ? `Kosongkan ${s.label} juga di ${d.pair.title}?` : `Isi ${s.label} yang sama juga di ${d.pair.title}?`;
+      setPicker(null);
+      mirror = await askPair(what);
+    }
+    const ok = await assign(s.id, personId, undefined, mirror);
     if (ok) showToast(personId === null ? `${s.label} dikosongkan` : `${s.label} diperbarui`);
     return ok;
   }
@@ -169,13 +183,16 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
   }
 
   const removeSeat = async (seatId: string, label: string) => { if (await askConfirm(`Hapus posisi ${label} dari acara ini?`)) void run(() => callApi("DELETE", `/api/v1/events/${eventId}/seats/${seatId}`)); };
-  const setBand = (bandMode: "BAND" | "NO_BAND") => {
+  const setBand = async (bandMode: "BAND" | "NO_BAND") => {
     setBandAsk(false);
-    return run(() => callApi("POST", `/api/v1/events/${eventId}/band-mode`, { bandMode }), (r) => {
+    const label = bandMode === "NO_BAND" ? "No Band" : "Band";
+    const alsoPair = !!d?.pair && (await askPair(`Ubah ke ${label} juga untuk ${d.pair.title}?`));
+    return run(() => callApi("POST", `/api/v1/events/${eventId}/band-mode`, { bandMode, alsoPair }), (r) => {
       const gone: string[] = r?.released ?? [];
-      setBanner({ kind: "info", title: bandMode === "NO_BAND" ? "Diubah ke No Band" : "Diubah ke Band", message: bandMode === "NO_BAND"
+      const own = bandMode === "NO_BAND"
         ? `${r?.removed ?? 0} posisi band dihapus dari acara.${gone.length ? ` Orang yang dilepas: ${gone.join(", ")}.` : ""}`
-        : (r?.restored ?? 0) > 0 ? `${r.restored} posisi band dikembalikan sesuai template.` : "Tidak ada posisi band yang perlu dikembalikan. Tambahkan lewat tombol tambah posisi bila perlu." });
+        : (r?.restored ?? 0) > 0 ? `${r.restored} posisi band dikembalikan sesuai template.` : "Tidak ada posisi band yang perlu dikembalikan. Tambahkan lewat tombol tambah posisi bila perlu.";
+      setBanner({ kind: "info", title: bandMode === "NO_BAND" ? "Diubah ke No Band" : "Diubah ke Band", message: r?.pairNote ? `${own} ${r.pairNote}` : own });
     });
   };
   const addSeat = (ministryId: string, count: number) => run(() => callApi("POST", `/api/v1/events/${eventId}/seats`, { ministryId, count }), () => setAddSeatTeam(null));
@@ -370,7 +387,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
             <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#D0D3E8] bg-[#FAFAFF] px-5 py-3.5">
               <span className="min-w-0 flex-1 text-sm font-semibold text-[#3A3F58]">
                 Hari ini juga ada <Link href={`/jadwal/${d.pair.id}`} className="font-extrabold text-[var(--primary-ink)] underline">{d.pair.title}</Link>
-                {d.pair.filled > 0 ? ` (${d.pair.filled} kursi terisi).` : " (belum ada personel)."} Mengisi atau mengosongkan kursi di sini otomatis diikuti di sana, selama kursinya masih sama. Kursi yang sudah dibedakan tidak ikut berubah.
+                {d.pair.filled > 0 ? ` (${d.pair.filled} kursi terisi).` : " (belum ada personel)."} Saat mengubah kursi, tema, atau mode band di sini, Anda akan ditanya apakah perubahannya juga berlaku di sana.
               </span>
               {d.pair.filled > 0 && (
                 <button type="button" className={`${btnGhost} whitespace-nowrap`} disabled={busy} onClick={copyFromPair}>

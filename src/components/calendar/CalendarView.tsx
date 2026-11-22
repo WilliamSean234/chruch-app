@@ -205,7 +205,8 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
 
   const sections = useMemo(() => {
     if (!detail) return [];
-    return detail.teams.map((t) => ({ title: t.name, seats: detail.seats.filter((s) => s.teamTypeId === t.teamTypeId) }));
+    // posisi yang belum diisi tidak ditampilkan; tim tanpa orang sama sekali ikut disembunyikan
+    return detail.teams.map((t) => ({ title: t.name, seats: detail.seats.filter((s) => s.teamTypeId === t.teamTypeId && s.person) })).filter((x) => x.seats.length > 0);
   }, [detail]);
 
   const selEvent = events.find((e) => e.id === selected);
@@ -476,19 +477,19 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
                 </div>
               )}
 
+              {sections.length === 0 && <p className="text-[13px] text-[var(--ink-2)]">Belum ada personel yang dijadwalkan.</p>}
               {sections.map((s) => (
                 <div key={s.title} className="flex flex-col gap-2">
                   <div className="flex items-center gap-2.5">
                     <span className="text-xs font-extrabold uppercase tracking-[0.07em] text-[var(--gold-ink)]">{s.title}</span>
                     <span className="h-px flex-1 bg-[#E8E4D6]" />
                   </div>
-                  {s.seats.length === 0 && <p className="text-[13px] text-[var(--ink-2)]">Belum ada kursi.</p>}
                   {s.seats.map((seat) => (
                     <div key={seat.id} className="flex items-center justify-between gap-3 text-sm">
                       <span className="font-medium text-[var(--ink-2)]">{seat.label}</span>
                       <span className="flex items-center gap-2 text-right font-bold">
                         {seat.person && myPersonId && seat.person.id === myPersonId && <span className="whitespace-nowrap rounded-full bg-[var(--primary-soft)] px-2 py-0.5 text-[11px] font-bold text-[var(--primary-ink)]">Saya</span>}
-                        {seat.person ? seat.person.name : <span className="font-semibold italic text-[#B7791F]">Belum diisi</span>}
+                        {seat.person?.name}
                         {seat.person && seat.ministryName === "Pembicara" && (
                           <span className="whitespace-nowrap rounded-full bg-[var(--gold-soft)] px-2 py-0.5 text-[11px] font-bold text-[#6F4304]" title={seat.person.originChurch ?? undefined}>{seat.person.origin === "LUAR" ? "Luar" : "Dalam"}</span>
                         )}
@@ -527,7 +528,7 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
 function RehearsalPanel({ detail, reh, myPersonId, canEdit, onBack }: { detail: Detail; reh: Detail["rehearsals"][number]; myPersonId: string | null; canEdit: boolean; onBack: () => void }) {
   const tone = REHEARSAL_TONE;
   const required = detail.seats.filter((s) => s.rehearsalRequired);
-  const sections = detail.teams.map((t) => ({ title: t.name, seats: required.filter((s) => s.teamTypeId === t.teamTypeId) })).filter((x) => x.seats.length > 0);
+  const sections = detail.teams.map((t) => ({ title: t.name, seats: required.filter((s) => s.teamTypeId === t.teamTypeId && s.person) })).filter((x) => x.seats.length > 0);
   const mine = !!myPersonId && required.some((s) => s.person?.id === myPersonId);
   const filled = required.filter((s) => s.person).length;
   return (
@@ -567,13 +568,13 @@ function RehearsalPanel({ detail, reh, myPersonId, canEdit, onBack }: { detail: 
               <span className="font-medium text-[var(--ink-2)]">{seat.label}</span>
               <span className="flex items-center gap-2 text-right font-bold">
                 {seat.person && myPersonId && seat.person.id === myPersonId && <span className="whitespace-nowrap rounded-full bg-[var(--primary-soft)] px-2 py-0.5 text-[11px] font-bold text-[var(--primary-ink)]">Saya</span>}
-                {seat.person ? seat.person.name : <span className="font-semibold italic text-[#B7791F]">Belum diisi</span>}
+                {seat.person?.name}
               </span>
             </div>
           ))}
         </div>
       ))}
-      {required.length === 0 && <p className="text-[13px] text-[var(--ink-2)]">Belum ada kursi yang diwajibkan latihan di acara ini.</p>}
+      {sections.length === 0 && <p className="text-[13px] text-[var(--ink-2)]">{required.length === 0 ? "Belum ada kursi yang diwajibkan latihan di acara ini." : "Belum ada personel wajib latihan yang dijadwalkan."}</p>}
       {required.length > 0 && <p className="text-xs font-semibold text-[var(--ink-2)]">{filled} dari {required.length} kursi wajib latihan sudah terisi</p>}
       {canEdit && <Link href={`/jadwal/${detail.id}`} className="flex h-[46px] items-center justify-center rounded-xl border border-[#D0D3E8] text-sm font-bold text-[var(--primary-ink)] hover:bg-[#f3f4f9]">Buka &amp; edit jadwal</Link>}
     </>

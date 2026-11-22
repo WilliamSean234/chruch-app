@@ -40,9 +40,11 @@ export const eventUpdateBody = z.object({
   attendanceMode: z.enum(["COUNT", "NAMES"]).optional(),
   theme: z.string().trim().max(THEME_MAX).nullish().transform((v) => (v === undefined ? undefined : v ? v : null)), // kosong = hapus tema
   padus: z.string().trim().max(PADUS_MAX).nullish().transform((v) => (v === undefined ? undefined : v ? v : null)),
+  /** true = tema dan catatan padus juga disalin ke Ibadah Minggu pasangan. Judul, waktu, dan ruangan tidak ikut. */
+  alsoPair: z.boolean().optional(),
 });
 
-export const bandModeBody = z.object({ bandMode: z.enum(["BAND", "NO_BAND"]) });
+export const bandModeBody = z.object({ bandMode: z.enum(["BAND", "NO_BAND"]), alsoPair: z.boolean().optional() });
 
 export const seatBody = seatSpec;
 export const teamBody = z.object({ teamTypeId: z.string().uuid() });
@@ -93,7 +95,7 @@ export async function findPairEvent(tenantId: string, e: { id: string; templateI
 /** Untuk tombol "Isi dari ..." dan keterangan di halaman acara. */
 async function pairOf(tenantId: string, e: EventFull) {
   const hit = await findPairEvent(tenantId, e);
-  return hit ? { id: hit.id, number: hit.number, title: hit.title, startsAt: hit.startsAt.toISOString(), filled: hit.assignments.filter((a) => a.personId).length } : null;
+  return hit ? { id: hit.id, number: hit.number, title: hit.title, startsAt: hit.startsAt.toISOString(), filled: hit.assignments.filter((a) => a.personId).length, seats: hit.assignments.map((a) => ({ ministryId: a.ministryId, slotNo: a.slotNo, personId: a.personId })) } : null;
 }
 
 export const getEvent = async (tenantId: string, id: string) => {
@@ -248,6 +250,13 @@ export async function updateEvent(u: AuthUser, id: string, b: z.infer<typeof eve
       }),
     "Waktu baru bentrok: ada pelayan di acara ini yang sudah terjadwal di tempat lain pada jam itu, atau ruangan terpakai.",
   );
+  // tema dan padus juga ke Ibadah Minggu pasangan, bila diminta dan pasangannya masih bisa diubah
+  if (b.alsoPair && (b.theme !== undefined || b.padus !== undefined)) {
+    const pair = await findPairEvent(u.tenantId, cur);
+    if (pair && isEditable(pair.status) && !isLockedByAge(pair.startsAt)) {
+      await prisma.event.update({ where: { id: pair.id }, data: { theme: b.theme, padus: b.padus } });
+    }
+  }
   return getEvent(u.tenantId, id);
 }
 

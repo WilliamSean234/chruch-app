@@ -13,6 +13,8 @@ import { nameKey } from "./names";
 export const assignBody = z.object({
   personId: z.string().uuid().nullable(), // null = kosongkan kursi
   override: z.object({ reason: z.string().trim().min(5, "Alasan override minimal 5 karakter").max(300) }).optional(),
+  /** true = ubahan ini juga diterapkan ke kursi yang sama di Ibadah Minggu pasangan (bila kursinya masih sama). Bawaan: tidak. */
+  mirror: z.boolean().optional(),
 });
 
 async function loadSeat(u: AuthUser, eventId: string, assignmentId: string) {
