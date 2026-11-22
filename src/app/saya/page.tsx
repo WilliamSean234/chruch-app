@@ -11,8 +11,11 @@ export default async function SayaPage() {
   const u = await currentUser();
   requirePermission(u, "schedule.read-own");
   const now = new Date();
-  // 7 hari ke belakang supaya acara yang baru selesai (kehadiran masih bisa diisi) tetap terlihat.
-  const r = await mySchedule(u, { from: ymd(new Date(now.getTime() - 7 * DAY)), to: ymd(new Date(now.getTime() + 90 * DAY)) });
+  // Mulai dari awal bulan ini (atau 7 hari lalu bila lebih awal) supaya pilihan "Semua" menampilkan seluruh jadwal bulan ini,
+  // dan acara yang baru selesai (kehadiran masih bisa diisi) tetap terlihat.
+  const monthStart = `${ymd(now).slice(0, 8)}01`;
+  const weekAgo = ymd(new Date(now.getTime() - 7 * DAY));
+  const r = await mySchedule(u, { from: monthStart < weekAgo ? monthStart : weekAgo, to: ymd(new Date(now.getTime() + 90 * DAY)) });
   const person = u.personId ? await prisma.person.findUnique({ where: { id: u.personId }, select: { name: true } }) : null;
   const note = "note" in r ? (r as { note?: string }).note : undefined;
 
