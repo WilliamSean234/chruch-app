@@ -13,6 +13,7 @@ import { k, parseDate, parseTime } from "./common";
 import { zonedToUtc } from "../time";
 import { prisma } from "../prisma";
 import { syncEbmGroup } from "../ebmGroup";
+import { syncTkiGroup } from "../tkiGroup";
 
 /**
  * Impor data dari Excel. mode "preview" hanya memeriksa (tidak menulis apa pun);
@@ -72,6 +73,7 @@ export async function runImport(u: AuthUser, file: Buffer, mode: "preview" | "ap
     await flushGroups(ctx, gs);
     // yang melayani di EBM masuk kelompok EBM (setelah kelompok dari file ditulis, supaya tidak bentrok nama)
     try { await syncEbmGroup(prisma, u.tenantId, { only: [...new Set(st.W.personMinistries.map((x) => x.personId))], userId: u.userId }); } catch (e) { console.error(e); }
+    try { await syncTkiGroup(prisma, u.tenantId, { userId: u.userId }); } catch (e) { console.error(e); } // akun Penjadwal dari file masuk kelompok TKI
     await writeMeetings(ctx, meetings);
     await audit({
       tenantId: u.tenantId, userId: u.userId, action: "import.apply", entity: "Import", entityId: randomUUID(),

@@ -21,6 +21,7 @@
     "db:ping": "tsx scripts/db-ping.ts",
     "db:fix-roles": "tsx scripts/fix-roles.ts",
     "db:sync-ebm": "tsx scripts/sync-ebm.ts",
+    "db:sync-tki": "tsx scripts/sync-tki.ts",
     "vercel-build": "prisma generate && node scripts/migrate-deploy.js && next build"
   },
   "prisma": {

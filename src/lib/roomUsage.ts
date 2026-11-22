@@ -10,8 +10,11 @@ export type UsageItem = {
   meeting?: boolean;
 };
 
-/** Pemakaian semua ruangan aktif pada satu tanggal (acara dan sesi latihan), diambil dari buku pemesanan ruangan. */
-export async function roomUsage(tenantId: string, date: string) {
+/**
+ * Pemakaian semua ruangan aktif pada satu tanggal (acara dan sesi latihan), diambil dari buku pemesanan ruangan.
+ * `seeDrafts` false: acara yang belum terbit tetap menandai ruangan terpakai, tetapi judulnya disembunyikan (seperti di kalender).
+ */
+export async function roomUsage(tenantId: string, date: string, seeDrafts = true) {
   if (!DATE_RE.test(date)) throw badRequest("Format tanggal YYYY-MM-DD.");
   const dayStart = zonedToUtc(date, "00:00");
   const dayEnd = zonedToUtc(date, "23:59");
@@ -32,6 +35,7 @@ export async function roomUsage(tenantId: string, date: string) {
   const evById = new Map(events.map((e) => [e.id, e]));
   const rhById = new Map(rehearsals.map((r) => [r.id, r]));
 
+  const hide = (it: UsageItem): UsageItem => (!seeDrafts && it.status === "DRAFT" && !it.meeting ? { ...it, title: "Acara (belum terbit)", number: "" } : it);
   const itemsFor = (roomId: string): UsageItem[] =>
     bookings.filter((b) => b.resourceId === roomId).flatMap((b): UsageItem[] => {
       if (b.sourceType === "EVENT") {
@@ -44,7 +48,7 @@ export async function roomUsage(tenantId: string, date: string) {
       return r ? [{ kind: "REHEARSAL", eventId: r.eventId, title: r.event.title, number: r.event.number, status: r.event.status, seq: r.seq, startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString() }] : [];
     });
 
-  return { date, rooms: rooms.filter((r) => r.isActive || bookings.some((b) => b.resourceId === r.id)).map((r) => ({ id: r.id, name: r.name, floor: r.floor, isActive: r.isActive, items: itemsFor(r.id) })) };
+  return { date, rooms: rooms.filter((r) => r.isActive || bookings.some((b) => b.resourceId === r.id)).map((r) => ({ id: r.id, name: r.name, floor: r.floor, isActive: r.isActive, items: itemsFor(r.id).map(hide) })) };
 }
 
 /** Cek apakah satu ruangan kosong pada rentang jam tertentu. */

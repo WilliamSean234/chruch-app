@@ -36,7 +36,7 @@ const dayMin = (iso: string, date: string) => {
   return h * 60 + m;
 };
 
-export default function RoomBoard({ canManage, canOpenEvents = true }: { canManage: boolean; canOpenEvents?: boolean }) {
+export default function RoomBoard({ canManage, canOpenEvents = true, canOpenMeetings = true }: { canManage: boolean; canOpenEvents?: boolean; canOpenMeetings?: boolean }) {
   const today = ymd(new Date());
   const [date, setDate] = useState(today);
   const [strip, setStrip] = useState(today);
@@ -178,7 +178,7 @@ export default function RoomBoard({ canManage, canOpenEvents = true }: { canMana
         {rooms && rooms.length > 0 && (
           <div className="mt-3 flex flex-col gap-2.5 md:hidden">
             {shown.length === 0 && <p className="py-2 text-sm font-semibold text-[var(--ink-2)]">Tidak ada ruangan yang cocok dengan filter ini.</p>}
-            {boardPage.slice.map((r) => <RoomCardMobile key={r.id} room={r} date={date} canOpenEvents={canOpenEvents} />)}
+            {boardPage.slice.map((r) => <RoomCardMobile key={r.id} room={r} date={date} canOpenEvents={canOpenEvents} canOpenMeetings={canOpenMeetings} />)}
           </div>
         )}
         {rooms && rooms.length > 0 && (
@@ -193,7 +193,7 @@ export default function RoomBoard({ canManage, canOpenEvents = true }: { canMana
                 </div>
               </div>
               {shown.length === 0 && <p className="py-4 text-sm font-semibold text-[var(--ink-2)]">Tidak ada ruangan yang cocok dengan filter ini.</p>}
-              {boardPage.slice.map((r) => <RoomRow key={r.id} room={r} date={date} canOpenEvents={canOpenEvents} />)}
+              {boardPage.slice.map((r) => <RoomRow key={r.id} room={r} date={date} canOpenEvents={canOpenEvents} canOpenMeetings={canOpenMeetings} />)}
             </div>
           </div>
         )}
@@ -244,7 +244,7 @@ const Banner = ({ tone, children }: { tone: "ok" | "bad" | "warn"; children: Rea
   <p className={`flex items-center gap-2.5 rounded-xl px-4 py-3.5 text-sm font-bold ${tone === "ok" ? "bg-[#E3F4E8] text-[#1B6B34]" : tone === "bad" ? "bg-[#FDE8E8] text-[#9B1C1C]" : "bg-[#FFFBF0] text-[#6F4304]"}`}>{children}</p>
 );
 
-function RoomRow({ room, date, canOpenEvents }: { room: Room; date: string; canOpenEvents: boolean }) {
+function RoomRow({ room, date, canOpenEvents, canOpenMeetings }: { room: Room; date: string; canOpenEvents: boolean; canOpenMeetings: boolean }) {
   // tempatkan blok yang beririsan di baris (lajur) berbeda
   const placed = useMemo(() => {
     const lanes: number[] = [];
@@ -275,7 +275,7 @@ function RoomRow({ room, date, canOpenEvents }: { room: Room; date: string; canO
             const tone = it.kind === "REHEARSAL" ? REHEARSAL_TONE : toneFor(it.title);
             const label = it.kind === "REHEARSAL" ? `Latihan ${it.seq} · ${it.title.replace(/^ibadah\s+/i, "")}` : toneFor(it.title).short;
             const time = `${dot(hmInput(it.startsAt))}–${dot(hmInput(it.endsAt))}`;
-            const clickable = it.meeting || canOpenEvents;
+            const clickable = it.meeting ? canOpenMeetings : canOpenEvents;
             const cls = `absolute flex flex-col justify-center overflow-hidden rounded-[10px] px-2.5 leading-tight ${clickable ? "hover:brightness-95" : "cursor-default"}`;
             const style = {
               left: `${((s - FROM) / SPAN) * 100}%`, width: `${Math.max(((e - s) / SPAN) * 100, 3)}%`, top: 6 + lane * (H + 6), height: H,
@@ -305,7 +305,7 @@ function RoomRow({ room, date, canOpenEvents }: { room: Room; date: string; canO
 }
 
 /** HP: satu kartu per ruangan. Ruangan kosong cukup satu baris; yang terpakai menampilkan bilah ringkas dan daftar jam. */
-function RoomCardMobile({ room, date, canOpenEvents }: { room: Room; date: string; canOpenEvents: boolean }) {
+function RoomCardMobile({ room, date, canOpenEvents, canOpenMeetings }: { room: Room; date: string; canOpenEvents: boolean; canOpenMeetings: boolean }) {
   const items = useMemo(() => [...room.items].sort((a, b) => a.startsAt.localeCompare(b.startsAt)), [room.items]);
   const meta = floorText(room.floor);
   const name = `${room.name}${room.isActive ? "" : " (nonaktif)"}`;
@@ -346,7 +346,7 @@ function RoomCardMobile({ room, date, canOpenEvents }: { room: Room; date: strin
           const tone = it.kind === "REHEARSAL" ? REHEARSAL_TONE : toneFor(it.title);
           const label = it.kind === "REHEARSAL" ? `Latihan ${it.seq} · ${it.title.replace(/^ibadah\s+/i, "")}` : toneFor(it.title).short;
           const time = `${dot(hmInput(it.startsAt))}–${dot(hmInput(it.endsAt))}`;
-          const clickable = it.meeting || canOpenEvents;
+          const clickable = it.meeting ? canOpenMeetings : canOpenEvents;
           const draft = it.status === "DRAFT";
           const cls = "flex items-center gap-2.5 rounded-lg px-2.5 py-2";
           const style = { background: tone.bg, color: tone.fg, border: `1.5px ${draft ? "dashed" : "solid"} ${tone.dot}` };

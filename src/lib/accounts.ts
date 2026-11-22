@@ -8,6 +8,7 @@ import { nameKey } from "./names";
 import { pagingQuery, resolvePaging } from "./paging";
 import { membershipsOf } from "./groups";
 import { assertEbmSchedulerAllowed, grantEbmScheduler } from "./ebmScheduler";
+import { syncTkiGroup } from "./tkiGroup";
 
 export const accountBody = z.object({
   email: z.string().trim().toLowerCase().email(),
@@ -52,6 +53,7 @@ export async function createAccountForPerson(
         },
       });
       if (b.ebmScheduler) await grantEbmScheduler(tx, actor.tenantId, personId, actor.userId);
+      if (b.roleCodes.includes("PENJADWAL")) await syncTkiGroup(tx, actor.tenantId, { only: [personId], rejoin: true, userId: actor.userId }); // Penjadwal otomatis anggota TKI
       return created;
     });
     return { id: user.id, email: user.email, roles: b.roleCodes };
@@ -129,6 +131,7 @@ export async function updateAccount(actor: AuthUser, target: string | { userId: 
       await tx.userRole.createMany({ data: roleRows.map((r) => ({ userId: user.id, ...r })) });
     }
     if (b.ebmScheduler) await grantEbmScheduler(tx, actor.tenantId, user.personId!, actor.userId);
+    if (user.personId && b.roleCodes?.includes("PENJADWAL")) await syncTkiGroup(tx, actor.tenantId, { only: [user.personId], rejoin: true, userId: actor.userId });
   });
   return { id: user.id, email: user.email };
 }
