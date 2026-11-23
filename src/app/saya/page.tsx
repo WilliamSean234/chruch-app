@@ -3,16 +3,18 @@ import MySchedule, { type ScheduleRow } from "@/components/saya/MySchedule";
 import { mySchedule } from "@/lib/calendar";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/rbac";
-import { dayLong, ymd } from "@/lib/ui";
-
-const DAY = 86_400_000;
+import { dayLong, MONTHS_AHEAD, MONTHS_BACK, ymd } from "@/lib/ui";
 
 export default async function SayaPage() {
   const u = await currentUser();
   requirePermission(u, "schedule.read-own");
   const now = new Date();
-  // 7 hari ke belakang supaya acara yang baru selesai (kehadiran masih bisa diisi) tetap terlihat.
-  const r = await mySchedule(u, { from: ymd(new Date(now.getTime() - 7 * DAY)), to: ymd(new Date(now.getTime() + 90 * DAY)) });
+  // Memuat beberapa bulan ke belakang dan ke depan supaya pilihan "Bulan" bisa menampilkan jadwal bulan mana pun di rentang itu.
+  const cur = ymd(now);
+  const y = Number(cur.slice(0, 4)), m = Number(cur.slice(5, 7)) - 1;
+  const from = new Date(Date.UTC(y, m - MONTHS_BACK, 1)).toISOString().slice(0, 10);
+  const to = new Date(Date.UTC(y, m + MONTHS_AHEAD + 1, 0)).toISOString().slice(0, 10);
+  const r = await mySchedule(u, { from, to });
   const person = u.personId ? await prisma.person.findUnique({ where: { id: u.personId }, select: { name: true } }) : null;
   const note = "note" in r ? (r as { note?: string }).note : undefined;
 

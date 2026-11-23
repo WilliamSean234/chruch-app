@@ -14,6 +14,10 @@ export function monthRange(iso: string) {
   return { from: `${y}-${mm}-01`, to: `${y}-${mm}-${String(last).padStart(2, "0")}` };
 }
 
+/** Jendela bulan yang dimuat di Jadwal saya: sekian bulan ke belakang dan ke depan dari bulan ini. */
+export const MONTHS_BACK = 3;
+export const MONTHS_AHEAD = 6;
+
 export const MONTHS = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 export const WEEKDAYS = ["MIN", "SEN", "SEL", "RAB", "KAM", "JUM", "SAB"];
 
