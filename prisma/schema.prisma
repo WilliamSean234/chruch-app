@@ -28,12 +28,47 @@ model User {
   isActive     Boolean    @default(true)
   mustChangePassword Boolean @default(false) // true = wajib ganti kata sandi saat login berikutnya (akun baru / direset admin)
   passwordChangedAt  DateTime?
+  notifyOff    String[]   @default([]) // jenis notifikasi yang dimatikan pemilik akun (lihat lib/notificationKinds)
   createdAt    DateTime   @default(now())
   deletedAt    DateTime?
   person       Person?    @relation(fields: [personId], references: [id])
   roles        UserRole[]
+  pushSubscriptions PushSubscription[]
 
   @@unique([tenantId, email])
+}
+
+/// Perangkat (HP/browser yang memasang aplikasi) milik akun yang mau menerima notifikasi (Web Push).
+model PushSubscription {
+  id         String    @id @default(uuid())
+  tenantId   String
+  userId     String
+  endpoint   String    @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+}
+
+/// Notifikasi yang sudah terkirim. Kunci (userId, dedupeKey) mencegah pesan yang sama terkirim dua kali.
+model NotificationLog {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String
+  kind      String
+  dedupeKey String // mis. "event:<id>:h1:2026-11-23"
+  title     String
+  body      String
+  url       String?
+  devices   Int // jumlah perangkat yang menerima
+  createdAt DateTime @default(now())
+
+  @@unique([userId, dedupeKey])
+  @@index([tenantId, kind, createdAt])
 }
 
 /// Permintaan daftar akun dari halaman /daftar. Belum jadi akun: admin menyetujui dan menautkannya ke data Orang.

@@ -24,6 +24,8 @@ Urutannya sengaja berurutan. Jangan lompat ke langkah 5 sebelum langkah 1-4 sele
 | `AUTH_SECRET` | string acak baru, bukan yang dipakai saat pengembangan (`npx auth secret`) |
 | `APP_TIMEZONE` | `Asia/Jakarta` |
 | `DUMMY_SEED_BLOCK` | `1` (supaya seed dummy menolak berjalan) |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | kunci notifikasi HP; buat sekali dengan `npx web-push generate-vapid-keys`. Tanpa ini notifikasi tidak aktif (aplikasi tetap jalan) |
+| `VAPID_SUBJECT` | `mailto:` diikuti email pengelola, mis. `mailto:admin@gereja.org` |
 
 `SEED_ADMIN_EMAIL` dan `SEED_ADMIN_PASSWORD` cukup diisi di laptop saat langkah 5, tidak perlu di Vercel.
 
