@@ -29,6 +29,7 @@ model User {
   mustChangePassword Boolean @default(false) // true = wajib ganti kata sandi saat login berikutnya (akun baru / direset admin)
   passwordChangedAt  DateTime?
   notifyOff    String[]   @default([]) // jenis notifikasi yang dimatikan pemilik akun (lihat lib/notificationKinds)
+  emailVerifiedAt DateTime? // kapan pemilik membuktikan emailnya lewat tautan; kosong = belum terverifikasi (email tidak dipakai untuk notifikasi)
   createdAt    DateTime   @default(now())
   deletedAt    DateTime?
   person       Person?    @relation(fields: [personId], references: [id])
@@ -86,10 +87,26 @@ model RegistrationRequest {
   decidedById  String?
   personId     String? // orang yang ditautkan saat disetujui
   rejectReason String?
+  emailVerifiedAt DateTime? // pendaftar sudah membuka tautan di emailnya
 
   @@index([tenantId, status, createdAt])
   @@index([ip, createdAt])
   @@index([tenantId, email])
+}
+
+/// Tautan verifikasi email sekali pakai. Yang disimpan hanya sidik token (SHA-256), bukan tokennya.
+model EmailToken {
+  id        String    @id @default(uuid())
+  tenantId  String
+  email     String
+  kind      String // REGISTRATION (refId = RegistrationRequest) | ACCOUNT (refId = User)
+  refId     String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([kind, refId, createdAt])
 }
 
 /// Pembatas percobaan login (lihat lib/throttle.ts). Kunci: ipemail:, email:, atau ip:.
