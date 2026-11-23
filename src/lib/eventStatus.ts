@@ -5,6 +5,8 @@ import { assertNotLocked, assertTransition } from "./eventStatusFlow";
 import { assertRoomFree, assertRoomUsable, bookRoom, personConflicts, releaseBookings, translateOverlap } from "./booking";
 import { getEvent } from "./events";
 import { twinInfo } from "./rehearsals";
+import { afterResponse } from "./notify";
+import { notifyEventCancelled } from "./eventNotify";
 import { localParts } from "./time";
 import type { AuthUser } from "./rbac";
 
@@ -40,6 +42,7 @@ export async function unpublishEvent(u: AuthUser, id: string) {
 export async function cancelEvent(u: AuthUser, id: string, reason: string) {
   const e = await load(u.tenantId, id);
   assertTransition(e.status, "CANCELLED");
+  const tellStaff = e.status === "PUBLISHED" && e.endsAt.getTime() > Date.now(); // hanya acara terbit yang belum selesai
   const rehearsals = await prisma.rehearsalSession.findMany({ where: { eventId: id, deletedAt: null } });
   // latihan yang sama di acara pasangan (Ibadah Minggu 1/2) tetap jalan; ruangannya hanya dipesan oleh satu sesi, jadi pesanan itu dipindah ke kembarannya
   const tw = rehearsals.length ? await twinInfo(u.tenantId, e) : { pairId: null, twins: new Map<string, string>() };
@@ -56,6 +59,7 @@ export async function cancelEvent(u: AuthUser, id: string, reason: string) {
     }
     await tx.event.update({ where: { id }, data: { status: "CANCELLED", cancelReason: reason } });
   });
+  if (tellStaff) afterResponse(() => notifyEventCancelled(u.tenantId, id));
   return getEvent(u.tenantId, id);
 }
 

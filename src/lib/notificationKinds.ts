@@ -3,7 +3,7 @@ export type Audience = "PELAYAN" | "PENJADWAL" | "KELOMPOK";
 
 export const NOTIF_KINDS = [
   { kind: "PELAYAN_DIBERITAHU", audience: "PELAYAN", label: "Pemberitahuan jadwal dari Penjadwal", hint: "Saat Penjadwal menekan tombol beri tahu pelayan pada acara yang sudah terbit." },
-  { kind: "PELAYAN_BATAL", audience: "PELAYAN", label: "Jadwal dibatalkan atau diganti", hint: "Saat acara tempat Anda bertugas dibatalkan, atau tugas Anda dialihkan." },
+  { kind: "PELAYAN_BATAL", audience: "PELAYAN", label: "Jadwal dibatalkan atau diganti", hint: "Saat acara terbit tempat Anda bertugas dibatalkan, atau tugas Anda dialihkan atau ditambahkan karena penggantian." },
   { kind: "PELAYAN_H1", audience: "PELAYAN", label: "Pengingat sehari sebelumnya", hint: "Satu pesan gabungan sore sebelum acara atau latihan. Tidak ada pengingat di hari tanpa jadwal." },
   { kind: "PELAYAN_BULANAN", audience: "PELAYAN", label: "Ringkasan jadwal tiap awal bulan", hint: "Tanggal 1: semua acara, posisi, latihan, dan rapat Anda bulan itu. Tidak dikirim bila tidak ada." },
   { kind: "PENJADWAL_KEHADIRAN", audience: "PENJADWAL", label: "Kehadiran belum diisi", hint: "Sekali setelah acara selesai, dan sekali lagi paling lama 3 hari kemudian." },

@@ -84,3 +84,54 @@ export async function sendStaffNotice(u: AuthUser, eventId: string, audience: St
   }
   return out;
 }
+
+type SeatRef = { personId: string; ministryId: string };
+
+/**
+ * Kabari pelayan bila kursinya di acara yang SUDAH terbit berubah: yang dilepas diberi tahu tugasnya dialihkan,
+ * yang baru diberi tahu dijadwalkan. Acara draf, dibatalkan, atau sudah selesai tidak mengirim apa pun.
+ */
+export async function notifySeatChange(tenantId: string, eventId: string, c: { removed?: SeatRef; added?: SeatRef }) {
+  const e = await prisma.event.findFirst({ where: { id: eventId, tenantId, deletedAt: null, kind: "IBADAH" }, include: { room: { select: { name: true } } } });
+  if (!e || e.status !== "PUBLISHED" || e.endsAt.getTime() < Date.now()) return;
+  const refs = [c.removed, c.added].filter((x): x is SeatRef => !!x);
+  const [accounts, ministries] = await Promise.all([
+    userIdsForPersons(tenantId, refs.map((r) => r.personId)),
+    prisma.ministry.findMany({ where: { id: { in: refs.map((r) => r.ministryId) } }, select: { id: true, name: true } }),
+  ]);
+  const name = new Map(ministries.map((m) => [m.id, m.name]));
+  const stamp = Date.now();
+  const place = `${when(e)} · ${e.room.name}`;
+  if (c.removed && accounts.get(c.removed.personId)) {
+    await notifyUsers(tenantId, [accounts.get(c.removed.personId)!], {
+      kind: "PELAYAN_BATAL", dedupeKey: `ganti:${eventId}:keluar:${c.removed.personId}:${stamp}`,
+      title: `Jadwal diganti: ${e.title}`, body: `${place}. Anda tidak lagi bertugas sebagai ${name.get(c.removed.ministryId) ?? "pelayan"}.`, url: "/saya",
+    });
+  }
+  if (c.added && accounts.get(c.added.personId)) {
+    await notifyUsers(tenantId, [accounts.get(c.added.personId)!], {
+      kind: "PELAYAN_BATAL", dedupeKey: `ganti:${eventId}:masuk:${c.added.personId}:${stamp}`,
+      title: `Jadwal baru: ${e.title}`, body: `Anda dijadwalkan sebagai ${name.get(c.added.ministryId) ?? "pelayan"} · ${place}.`, url: "/saya",
+    });
+  }
+}
+
+/** Kabari semua pelayan yang punya kursi di acara yang baru dibatalkan. Dipanggil hanya bila acaranya sudah terbit dan belum selesai. */
+export async function notifyEventCancelled(tenantId: string, eventId: string) {
+  const e = await loadEvent(tenantId, eventId);
+  const people = peopleFor(e, "ALL");
+  if (people.size === 0) return;
+  const accounts = await userIdsForPersons(tenantId, [...people.keys()]);
+  const stamp = Date.now();
+  const entries = [...people.entries()];
+  for (let i = 0; i < entries.length; i += 5) {
+    await Promise.all(entries.slice(i, i + 5).map(async ([personId, info]) => {
+      const userId = accounts.get(personId);
+      if (!userId) return;
+      await notifyUsers(tenantId, [userId], {
+        kind: "PELAYAN_BATAL", dedupeKey: `batal:${eventId}:${stamp}`,
+        title: `Acara dibatalkan: ${e.title}`, body: `${when(e)} · ${e.room.name} dibatalkan. Tugas Anda (${info.positions.join(", ")}) tidak jadi.`, url: "/saya",
+      });
+    }));
+  }
+}

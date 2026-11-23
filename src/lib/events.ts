@@ -10,6 +10,8 @@ import { creatorNames } from "./creators";
 import { assertNotLocked, assertTransition, isEditable, isLockedByAge } from "./eventStatusFlow";
 import { teamScope, type AuthUser } from "./rbac";
 import { pageOf, pagingQuery, resolvePaging } from "./paging";
+import { afterResponse } from "./notify";
+import { notifySeatChange } from "./eventNotify";
 
 /** Teks opsional: kosong atau spasi saja = tidak ada (null). */
 const optText = (max: number) => z.string().trim().max(max).nullish().transform((v) => (v ? v : null));
@@ -354,7 +356,7 @@ export async function addSeats(u: AuthUser, eventId: string, b: z.infer<typeof s
 }
 
 export async function removeSeat(u: AuthUser, eventId: string, assignmentId: string) {
-  await loadEditable(u.tenantId, eventId);
+  const ev = await loadEditable(u.tenantId, eventId);
   const seat = await prisma.eventAssignment.findFirst({ where: { id: assignmentId, eventId, tenantId: u.tenantId } });
   if (!seat) throw notFound("Kursi");
   await prisma.$transaction(async (tx) => {
@@ -362,6 +364,8 @@ export async function removeSeat(u: AuthUser, eventId: string, assignmentId: str
     await tx.eventAssignment.delete({ where: { id: assignmentId } });
     if (seat.personId) await promoteOrphanOverrides(tx, u.tenantId, seat.personId, eventId);
   });
+  const gone = seat.personId;
+  if (gone && ev.status === "PUBLISHED" && ev.endsAt.getTime() > Date.now()) afterResponse(() => notifySeatChange(u.tenantId, eventId, { removed: { personId: gone, ministryId: seat.ministryId } }));
   return getEvent(u.tenantId, eventId);
 }
 

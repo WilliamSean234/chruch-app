@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { prisma } from "./prisma";
 import { pushConfig, sendPush } from "./push";
 import type { NotifKind } from "./notificationKinds";
@@ -13,6 +14,15 @@ export type Notice = {
 
 /** Hasil per akun: terkirim, dimatikan pemiliknya, sudah pernah terkirim, belum punya perangkat, atau gagal. */
 export type NoticeResult = { sent: string[]; off: string[]; duplicate: string[]; noDevice: string[]; failed: string[] };
+
+/**
+ * Jalankan pekerjaan setelah respons dikirim ke pengguna, supaya pengirim tidak menunggu dan serverless tidak memutusnya.
+ * Galat hanya dicatat; perubahan jadwal yang sudah berhasil tidak boleh gagal karena notifikasi. Di luar permintaan (skrip) dijalankan langsung.
+ */
+export function afterResponse(task: () => Promise<unknown>): void {
+  const run = () => task().catch((e) => console.error("[notify]", e));
+  try { after(run); } catch { void run(); }
+}
 
 /** userId akun aktif untuk daftar orang (Person). Orang tanpa akun tidak ikut. */
 export async function userIdsForPersons(tenantId: string, personIds: string[]): Promise<Map<string, string>> {

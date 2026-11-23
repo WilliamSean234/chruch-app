@@ -404,7 +404,7 @@ export async function applyDate(u: AuthUser, formatKey: string, b: z.infer<typeo
         if (!p.seat || p.seat.personId === p.want) continue;
         if ((pass === "clear") !== (p.want === null)) continue;
         try {
-          await assignCore(u, ev.id, p.seat.id, { personId: p.want }, { mirror: false });
+          await assignCore(u, ev.id, p.seat.id, { personId: p.want }, { mirror: false, notify: false });
           res.changed++;
         } catch (e) {
           if (e instanceof ApiError) res.rejected.push({ column: p.col.label, message: e.message });

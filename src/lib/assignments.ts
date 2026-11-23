@@ -9,6 +9,8 @@ import { findPairEvent, getEvent } from "./events";
 import { twinInfo } from "./rehearsals";
 import { can, requirePermission, requireTeamAccess, type AuthUser } from "./rbac";
 import { nameKey } from "./names";
+import { afterResponse } from "./notify";
+import { notifySeatChange } from "./eventNotify";
 
 export const assignBody = z.object({
   personId: z.string().uuid().nullable(), // null = kosongkan kursi
@@ -79,17 +81,29 @@ function judgeAgainstEvent(seat: { id: string; ministry: { name: string; teamTyp
 
 const withoutAllowed = (found: PersonConflict[], allowed: Set<string>) => found.filter((c) => !(c.assignmentId && allowed.has(c.assignmentId)));
 
+/** `mirror`: ikut ubah kursi kembar di acara pasangan. `notify: false` mematikan notifikasi ke pelayan (untuk pekerjaan massal). */
+type AssignOpts = { mirror?: boolean; notify?: boolean };
+
+/** Kabari pelayan bila kursi di acara yang sudah terbit berganti orang. Dijalankan setelah respons dikirim. */
+function announceSeat(seat: Awaited<ReturnType<typeof loadSeat>>, newPersonId: string | null, opts: AssignOpts) {
+  if (opts.notify === false || seat.event.status !== "PUBLISHED" || seat.event.endsAt.getTime() < Date.now()) return;
+  const old = seat.personId;
+  if (old === newPersonId) return;
+  const ref = (personId: string | null) => (personId ? { personId, ministryId: seat.ministryId } : undefined);
+  afterResponse(() => notifySeatChange(seat.tenantId, seat.eventId, { removed: ref(old), added: ref(newPersonId) }));
+}
+
 /**
  * Isi atau kosongkan satu kursi.
  * Bentrok = diblokir (409 PERSON_CONFLICT). Hanya Superadmin yang boleh menembus dengan alasan, dan itu dicatat di audit log.
  */
-export async function assignPerson(u: AuthUser, eventId: string, assignmentId: string, body: z.infer<typeof assignBody>, opts: { mirror?: boolean } = {}) {
+export async function assignPerson(u: AuthUser, eventId: string, assignmentId: string, body: z.infer<typeof assignBody>, opts: AssignOpts = {}) {
   const { warnings } = await assignCore(u, eventId, assignmentId, body, opts);
   return { event: await getEvent(u.tenantId, eventId), warnings };
 }
 
 /** Isi inti tanpa memuat ulang seluruh acara (untuk pekerjaan massal seperti upload jadwal). Mengembalikan catatan untuk pengguna. */
-export async function assignCore(u: AuthUser, eventId: string, assignmentId: string, body: z.infer<typeof assignBody>, opts: { mirror?: boolean } = {}): Promise<{ warnings: string[] }> {
+export async function assignCore(u: AuthUser, eventId: string, assignmentId: string, body: z.infer<typeof assignBody>, opts: AssignOpts = {}): Promise<{ warnings: string[] }> {
   const seat = await loadSeat(u, eventId, assignmentId);
   if (!isEditable(seat.event.status)) throw conflict("Acara yang sudah dibatalkan tidak bisa diubah.");
   assertNotLocked(seat.event.startsAt);
@@ -105,6 +119,7 @@ export async function assignCore(u: AuthUser, eventId: string, assignmentId: str
       await tx.eventAssignment.update({ where: { id: assignmentId }, data: { personId: null } });
       if (seat.personId) await promoteOrphanOverrides(tx, u.tenantId, seat.personId, promoteIn);
     });
+    announceSeat(seat, null, opts);
     return { warnings: opts.mirror === false ? [] : await mirrorToPair(u, seat, null) };
   }
 
@@ -161,6 +176,8 @@ export async function assignCore(u: AuthUser, eventId: string, assignmentId: str
       }),
     `${person.name} baru saja dijadwalkan di tempat lain pada jam itu. Muat ulang lalu coba lagi.`,
   );
+
+  announceSeat(seat, person.id, opts);
 
   if (found.length && body.override) {
     await audit({
@@ -294,7 +311,7 @@ export async function copyPersonnel(u: AuthUser, targetEventId: string, sourceEv
     if (!src) continue;
     const label = target.assignments.filter((x) => x.ministryId === seat.ministryId).length > 1 ? `${seat.ministry.name} ${seat.slotNo}` : seat.ministry.name;
     try {
-      const r = await assignCore(u, targetEventId, seat.id, { personId: src.personId }, { mirror: false });
+      const r = await assignCore(u, targetEventId, seat.id, { personId: src.personId }, { mirror: false, notify: false });
       filled++;
       for (const w of r.warnings) if (!w.includes("belum tercatat bisa")) notes.add(w);
     } catch (e) {
