@@ -19,7 +19,8 @@ export const metadata: Metadata = {
   },
 };
 // viewportFit "cover": agar jarak aman bawah (env(safe-area-inset-bottom)) di iPhone terbaca oleh tab bawah dan tombol melayang.
-export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#3037a8" };
+// maximumScale 1 dan userScalable false: layar HP tidak bisa di-zoom (cubit atau ketuk dua kali) secara tidak sengaja.
+export const viewport: Viewport = { width: "device-width", initialScale: 1, maximumScale: 1, userScalable: false, viewportFit: "cover", themeColor: "#3037a8" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
