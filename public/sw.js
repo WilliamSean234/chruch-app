@@ -43,3 +43,35 @@ self.addEventListener("fetch", (event) => {
   }
   // Selain itu (termasuk /api): tidak disentuh, langsung ke jaringan.
 });
+
+/*
+ * Notifikasi (Web Push). Pesan dikirim server sebagai JSON { title, body, url, tag }.
+ * Isi pesan tidak disimpan di HP selain sebagai notifikasi yang tampil; menyentuhnya membuka halaman terkait.
+ */
+self.addEventListener("push", (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { data = { title: "Pelayanan", body: event.data ? event.data.text() : "" }; }
+  const title = data.title || "Pelayanan";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || "",
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      tag: data.tag || undefined, // pesan dengan tag sama menggantikan, bukan menumpuk
+      data: { url: data.url || "/" },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = new URL((event.notification.data && event.notification.data.url) || "/", self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      for (const c of list) {
+        if ("focus" in c) { c.navigate(url).catch(() => undefined); return c.focus(); }
+      }
+      return self.clients.openWindow(url);
+    }),
+  );
+});
