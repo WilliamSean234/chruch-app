@@ -33,6 +33,7 @@ export default function NotificationSettings() {
   const [perm, setPerm] = useState<NotificationPermission | "unsupported">("default");
   const [busy, setBusy] = useState(false);
   const [off, setOff] = useState<string[]>([]);
+  const [open, setOpen] = useState<Record<string, boolean>>({}); // bagian peran yang sedang dibuka; bawaannya tertutup
 
   const load = useCallback(async () => {
     const r = await callApi("GET", "/api/v1/me/notifications");
@@ -140,18 +141,33 @@ export default function NotificationSettings() {
         {byAudience.length > 0 && (
           <div className="flex flex-col gap-4 border-t border-[var(--line-2)] pt-4">
             <span className="text-[13px] font-bold">Pesan yang ingin diterima</span>
-            {byAudience.map((g) => (
-              <fieldset key={g.a} className="flex flex-col gap-2.5 border-0 p-0">
-                <legend className="mb-1 p-0 text-xs font-extrabold uppercase tracking-[0.06em] text-[var(--ink-2)]">{AUDIENCE_LABEL[g.a]}</legend>
-                {g.items.map((k) => (
-                  <label key={k.kind} className="flex items-start gap-3">
-                    <input type="checkbox" className="mt-1 size-[18px] flex-none accent-[var(--primary)]" checked={!off.includes(k.kind)}
-                      onChange={(e) => setOff((cur) => (e.target.checked ? cur.filter((x) => x !== k.kind) : [...cur, k.kind]))} />
-                    <span className="flex flex-col"><span className="text-sm font-bold">{k.label}</span><span className="text-xs font-medium leading-snug text-[var(--ink-2)]">{k.hint}</span></span>
-                  </label>
-                ))}
-              </fieldset>
-            ))}
+            <div className="flex flex-col gap-2">
+              {byAudience.map((g) => {
+                const isOpen = !!open[g.a];
+                const on = g.items.filter((k) => !off.includes(k.kind)).length;
+                return (
+                  <div key={g.a} className="overflow-hidden rounded-xl border border-[var(--line)]">
+                    <button type="button" aria-expanded={isOpen} onClick={() => setOpen((c) => ({ ...c, [g.a]: !c[g.a] }))}
+                      className="flex min-h-12 w-full items-center gap-2 bg-[#F7F8FC] px-3.5 py-2.5 text-left">
+                      <span className="flex-1 text-xs font-extrabold uppercase tracking-[0.06em] text-[var(--ink-2)]">{AUDIENCE_LABEL[g.a]}</span>
+                      <span className="text-xs font-bold text-[var(--ink-2)]">{on} dari {g.items.length} aktif</span>
+                      <span aria-hidden="true" className={`text-[11px] text-[var(--ink-2)] transition-transform ${isOpen ? "rotate-180" : ""}`}>▾</span>
+                    </button>
+                    {isOpen && (
+                      <div className="flex flex-col gap-3 border-t border-[var(--line)] p-3.5">
+                        {g.items.map((k) => (
+                          <label key={k.kind} className="flex items-start gap-3">
+                            <input type="checkbox" className="mt-1 size-[18px] flex-none accent-[var(--primary)]" checked={!off.includes(k.kind)}
+                              onChange={(e) => setOff((cur) => (e.target.checked ? cur.filter((x) => x !== k.kind) : [...cur, k.kind]))} />
+                            <span className="flex flex-col"><span className="text-sm font-bold">{k.label}</span><span className="text-xs font-medium leading-snug text-[var(--ink-2)]">{k.hint}</span></span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
             <button type="button" className={`${btnMain} self-start`} disabled={!dirty || busy} onClick={save}>Simpan pengaturan</button>
           </div>
         )}
