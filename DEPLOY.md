@@ -26,6 +26,9 @@ Urutannya sengaja berurutan. Jangan lompat ke langkah 5 sebelum langkah 1-4 sele
 | `DUMMY_SEED_BLOCK` | `1` (supaya seed dummy menolak berjalan) |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | kunci notifikasi HP; buat sekali dengan `npx web-push generate-vapid-keys`. Tanpa ini notifikasi tidak aktif (aplikasi tetap jalan) |
 | `VAPID_SUBJECT` | `mailto:` diikuti email pengelola, mis. `mailto:admin@gereja.org`, atau alamat situs `https://...` |
+| `SMTP_USER`, `SMTP_PASS` | akun pengirim email: alamat Gmail dan **Sandi Aplikasi** Google (bukan sandi Gmail biasa; butuh verifikasi 2 langkah aktif, lalu buat di akun Google → Keamanan → Sandi aplikasi). Tanpa ini email mati dan pendaftaran tetap seperti biasa tanpa verifikasi email |
+| `MAIL_FROM` | opsional, mis. `Penjadwalan Gereja <alamat@gmail.com>` |
+| `APP_URL` | opsional, alamat dasar untuk tautan di email; bawaannya alamat produksi Vercel |
 | `CRON_SECRET` | string acak apa saja (mis. hasil `npx auth secret`). Dipakai Vercel untuk menjalankan pengingat terjadwal; tanpa ini pengingat otomatis tidak berjalan |
 
 `SEED_ADMIN_EMAIL` dan `SEED_ADMIN_PASSWORD` cukup diisi di laptop saat langkah 5, tidak perlu di Vercel.
@@ -145,3 +148,13 @@ curl -H "Authorization: Bearer RAHASIA" https://jadwal-elyon.vercel.app/api/cron
 ```
 
 Hasilnya berupa JSON ringkasan (berapa orang yang dituju dan berapa yang terkirim).
+
+## Email: verifikasi dan cadangan notifikasi
+
+Bila `SMTP_USER` dan `SMTP_PASS` diisi:
+
+- Pendaftar baru menerima email berisi tautan verifikasi (berlaku 24 jam). Admin baru bisa menyetujui permintaan setelah emailnya terverifikasi.
+- Akun yang sudah ada bisa memverifikasi emailnya dari Profil (tombol Kirim email verifikasi).
+- Pesan notifikasi yang tidak bisa dikirim ke HP (belum diaktifkan) dikirim lewat email, **hanya** ke alamat yang sudah terverifikasi. Orang yang notifikasi HP-nya aktif tidak menerima email dobel.
+
+Gmail membatasi sekitar 500 email per hari untuk akun biasa, cukup untuk gereja ukuran ini.
