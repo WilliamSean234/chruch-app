@@ -1,6 +1,7 @@
 import { prisma } from "./prisma";
 import { conflict, notFound } from "./errors";
 import { notifyUsers, userIdsForPersons } from "./notify";
+import { mailConfigured } from "./mailer";
 import { seatInAudience, STAFF_AUDIENCES, type StaffAudience } from "./notifyAudience";
 import { dayShort, hm } from "./ui";
 import type { AuthUser } from "./rbac";
@@ -46,6 +47,11 @@ export async function staffNotifyInfo(u: AuthUser, eventId: string) {
     ? await prisma.pushSubscription.findMany({ where: { userId: { in: [...accounts.values()] } }, select: { userId: true }, distinct: ["userId"] })
     : [];
   const withDevice = new Set(devices.map((d) => d.userId));
+  if (mailConfigured() && accounts.size) {
+    // email terverifikasi juga bisa dijangkau (cadangan bila notifikasi HP belum aktif)
+    const mails = await prisma.user.findMany({ where: { id: { in: [...accounts.values()] }, emailVerifiedAt: { not: null } }, select: { id: true } });
+    for (const m of mails) withDevice.add(m.id);
+  }
   const reachable = (ids: string[]) => ids.filter((pid) => { const uid = accounts.get(pid); return !!uid && withDevice.has(uid); }).length;
   const last = await prisma.notificationLog.findFirst({ where: { tenantId: u.tenantId, kind: "PELAYAN_DIBERITAHU", dedupeKey: { startsWith: PREFIX(eventId) } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } });
   return {
