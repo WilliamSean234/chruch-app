@@ -25,7 +25,8 @@ Urutannya sengaja berurutan. Jangan lompat ke langkah 5 sebelum langkah 1-4 sele
 | `APP_TIMEZONE` | `Asia/Jakarta` |
 | `DUMMY_SEED_BLOCK` | `1` (supaya seed dummy menolak berjalan) |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | kunci notifikasi HP; buat sekali dengan `npx web-push generate-vapid-keys`. Tanpa ini notifikasi tidak aktif (aplikasi tetap jalan) |
-| `VAPID_SUBJECT` | `mailto:` diikuti email pengelola, mis. `mailto:admin@gereja.org` |
+| `VAPID_SUBJECT` | `mailto:` diikuti email pengelola, mis. `mailto:admin@gereja.org`, atau alamat situs `https://...` |
+| `CRON_SECRET` | string acak apa saja (mis. hasil `npx auth secret`). Dipakai Vercel untuk menjalankan pengingat terjadwal; tanpa ini pengingat otomatis tidak berjalan |
 
 `SEED_ADMIN_EMAIL` dan `SEED_ADMIN_PASSWORD` cukup diisi di laptop saat langkah 5, tidak perlu di Vercel.
 
@@ -125,3 +126,22 @@ Tersimpan di tabel `LoginThrottle` (migrasi `login_throttle`), jadi tetap berlak
 - Isi sel dibersihkan otomatis: catatan dalam kurung (mis. "(B)", "(KKR)") dibuang, "A ganti B" dipakai A, banyak nama dalam satu sel hanya nama pertama yang dipakai (peringatan muncul; tambah kolom "Gitar 2" dst. untuk nama berikutnya), TBC/-/? dianggap kosong. Tahun tanggal 2 angka ("4-Oct-26") terbaca.
 - File adalah acuan untuk tim ini: posisi yang tidak ada kolomnya di file dilepas dari template dan acara yang disentuh, kecuali **Pembicara** yang selalu dipertahankan.
 - Tema/Padus/Band diterapkan ke Ibadah Minggu I dan II sekaligus. Acara yang sudah lewat 2 bulan tetap terkunci dan dilewati.
+
+## Pengingat terjadwal (cron)
+
+`vercel.json` menjadwalkan dua pekerjaan (hanya berjalan di deploy Production; paket Hobby paling sering sekali sehari, jamnya bisa meleset sampai sekitar 1 jam):
+
+| Jalur | Waktu (WIB) | Isi |
+|---|---|---|
+| `/api/cron/harian` | sekitar 17.00 tiap hari | pengingat H-1 pelayan (acara dan latihan besok), pengingat H-1 rapat kelompok, kehadiran belum diisi (penjadwal), pelanggaran aturan baru (penjadwal) |
+| `/api/cron/bulanan` | sekitar 08.00 tanggal 1 | ringkasan jadwal tiap orang untuk bulan itu (tidak dikirim bila kosong) |
+
+Tiap pekerjaan mengirim satu pesan gabungan per orang dan tidak mengirim apa pun bila tidak ada isinya. Menjalankan ulang di hari yang sama aman (pesan tidak dobel).
+
+Mencoba tanpa menunggu jadwal (ganti `RAHASIA` dengan nilai `CRON_SECRET`):
+
+```
+curl -H "Authorization: Bearer RAHASIA" https://jadwal-elyon.vercel.app/api/cron/harian
+```
+
+Hasilnya berupa JSON ringkasan (berapa orang yang dituju dan berapa yang terkirim).
