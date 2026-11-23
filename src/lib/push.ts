@@ -11,19 +11,29 @@ export function pushConfig() {
   return { publicKey, privateKey, subject: process.env.VAPID_SUBJECT?.trim() || "mailto:admin@example.com" };
 }
 
-/** ok = terkirim ke layanan push; gone = perangkat sudah tidak berlaku (hapus); error = gagal sementara. */
-export async function sendPush(t: PushTarget, p: PushPayload): Promise<"ok" | "gone" | "error"> {
+export type PushOutcome = { result: "ok" | "gone" | "error"; status?: number; reason?: string };
+
+/** Seperti sendPush, tetapi menyertakan kode dan alasan penolakan dari layanan push. */
+export async function sendPushDetailed(t: PushTarget, p: PushPayload): Promise<PushOutcome> {
   const cfg = pushConfig();
-  if (!cfg) return "error";
+  if (!cfg) return { result: "error", reason: "Kunci VAPID belum diisi di server" };
   try {
     await webpush.sendNotification(
       { endpoint: t.endpoint, keys: { p256dh: t.p256dh, auth: t.auth } },
       JSON.stringify({ title: p.title, body: p.body, url: p.url ?? "/", tag: p.tag }),
       { TTL: 60 * 60 * 24, urgency: "normal", vapidDetails: { subject: cfg.subject, publicKey: cfg.publicKey, privateKey: cfg.privateKey } },
     );
-    return "ok";
+    return { result: "ok" };
   } catch (e) {
-    const status = (e as { statusCode?: number }).statusCode;
-    return status === 404 || status === 410 ? "gone" : "error";
+    const err = e as { statusCode?: number; body?: string; message?: string };
+    const status = err.statusCode;
+    const reason = (err.body || err.message || "").toString().slice(0, 200);
+    console.error(`[push] gagal kirim (${status ?? "tanpa kode"}) ${new URL(t.endpoint).host}: ${reason}`);
+    return { result: status === 404 || status === 410 ? "gone" : "error", status, reason };
   }
+}
+
+/** ok = terkirim ke layanan push; gone = perangkat sudah tidak berlaku (hapus); error = gagal sementara. */
+export async function sendPush(t: PushTarget, p: PushPayload): Promise<"ok" | "gone" | "error"> {
+  return (await sendPushDetailed(t, p)).result;
 }

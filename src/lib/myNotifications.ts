@@ -3,7 +3,7 @@ import { prisma } from "./prisma";
 import { badRequest } from "./errors";
 import { can, type AuthUser } from "./rbac";
 import { AUDIENCE_LABEL, isNotifKind, kindsFor, type Audience } from "./notificationKinds";
-import { pushConfig, sendPush } from "./push";
+import { pushConfig, sendPushDetailed } from "./push";
 
 const MAX_DEVICES = 5;
 
@@ -74,8 +74,14 @@ export async function removeMyDevice(u: AuthUser, endpoint: string) {
 export async function sendMyTest(u: AuthUser) {
   const subs = await prisma.pushSubscription.findMany({ where: { userId: u.userId } });
   if (subs.length === 0) throw badRequest("Belum ada perangkat yang aktif. Aktifkan notifikasi di HP ini dulu.");
-  const results = await Promise.all(subs.map(async (s) => ({ s, r: await sendPush(s, { title: "Tes notifikasi", body: "Notifikasi di perangkat ini sudah berfungsi.", url: "/profil", tag: "tes" }) })));
-  const gone = results.filter((x) => x.r === "gone").map((x) => x.s.id);
+  const results = await Promise.all(subs.map(async (s) => ({ s, r: await sendPushDetailed(s, { title: "Tes notifikasi", body: "Notifikasi di perangkat ini sudah berfungsi.", url: "/profil", tag: "tes" }) })));
+  const gone = results.filter((x) => x.r.result === "gone").map((x) => x.s.id);
   if (gone.length) await prisma.pushSubscription.deleteMany({ where: { id: { in: gone } } });
-  return { sent: results.filter((x) => x.r === "ok").length, devices: subs.length };
+  const fail = results.find((x) => x.r.result !== "ok")?.r;
+  return {
+    sent: results.filter((x) => x.r.result === "ok").length,
+    devices: subs.length,
+    failStatus: fail?.status ?? null,
+    failReason: fail ? fail.reason ?? null : null,
+  };
 }

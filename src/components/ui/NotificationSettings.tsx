@@ -85,7 +85,7 @@ export default function NotificationSettings() {
     const r = await callApi("POST", "/api/v1/me/notifications/test");
     setBusy(false);
     if (!r.ok) showToast(errMsg(r.data), "error");
-    else showToast(r.data.sent > 0 ? "Tes dikirim. Notifikasi akan muncul sebentar lagi." : "Tes tidak berhasil terkirim. Coba aktifkan ulang di HP ini.", r.data.sent > 0 ? "success" : "error");
+    else showToast(r.data.sent > 0 ? "Tes dikirim. Notifikasi akan muncul sebentar lagi." : `Tes tidak berhasil terkirim${r.data.failStatus ? ` (kode ${r.data.failStatus})` : ""}${r.data.failReason ? `: ${String(r.data.failReason).slice(0, 120)}` : ""}. Coba aktifkan ulang di HP ini.`, r.data.sent > 0 ? "success" : "error");
   };
 
   const dirty = !!info && [...off].sort().join() !== [...info.off].sort().join();
