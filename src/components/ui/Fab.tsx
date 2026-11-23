@@ -19,7 +19,7 @@ import { createPortal } from "react-dom";
  * menjadi acuan posisi bagi `fixed`, sehingga tombol akan menempel di induk itu, bukan di sudut layar.
  */
 export type FabTone = "primary" | "gold" | "danger" | "neutral";
-export type FabIcon = "plus" | "save" | "publish" | "unpublish" | "cancel" | "check" | "print" | "edit" | "more";
+export type FabIcon = "plus" | "save" | "publish" | "unpublish" | "cancel" | "check" | "print" | "edit" | "bell" | "more";
 export type FabAction = {
   key: string; label: string; icon?: FabIcon; tone?: FabTone;
   href?: string; event?: string; onClick?: () => void;
@@ -42,6 +42,7 @@ const PATHS: Record<FabIcon, React.ReactNode> = {
   check: <path d="M4 12l5 5L20 6" />,
   print: <><path d="M7 9V4h10v5" /><path d="M7 17H5v-6h14v6h-2" /><path d="M7 14h10v6H7z" /></>,
   edit: <><path d="M4 20h4L19 9l-4-4L4 16z" /><path d="M14 6l4 4" /></>,
+  bell: <><path d="M6 17V11a6 6 0 0112 0v6l1.5 2h-15z" /><path d="M10 21h4" /></>,
   more: <><circle cx="12" cy="5" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="12" cy="19" r="1.4" /></>,
 };
 

@@ -10,6 +10,7 @@ import SeatPicker from "./SeatPicker";
 import { addToTime, btnGhost, btnPrimary, callApi, card, diffMin, errMsg, hmInput, inputCls } from "./api";
 import { dayLong, dayShort, hm, initials, MONTHS, STATUS_LABEL, toneFor, WEEKDAYS, ymd } from "@/lib/ui";
 import RoomOptions from "@/components/ui/RoomOptions";
+import NotifyStaff from "./NotifyStaff";
 
 type Seat = {
   id: string; teamTypeId: string; ministryId: string; ministryName: string; slotNo: number; label: string; rehearsalRequired: boolean; bandOnly?: boolean;
@@ -45,6 +46,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
   const [picker, setPicker] = useState<string | null>(null);
   const [addSeatTeam, setAddSeatTeam] = useState<string | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [notifyOpen, setNotifyOpen] = useState(false);
   const [saved, setSaved] = useState(false); // popup "berhasil disimpan"
   const [cancelReason, setCancelReason] = useState("");
   // form info
@@ -272,6 +274,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
         {perms.publish && editable && (
           <div className="flex flex-wrap gap-2.5 max-md:hidden">
             {d.status === "DRAFT" && <button className={btnPrimary} disabled={busy} onClick={publish}>Terbitkan jadwal</button>}
+            {d.status === "PUBLISHED" && <button className={btnPrimary} disabled={busy} onClick={() => setNotifyOpen(true)}>Beri tahu pelayan</button>}
             {d.status === "PUBLISHED" && <button className={btnGhost} disabled={busy} onClick={unpublish}>Tarik ke draf</button>}
             <button className="h-11 rounded-xl border border-[#F0C9C9] bg-white px-4 text-sm font-bold text-[#9B1C1C] hover:bg-[#FFF5F5]" onClick={() => setCancelOpen((v) => !v)}>Batalkan acara</button>
           </div>
@@ -281,10 +284,13 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
       <Fab dot={infoDirty && perms.editEvent && editable} quick={perms.editEvent && editable && infoDirty ? "save" : undefined} actions={[
         ...(perms.editEvent && editable ? [{ key: "save", label: "Simpan perubahan", icon: "save" as const, tone: "primary" as const, disabled: busy || !infoDirty, busy, onClick: () => { void saveInfo(); } }] : []),
         ...(perms.publish && editable && d.status === "DRAFT" ? [{ key: "publish", label: "Terbitkan jadwal", icon: "publish" as const, tone: "gold" as const, disabled: busy, onClick: () => { void publish(); } }] : []),
+        ...(perms.publish && editable && d.status === "PUBLISHED" ? [{ key: "notify", label: "Beri tahu pelayan", icon: "bell" as const, tone: "gold" as const, disabled: busy, onClick: () => setNotifyOpen(true) }] : []),
         ...(perms.publish && editable && d.status === "PUBLISHED" ? [{ key: "unpublish", label: "Tarik ke draf", icon: "unpublish" as const, tone: "neutral" as const, disabled: busy, onClick: () => { void unpublish(); } }] : []),
         ...(perms.publish && d.status === "CANCELLED" ? [{ key: "reopen", label: "Aktifkan kembali", icon: "check" as const, tone: "primary" as const, disabled: busy, busy, onClick: () => { void reopen(); } }] : []),
         ...(perms.publish && editable ? [{ key: "cancel", label: "Batalkan acara", icon: "cancel" as const, tone: "danger" as const, onClick: () => { setCancelOpen(true); setTimeout(() => document.getElementById("batalkan-acara")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); } }] : []),
       ]} />
+
+      {notifyOpen && <NotifyStaff eventId={eventId} title={d.title} onClose={() => setNotifyOpen(false)} />}
 
       {cancelOpen && (
         <div id="batalkan-acara" className="flex flex-wrap items-end gap-3 rounded-2xl border border-[#F0C9C9] bg-[#FFF8F8] p-4">
