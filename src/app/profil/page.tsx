@@ -7,14 +7,17 @@ import { getChurchProfile } from "@/lib/church";
 import { initials, ROLE_LABEL } from "@/lib/ui";
 import InstallApp from "@/components/ui/InstallApp";
 import NotificationSettings from "@/components/ui/NotificationSettings";
+import EmailStatus from "@/components/ui/EmailStatus";
+import { mailConfigured } from "@/lib/mailer";
 
 export default async function ProfilPage() {
   const u = await currentUser();
-  const [nav, person, church, session] = await Promise.all([
+  const [nav, person, church, session, me] = await Promise.all([
     visibleNav(u),
     u.personId ? prisma.person.findUnique({ where: { id: u.personId }, select: { name: true } }) : null,
     getChurchProfile(u.tenantId).catch(() => null),
     auth(),
+    prisma.user.findUnique({ where: { id: u.userId }, select: { emailVerifiedAt: true } }),
   ]);
   const email = session?.user?.email ?? "";
   const name = person?.name ?? (email.split("@")[0] || "Pengguna");
@@ -49,6 +52,8 @@ export default async function ProfilPage() {
       <InstallApp />
 
       <NotificationSettings />
+
+      {email && <EmailStatus email={email} verified={!!me?.emailVerifiedAt} mailOn={mailConfigured()} />}
 
       <section className="flex flex-col gap-3">
         <Link href="/ganti-password" className="flex h-12 items-center justify-center rounded-xl border border-[#D0D3E8] bg-white text-sm font-bold text-[var(--primary-ink)] hover:bg-[#f3f4f9]">Ganti kata sandi</Link>
