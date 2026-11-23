@@ -10,7 +10,7 @@ import type { MasterState } from "../src/lib/importer/master";
 
 const row = (n: number, v: Record<string, string>): Row => ({ n, v });
 const KG = (n: number, name: string, quorum = "") => row(n, { name, quorum });
-const JB = (n: number, group: string, name: string, s = "", w = "", f = "", m = "") => row(n, { group, name, schedule: s, write: w, finalize: f, manage: m });
+const JB = (n: number, group: string, name: string, s = "", w = "", f = "", m = "", seats = "") => row(n, { group, name, seats, schedule: s, write: w, finalize: f, manage: m });
 const AG = (n: number, group: string, person: string, positions = "") => row(n, { group, person, positions });
 const RP = (n: number, o: Partial<Record<string, string>> = {}) =>
   row(n, { group: "Majelis", title: "Rapat bulanan", date: "2026-12-08", start: "19:00", end: "21:00", room: "401A", showTopic: "", showAttendees: "", ...o });
@@ -79,7 +79,7 @@ test("kesalahan dilaporkan per baris dengan alasan yang jelas", () => {
 
 test("kelompok, jabatan, dan anggota yang sudah ada dilewati; anggota yang pernah keluar bergabung kembali", () => {
   const { st, ctx, gs, sheet } = setup();
-  const anggota = { id: "pos-a", name: "Anggota", isNew: false, auto: true, sortOrder: 99, caps: { schedule: false, write: false, finalize: false, manage: false } };
+  const anggota = { id: "pos-a", name: "Anggota", isNew: false, auto: true, sortOrder: 99, seats: null, caps: { schedule: false, write: false, finalize: false, manage: false } };
   gs.groups.set("majelis", {
     id: "g1", name: "Majelis", isNew: false, deleted: false, quorum: 50, sortOrder: 1,
     positions: new Map([["anggota", anggota]]),
@@ -146,4 +146,35 @@ test("dua rapat dalam file yang bentrok di ruangan sama: yang lebih awal menang"
   assert.match(sheet("Rapat").errors[0].message, /Rapat Majelis: A/);
   // kelompok tanpa anggota mendapat catatan
   assert.equal(sheet("Rapat").notes.length, 1);
+});
+
+test("jumlah orang per jabatan: kosong = 1, angka, atau tanpa batas; salah isi ditolak", () => {
+  const { st, ctx, gs, sheet } = setup();
+  stageGroups(ctx, st, gs, {
+    KelompokRapat: [KG(4, "Majelis")],
+    JabatanKelompok: [
+      JB(4, "Majelis", "Ketua"), JB(5, "Majelis", "Penatua", "", "", "", "", "5"), JB(6, "Majelis", "Seksi Umum", "", "", "", "", "tanpa batas"),
+      JB(7, "Majelis", "Humas", "", "", "", "", "0"), JB(8, "Majelis", "Diakon", "", "", "", "", "dua"),
+    ],
+    AnggotaKelompok: [],
+  });
+  const g = gs.groups.get("majelis")!;
+  assert.equal(g.positions.get("ketua")!.seats, 1);
+  assert.equal(g.positions.get("penatua")!.seats, 5);
+  assert.equal(g.positions.get("seksi umum")!.seats, null);
+  assert.equal(g.positions.get("anggota")!.seats, null);
+  assert.equal(sheet("JabatanKelompok").errors.length, 2); // 0 dan "dua"
+});
+
+test("jabatan yang penuh menolak anggota berikutnya, termasuk yang diisi di baris sebelumnya", () => {
+  const { st, ctx, gs, sheet } = setup();
+  stageGroups(ctx, st, gs, {
+    KelompokRapat: [KG(4, "Majelis")],
+    JabatanKelompok: [JB(4, "Majelis", "Ketua"), JB(5, "Majelis", "Penatua", "", "", "", "", "2")],
+    AnggotaKelompok: [AG(4, "Majelis", "Setia Budi", "Ketua, Penatua"), AG(5, "Majelis", "Maria Susanti", "Ketua"), AG(6, "Majelis", "Maria Susanti", "Penatua"), AG(7, "Majelis", "Daniel", "Penatua")],
+  });
+  const ag = sheet("AnggotaKelompok");
+  assert.equal(ag.created, 2); // Setia dan Maria (Penatua)
+  assert.equal(ag.errors.length, 2); // Maria sbg Ketua penuh; Daniel sbg Penatua penuh (2 dari 2)
+  assert.ok(ag.errors.every((e) => /sudah penuh/.test(e.message)));
 });

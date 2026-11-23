@@ -1,4 +1,4 @@
-import { COLS, norm, SHEET_LIST, type Row, type SheetKey } from "./common";
+import { COLS, norm, OPTIONAL_COLS, SHEET_LIST, type Row, type SheetKey } from "./common";
 import { readXlsx } from "./xlsx";
 
 export type Parsed = {
@@ -52,7 +52,7 @@ export function parseWorkbook(buf: Buffer): Parsed {
       headerErrors[key] = ["Judul kolom tidak ditemukan. Pakai template resmi dan jangan ubah nama kolom."];
       continue;
     }
-    const missing = Object.entries(spec).filter(([id]) => !colOf.has(id)).map(([, title]) => title);
+    const missing = Object.entries(spec).filter(([id]) => !colOf.has(id) && !OPTIONAL_COLS[key]?.includes(id)).map(([, title]) => title);
     if (missing.length) headerErrors[key] = [`Kolom tidak ditemukan: ${missing.join(", ")}.`];
 
     for (let r = headerRow + 1; r <= ws.maxRow; r++) {

@@ -19,7 +19,7 @@ export async function loadGroups(tenantId: string): Promise<GroupState> {
     groups.set(k(g.name), {
       id: g.id, name: g.name, isNew: false, deleted: !!g.deletedAt, quorum: g.quorumMin, sortOrder: g.sortOrder,
       positions: new Map(g.positions.map((p) => [k(p.name), {
-        id: p.id, name: p.name, isNew: false, deleted: !!p.deletedAt, auto: p.name === BASE_POSITION, sortOrder: p.sortOrder,
+        id: p.id, name: p.name, isNew: false, deleted: !!p.deletedAt, auto: p.name === BASE_POSITION, sortOrder: p.sortOrder, seats: p.seats,
         caps: { schedule: p.canSchedule, write: p.canWriteMinutes, finalize: p.canFinalize, manage: p.canManageMembers },
       }])),
       members: new Map(g.members.map((m) => [m.personId, { id: m.id, personId: m.personId, name: m.person.name, isNew: false, left: !!m.leftAt, positionIds: m.positions.map((x) => x.positionId) }])),
@@ -45,7 +45,7 @@ export async function flushGroups(ctx: Ctx, gs: GroupState) {
         if (newPositions.length) {
           await tx.groupPosition.createMany({
             data: newPositions.map(({ g, p }) => ({
-              id: p.id, groupId: g.id, name: p.name, sortOrder: p.sortOrder,
+              id: p.id, groupId: g.id, name: p.name, sortOrder: p.sortOrder, seats: p.seats,
               canSchedule: p.caps.schedule, canWriteMinutes: p.caps.write, canFinalize: p.caps.finalize, canManageMembers: p.caps.manage,
             })),
           });

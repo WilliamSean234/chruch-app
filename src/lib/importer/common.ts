@@ -59,10 +59,13 @@ export const COLS: Record<SheetKey, Record<string, string>> = {
   Penugasan: { title: "Judul acara", date: "Tanggal acara", ministry: "Pelayanan", seat: "Kursi ke", person: "Nama orang" },
   Latihan: { title: "Judul acara", date: "Tanggal acara", rdate: "Tanggal latihan", start: "Jam mulai", dur: "Durasi menit", room: "Ruangan", note: "Catatan" },
   KelompokRapat: { name: "Nama kelompok", quorum: "Kuorum" },
-  JabatanKelompok: { group: "Kelompok", name: "Jabatan", schedule: "Boleh menjadwalkan rapat", write: "Boleh menulis notulen", finalize: "Boleh memfinalkan notulen", manage: "Boleh mengatur anggota" },
+  JabatanKelompok: { group: "Kelompok", name: "Jabatan", seats: "Jumlah orang", schedule: "Boleh menjadwalkan rapat", write: "Boleh menulis notulen", finalize: "Boleh memfinalkan notulen", manage: "Boleh mengatur anggota" },
   AnggotaKelompok: { group: "Kelompok", person: "Nama orang", positions: "Jabatan" },
   Rapat: { group: "Kelompok", title: "Judul atau topik", date: "Tanggal", start: "Jam mulai", end: "Jam selesai", room: "Ruangan", showTopic: "Judul tampil di kalender umum", showAttendees: "Peserta tampil di kalender umum" },
 };
+
+/** Kolom yang boleh tidak ada di file lama (dianggap kosong). Kolom baru ditambahkan di sini supaya template lama tetap bisa diimpor. */
+export const OPTIONAL_COLS: Partial<Record<SheetKey, string[]>> = { JabatanKelompok: ["seats"] };
 
 /** Pembanding judul/nama: huruf kecil, tanda baca dan bintang dibuang. */
 export const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();

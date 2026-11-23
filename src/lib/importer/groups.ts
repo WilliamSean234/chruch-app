@@ -11,7 +11,7 @@ import type { MasterState } from "./master";
  */
 
 export type Caps = { schedule: boolean; write: boolean; finalize: boolean; manage: boolean };
-export type GPos = { id: string; name: string; isNew: boolean; auto?: boolean; deleted?: boolean; sortOrder: number; caps: Caps; row?: number };
+export type GPos = { id: string; name: string; isNew: boolean; auto?: boolean; deleted?: boolean; sortOrder: number; caps: Caps; seats: number | null; row?: number };
 export type GMem = { id: string; personId: string; name: string; isNew: boolean; left: boolean; rejoin?: boolean; positionIds: string[]; row?: number };
 export type Grp = {
   id: string; name: string; isNew: boolean; deleted: boolean; quorum: number | null; sortOrder: number; row?: number;
@@ -54,7 +54,7 @@ export function stageGroups(ctx: Ctx, st: MasterState, gs: GroupState, rows: { K
       else rep.skip("KelompokRapat", r.n, `Kelompok "${ex.name}" sudah ada, jadi dilewati (kuorum dan jabatannya tidak diubah).`);
       continue;
     }
-    const base: GPos = { id: randomUUID(), name: BASE_POSITION, isNew: true, auto: true, sortOrder: 99, caps: { ...NO_CAPS } };
+    const base: GPos = { id: randomUUID(), name: BASE_POSITION, isNew: true, auto: true, sortOrder: 99, caps: { ...NO_CAPS }, seats: null };
     gs.groups.set(k(name), {
       id: randomUUID(), name, isNew: true, deleted: false, quorum, sortOrder: ++nextOrder, row: r.n,
       positions: new Map([[k(BASE_POSITION), base]]), members: new Map(),
@@ -81,6 +81,16 @@ export function stageGroups(ctx: Ctx, st: MasterState, gs: GroupState, rows: { K
     if (name.length > 60) errs.push("Nama jabatan terlalu panjang (maks 60 huruf).");
     const flags = { schedule: r.v.schedule, write: r.v.write, finalize: r.v.finalize, manage: r.v.manage };
     const label = { schedule: "Boleh menjadwalkan rapat", write: "Boleh menulis notulen", finalize: "Boleh memfinalkan notulen", manage: "Boleh mengatur anggota" };
+    const seatsRaw = r.v.seats.trim();
+    let seats: number | null = 1; // kosong = 1 orang, sama dengan jabatan baru di aplikasi
+    if (seatsRaw) {
+      if (/^(bebas|tanpa batas|tidak terbatas|-|∞)$/i.test(seatsRaw)) seats = null;
+      else {
+        const n = parseInt0(seatsRaw);
+        if (n === null || n < 1 || n > 500) errs.push(`Jumlah orang harus angka 1 sampai 500, atau tulis "tanpa batas" (isinya "${r.v.seats}"). Kosong = 1 orang.`);
+        else seats = n;
+      }
+    }
     for (const [key, v] of Object.entries(flags)) if (!isYesNo(v)) errs.push(`${label[key as keyof typeof label]}: isi Ya atau Tidak (isinya "${v}"; kosong = Tidak).`);
     if (errs.length) { rep.err("JabatanKelompok", r.n, errs.join(" ")); continue; }
     const ex = g.positions.get(k(name));
@@ -93,7 +103,7 @@ export function stageGroups(ctx: Ctx, st: MasterState, gs: GroupState, rows: { K
     }
     const used = [...g.positions.values()].filter((p) => p.sortOrder < 99).map((p) => p.sortOrder);
     g.positions.set(k(name), {
-      id: randomUUID(), name, isNew: true, sortOrder: Math.max(0, ...used) + 1, row: r.n,
+      id: randomUUID(), name, isNew: true, sortOrder: Math.max(0, ...used) + 1, row: r.n, seats,
       caps: { schedule: yes(flags.schedule, false), write: yes(flags.write, false), finalize: yes(flags.finalize, false), manage: yes(flags.manage, false) },
     });
     rep.ok("JabatanKelompok");
@@ -114,6 +124,13 @@ export function stageGroups(ctx: Ctx, st: MasterState, gs: GroupState, rows: { K
       const p = g.positions.get(k(w));
       if (!p || p.deleted) errs.push(`Jabatan "${w}" belum ada di kelompok ${g.name} (daftarkan di sheet JabatanKelompok).`);
       else if (!ids.includes(p.id)) ids.push(p.id);
+    }
+    // jabatan yang berjumlah orang terbatas: tolak bila sudah penuh (termasuk yang diisi baris-baris sebelumnya di file ini)
+    for (const pid of ids) {
+      const p = [...g.positions.values()].find((x) => x.id === pid);
+      if (!p || p.seats === null) continue;
+      const held = [...g.members.values()].filter((m) => !m.left && m.personId !== person?.id && m.positionIds.includes(pid)).length;
+      if (held >= p.seats) errs.push(`Jabatan "${p.name}" di ${g.name} sudah penuh (${held} dari ${p.seats} orang).`);
     }
     if (errs.length) { rep.err("AnggotaKelompok", r.n, errs.join(" ")); continue; }
     const cur = g.members.get(person!.id);

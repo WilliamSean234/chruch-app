@@ -107,8 +107,10 @@ const caps = {
   canFinalize: z.boolean().optional(),
   canManageMembers: z.boolean().optional(),
 };
-export const positionBody = z.object({ name: z.string().trim().min(1, "Nama jabatan wajib diisi").max(60), ...caps });
-export const positionPatch = z.object({ name: z.string().trim().min(1, "Nama jabatan wajib diisi").max(60).optional(), ...caps });
+/** Jumlah orang per jabatan: kosong (null) = tanpa batas. */
+const seats = z.number().int("Jumlah orang harus bilangan bulat.").min(1, "Jumlah orang minimal 1.").max(500, "Jumlah orang terlalu besar.").nullable();
+export const positionBody = z.object({ name: z.string().trim().min(1, "Nama jabatan wajib diisi").max(60), seats: seats.optional(), ...caps });
+export const positionPatch = z.object({ name: z.string().trim().min(1, "Nama jabatan wajib diisi").max(60).optional(), seats: seats.optional(), ...caps });
 
 export const memberBody = z.object({ personId: z.string().uuid(), positionIds: z.array(z.string().uuid()).max(20).default([]) });
 export const memberPatch = z.object({ positionIds: z.array(z.string().uuid()).max(20) });
@@ -154,6 +156,8 @@ export async function getGroup(u: AuthUser, id: string) {
       return { id: m.id, personId: m.personId, name: m.person.name, title: m.person.title, positionIds: pos };
     })
     .sort((a, b) => (a.positionIds[0] !== undefined ? order.get(a.positionIds[0])! : 999) - (b.positionIds[0] !== undefined ? order.get(b.positionIds[0])! : 999) || a.name.localeCompare(b.name));
+  const filled = new Map<string, number>(); // berapa orang memegang tiap jabatan
+  for (const m of items) for (const pid of m.positionIds) filled.set(pid, (filled.get(pid) ?? 0) + 1);
   const ebm = EBM_GROUP.test(g.name.trim()) ? await ebmInfo(u, items.map((m) => m.personId)) : null;
   return {
     id: g.id,
@@ -162,7 +166,7 @@ export async function getGroup(u: AuthUser, id: string) {
     ebm: ebm ? { canEdit: ebm.canEdit, ministries: ebm.ministries } : null, // null = bukan kelompok EBM
     canAdmin: sa, // ubah nama/kuorum, kelola jabatan
     canManageMembers: sa || mine.canManageMembers,
-    positions: positions.map((p) => ({ id: p.id, name: p.name, canSchedule: p.canSchedule, canWriteMinutes: p.canWriteMinutes, canFinalize: p.canFinalize, canManageMembers: p.canManageMembers })),
+    positions: positions.map((p) => ({ id: p.id, name: p.name, seats: p.seats, filled: filled.get(p.id) ?? 0, canSchedule: p.canSchedule, canWriteMinutes: p.canWriteMinutes, canFinalize: p.canFinalize, canManageMembers: p.canManageMembers })),
     members: ebm ? items.map((m) => ({ ...m, ebmMinistryIds: ebm.byPerson[m.personId] ?? [] })) : items,
   };
 }
@@ -237,12 +241,12 @@ export async function createPosition(u: AuthUser, groupId: string, input: z.infe
   const last = await prisma.groupPosition.aggregate({ where: { groupId, deletedAt: null, sortOrder: { lt: 99 } }, _max: { sortOrder: true } });
   const p = await prisma.groupPosition.create({
     data: {
-      groupId, name: input.name, sortOrder: (last._max.sortOrder ?? 0) + 1,
+      groupId, name: input.name, sortOrder: (last._max.sortOrder ?? 0) + 1, seats: input.seats === undefined ? 1 : input.seats, // jabatan baru bawaannya 1 orang
       canSchedule: input.canSchedule ?? false, canWriteMinutes: input.canWriteMinutes ?? false,
       canFinalize: input.canFinalize ?? false, canManageMembers: input.canManageMembers ?? false,
     },
   });
-  await audit({ tenantId: u.tenantId, userId: u.userId, action: "group.position.create", entity: "MeetingGroup", entityId: groupId, payload: { position: p.name } });
+  await audit({ tenantId: u.tenantId, userId: u.userId, action: "group.position.create", entity: "MeetingGroup", entityId: groupId, payload: { position: p.name, seats: p.seats } });
   return p;
 }
 
@@ -260,8 +264,13 @@ export async function updatePosition(u: AuthUser, groupId: string, positionId: s
     const dup = await prisma.groupPosition.findFirst({ where: { groupId, name: input.name, NOT: { id: positionId } } });
     if (dup) throw conflict("Jabatan itu sudah ada di kelompok ini.");
   }
+  if (input.seats !== undefined && input.seats !== null) {
+    const held = await holdersOf(positionId);
+    if (held > input.seats) throw conflict(`Jabatan ${before.name} sedang dipegang ${held} orang. Kurangi dulu pemegangnya sebelum menurunkan jumlah orangnya menjadi ${input.seats}.`);
+  }
   const data = {
     ...(input.name ? { name: input.name } : {}),
+    ...(input.seats !== undefined ? { seats: input.seats } : {}),
     ...(input.canSchedule !== undefined ? { canSchedule: input.canSchedule } : {}),
     ...(input.canWriteMinutes !== undefined ? { canWriteMinutes: input.canWriteMinutes } : {}),
     ...(input.canFinalize !== undefined ? { canFinalize: input.canFinalize } : {}),
@@ -285,6 +294,20 @@ export async function deletePosition(u: AuthUser, groupId: string, positionId: s
 }
 
 // ───────── Anggota ─────────
+/** Berapa anggota aktif yang memegang jabatan ini. */
+const holdersOf = (positionId: string, exceptMemberId?: string) =>
+  prisma.groupMemberPosition.count({ where: { positionId, ...(exceptMemberId ? { memberId: { not: exceptMemberId } } : {}), member: { leftAt: null, person: { deletedAt: null } } } });
+
+/** Tolak bila ada jabatan bertanda jumlah orang yang sudah penuh. `exceptMemberId` = anggota yang sedang diubah (pegangannya tidak dihitung dua kali). */
+async function assertSeatsFree(groupId: string, positionIds: string[], exceptMemberId?: string) {
+  if (!positionIds.length) return;
+  const limited = await prisma.groupPosition.findMany({ where: { id: { in: positionIds }, groupId, deletedAt: null, seats: { not: null } }, select: { id: true, name: true, seats: true } });
+  for (const p of limited) {
+    const held = await holdersOf(p.id, exceptMemberId);
+    if (held >= p.seats!) throw conflict(`Jabatan ${p.name} sudah penuh (${held} dari ${p.seats} orang). Pilih jabatan lain, atau kosongkan dulu dari pemegang yang sekarang.`);
+  }
+}
+
 async function validPositionIds(groupId: string, ids: string[]) {
   const unique = [...new Set(ids)];
   if (unique.length && (await prisma.groupPosition.count({ where: { id: { in: unique }, groupId, deletedAt: null } })) !== unique.length) {
@@ -301,6 +324,7 @@ export async function addMember(u: AuthUser, groupId: string, input: z.infer<typ
   const positionIds = await validPositionIds(groupId, input.positionIds);
   const existing = await prisma.groupMember.findUnique({ where: { groupId_personId: { groupId, personId: person.id } } });
   if (existing && !existing.leftAt) throw conflict(`${person.name} sudah menjadi anggota kelompok ini.`);
+  await assertSeatsFree(groupId, positionIds, existing?.id);
 
   const member = await prisma.$transaction(async (tx) => {
     const m = existing
@@ -325,6 +349,7 @@ export async function setMemberPositions(u: AuthUser, groupId: string, memberId:
   await requireManageMembers(u, groupId);
   const m = await findMember(groupId, memberId);
   const positionIds = await validPositionIds(groupId, input.positionIds);
+  await assertSeatsFree(groupId, positionIds, memberId);
   await prisma.$transaction([
     prisma.groupMemberPosition.deleteMany({ where: { memberId } }),
     prisma.groupMemberPosition.createMany({ data: positionIds.map((positionId) => ({ memberId, positionId })) }),

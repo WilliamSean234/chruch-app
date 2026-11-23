@@ -14,13 +14,13 @@ import { useClientPaging } from "@/components/ui/usePagedList";
 export const NEW_GROUP_EVENT = "groups:new";
 
 type GroupRow = { id: string; name: string; quorumMin: number | null; memberCount: number; positionCount: number };
-type Position = { id: string; name: string; canSchedule: boolean; canWriteMinutes: boolean; canFinalize: boolean; canManageMembers: boolean };
+type Position = { id: string; name: string; seats: number | null; filled: number; canSchedule: boolean; canWriteMinutes: boolean; canFinalize: boolean; canManageMembers: boolean };
 type Member = { id: string; personId: string; name: string; title: string | null; positionIds: string[]; ebmMinistryIds?: string[] };
 type EbmInfo = { canEdit: boolean; ministries: { id: string; name: string }[] };
 type Detail = { id: string; name: string; quorumMin: number | null; ebm: EbmInfo | null; canAdmin: boolean; canManageMembers: boolean; positions: Position[]; members: Member[] };
 type PersonHit = { id: string; name: string; title: string | null };
 
-const CAPS: { key: keyof Omit<Position, "id" | "name">; head: string; label: string; hint: string }[] = [
+const CAPS: { key: "canSchedule" | "canWriteMinutes" | "canFinalize" | "canManageMembers"; head: string; label: string; hint: string }[] = [
   { key: "canSchedule", head: "JADWALKAN RAPAT", label: "Menjadwalkan rapat", hint: "Membuat dan mengubah rapat kelompok, termasuk meminjam ruangan." },
   { key: "canWriteMinutes", head: "TULIS NOTULEN", label: "Menulis notulen", hint: "Mengisi agenda, pembahasan, keputusan, dan kehadiran." },
   { key: "canFinalize", head: "FINALKAN", label: "Memfinalkan notulen", hint: "Mengunci notulen menjadi Final." },
@@ -31,6 +31,13 @@ const fullName = (p: { name: string; title: string | null }) => (p.title ? `${p.
 const quorumText = (q: number | null) => (q ? `Kuorum ${q}%` : "Tanpa kuorum");
 const eyebrow = "text-xs font-extrabold tracking-[0.07em] text-[var(--gold-ink)]";
 const cardCls = "rounded-[20px] border border-[var(--line)] bg-white";
+
+/** Terisi/total jabatan: hijau bila masih ada kursi, merah bila penuh, abu-abu bila tanpa batas. */
+function SeatBadge({ p, text }: { p: Position; text: string }) {
+  const full = p.seats !== null && p.filled >= p.seats;
+  const cls = p.seats === null ? "bg-[var(--bg)] text-[var(--ink-2)]" : full ? "bg-[#fdecec] text-[#9b1c1c]" : "bg-[#e3f3e7] text-[#1b6b34]";
+  return <span className={`whitespace-nowrap rounded-full px-2.5 py-[3px] text-xs font-bold ${cls}`} title={p.seats === null ? "Tanpa batas jumlah orang" : full ? "Jabatan penuh" : "Masih ada kursi"}>{text}</span>;
+}
 
 function Rule({ children }: { children: React.ReactNode }) {
   return <div className="flex items-center gap-2.5"><span className={eyebrow}>{children}</span><span className="h-px flex-1 bg-[#e8e4d6]" /></div>;
@@ -76,6 +83,7 @@ export default function GroupBoard({ isSuperadmin, canAddPerson }: { isSuperadmi
   }, []);
 
   const done = () => { setModal(null); reload(); };
+  const seatText = (p: Position) => (p.seats === null ? `${p.filled} orang` : `${p.filled}/${p.seats}`);
   const posName = (id: string) => detail?.positions.find((p) => p.id === id)?.name ?? "";
 
   return (
@@ -170,7 +178,7 @@ export default function GroupBoard({ isSuperadmin, canAddPerson }: { isSuperadmi
                     return (
                       <li key={p.id} className="flex items-start justify-between gap-3 border-b border-[var(--line-2)] py-3 last:border-b-0">
                         <div className="flex min-w-0 flex-col gap-1.5">
-                          <span className="text-sm font-bold">{p.name}</span>
+                          <span className="flex items-center gap-2"><span className="text-sm font-bold">{p.name}</span><SeatBadge p={p} text={seatText(p)} /></span>
                           <span className="flex flex-wrap gap-1.5">
                             {granted.length === 0
                               ? <span className="text-xs font-medium text-[var(--ink-2)]">Tanpa hak khusus</span>
@@ -183,13 +191,14 @@ export default function GroupBoard({ isSuperadmin, canAddPerson }: { isSuperadmi
                   })}
                 </ul>
                 <div className="overflow-x-auto max-md:hidden">
-                  <div className="flex min-w-[600px] flex-col">
-                    <div className="grid grid-cols-[1.5fr_repeat(4,1fr)_64px] gap-2.5 rounded-[10px] bg-[var(--surface-2)] px-3.5 py-2.5 text-xs font-extrabold tracking-[0.03em] text-[var(--ink-2)]">
-                      <span>JABATAN</span>{CAPS.map((c) => <span key={c.key}>{c.head}</span>)}<span />
+                  <div className="flex min-w-[680px] flex-col">
+                    <div className="grid grid-cols-[1.5fr_80px_repeat(4,1fr)_64px] gap-2.5 rounded-[10px] bg-[var(--surface-2)] px-3.5 py-2.5 text-xs font-extrabold tracking-[0.03em] text-[var(--ink-2)]">
+                      <span>JABATAN</span><span>ORANG</span>{CAPS.map((c) => <span key={c.key}>{c.head}</span>)}<span />
                     </div>
                     {detail.positions.map((p) => (
-                      <div key={p.id} className="grid grid-cols-[1.5fr_repeat(4,1fr)_64px] items-center gap-2.5 border-b border-[var(--line-2)] px-3.5 py-[11px] text-sm">
+                      <div key={p.id} className="grid grid-cols-[1.5fr_80px_repeat(4,1fr)_64px] items-center gap-2.5 border-b border-[var(--line-2)] px-3.5 py-[11px] text-sm">
                         <span className="font-bold">{p.name}</span>
+                        <span><SeatBadge p={p} text={seatText(p)} /></span>
                         {CAPS.map((c) => (
                           <span key={c.key} className={`min-w-11 justify-self-start rounded-full px-3 py-[3px] text-center text-[12.5px] font-bold ${p[c.key] ? "bg-[#e3f3e7] text-[#1b6b34]" : "bg-[var(--bg)] text-[var(--ink-2)]"}`}>{p[c.key] ? "Ya" : "–"}</span>
                         ))}
@@ -410,17 +419,20 @@ function GroupDialog({ create, detail, onClose, onDone }: { create: boolean; det
 /** Tambah atau ubah satu jabatan beserta haknya. */
 function PositionDialog({ groupId, pos, onClose, onDone }: { groupId: string; pos: Position | null; onClose: () => void; onDone: () => void }) {
   const [name, setName] = useState(pos?.name ?? "");
+  const [seats, setSeats] = useState(pos ? (pos.seats === null ? "" : String(pos.seats)) : "1"); // kosong = tanpa batas
   const [caps, setCaps] = useState({ canSchedule: pos?.canSchedule ?? false, canWriteMinutes: pos?.canWriteMinutes ?? false, canFinalize: pos?.canFinalize ?? false, canManageMembers: pos?.canManageMembers ?? false });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const sig = JSON.stringify([name, caps]);
+  const sig = JSON.stringify([name, seats, caps]);
   const [initialSig] = useState(sig);
   const dirty = sig !== initialSig;
   const cancel = async () => { if (await confirmDiscard(dirty)) onClose(); };
 
   const save = async () => {
     setBusy(true); setErr("");
-    const body = { name: name.trim(), ...caps };
+    const n = seats.trim() === "" ? null : Number(seats);
+    if (n !== null && (!Number.isInteger(n) || n < 1)) { setBusy(false); setErr("Jumlah orang harus bilangan bulat minimal 1, atau kosongkan bila tanpa batas."); return; }
+    const body = { name: name.trim(), seats: n, ...caps };
     const r = pos ? await callApi("PATCH", `/api/v1/groups/${groupId}/positions/${pos.id}`, body) : await callApi("POST", `/api/v1/groups/${groupId}/positions`, body);
     setBusy(false);
     if (r.ok) onDone(); else setErr(errMsg(r.data));
@@ -442,6 +454,10 @@ function PositionDialog({ groupId, pos, onClose, onDone }: { groupId: string; po
       </>}>
       <div className="flex flex-col gap-4">
         <Field label="Nama jabatan"><input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} placeholder="Mis. Ketua, Sekretaris, Penjadwal" className={inputCls} autoFocus /></Field>
+        <Field label="Jumlah orang">
+          <input value={seats} onChange={(e) => setSeats(e.target.value.replace(/\D/g, "").slice(0, 3))} inputMode="numeric" placeholder="Kosong = tanpa batas" className={inputCls} />
+          <span className="text-xs font-medium text-[var(--ink-2)]">Paling banyak berapa orang yang boleh memegang jabatan ini{pos ? ` (sekarang ${pos.filled} orang)` : ""}. Mis. Ketua 1, Penatua 5.</span>
+        </Field>
         <div className="flex flex-col gap-1">
           <span className="text-[13px] font-bold">Hak jabatan ini</span>
           {CAPS.map((c) => (
@@ -458,16 +474,21 @@ function PositionDialog({ groupId, pos, onClose, onDone }: { groupId: string; po
   );
 }
 
-function PositionChecks({ positions, value, onChange }: { positions: Position[]; value: string[]; onChange: (v: string[]) => void }) {
+/** `held` = jabatan yang sedang dipegang orang yang diubah (ia tetap boleh mempertahankannya walau jabatannya penuh). */
+function PositionChecks({ positions, value, onChange, held = [] }: { positions: Position[]; value: string[]; onChange: (v: string[]) => void; held?: string[] }) {
   return (
     <div className="flex flex-col gap-1">
       <span className="text-[13px] font-bold">Jabatan</span>
-      {positions.map((p) => (
-        <label key={p.id} className="flex cursor-pointer items-center gap-3 rounded-xl px-1 py-1.5 hover:bg-[var(--surface-2)]">
-          <input type="checkbox" checked={value.includes(p.id)} onChange={(e) => onChange(e.target.checked ? [...value, p.id] : value.filter((x) => x !== p.id))} className="size-4 accent-[var(--primary)]" />
-          <span className="text-sm font-bold">{p.name}</span>
-        </label>
-      ))}
+      {positions.map((p) => {
+        const full = p.seats !== null && p.filled >= p.seats && !held.includes(p.id); // penuh dan bukan miliknya
+        return (
+          <label key={p.id} className={`flex items-center gap-3 rounded-xl px-1 py-1.5 ${full ? "opacity-60" : "cursor-pointer hover:bg-[var(--surface-2)]"}`}>
+            <input type="checkbox" checked={value.includes(p.id)} disabled={full} onChange={(e) => onChange(e.target.checked ? [...value, p.id] : value.filter((x) => x !== p.id))} className="size-4 accent-[var(--primary)]" />
+            <span className="text-sm font-bold">{p.name}</span>
+            {p.seats !== null && <span className={`text-xs font-semibold ${full ? "text-[#9b1c1c]" : "text-[var(--ink-2)]"}`}>{full ? `penuh ${p.filled}/${p.seats}` : `${p.filled}/${p.seats}`}</span>}
+          </label>
+        );
+      })}
       <span className="text-xs font-medium text-[var(--ink-2)]">Boleh lebih dari satu. Haknya digabung.</span>
     </div>
   );
@@ -573,7 +594,7 @@ function MemberDialog({ detail, member, onClose, onDone }: { detail: Detail; mem
         <button type="button" onClick={onClose} className={btnGhost}>Batal</button>
         <button type="button" onClick={save} disabled={busy} className={btnPrimary}>{busy ? "Menyimpan…" : "Simpan"}</button>
       </>}>
-      <PositionChecks positions={detail.positions} value={positionIds} onChange={setPositionIds} />
+      <PositionChecks positions={detail.positions} value={positionIds} onChange={setPositionIds} held={member.positionIds} />
       <ErrorLine text={err} />
     </Modal>
   );
