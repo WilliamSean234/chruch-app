@@ -8,7 +8,7 @@ import { Alert, FilterBar, FSearch, FSelect, listCard } from "@/components/ui/Fi
 import Pager from "@/components/ui/Pager";
 import { useDebounced, usePagedList } from "@/components/ui/usePagedList";
 
-type Row = { id: string; name: string; email: string; status: "PENDING" | "APPROVED" | "REJECTED"; createdAt: string; decidedAt: string | null; personName: string | null; rejectReason: string | null };
+type Row = { id: string; name: string; email: string; status: "PENDING" | "APPROVED" | "REJECTED"; createdAt: string; decidedAt: string | null; personName: string | null; rejectReason: string | null; emailVerified: boolean };
 type Cand = { id: string; name: string; sub: string | null };
 
 const stamp = (iso: string) => new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
@@ -28,7 +28,8 @@ export default function RegistrationsPanel() {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("PENDING");
   const search = useDebounced(q.trim());
-  const list = usePagedList<Row, { pending: number }>("/api/v1/registrations", { search, status: status || "ALL" });
+  const list = usePagedList<Row, { pending: number; mailOn: boolean }>("/api/v1/registrations", { search, status: status || "ALL" });
+  const mailOn = !!list.data?.mailOn;
   const [approve, setApprove] = useState<Row | null>(null);
   const [reject, setReject] = useState<Row | null>(null);
   const [msg, setMsg] = useState("");
@@ -63,6 +64,9 @@ export default function RegistrationsPanel() {
                   <span className="whitespace-nowrap rounded-full px-2.5 py-[3px] text-xs font-extrabold" style={{ background: st.bg, color: st.fg }}>{st.text}</span>
                 </span>
                 <span className="break-all text-[13px] font-semibold text-[var(--ink-2)]">{r.email}</span>
+                {mailOn && r.status === "PENDING" && (
+                  <span className={`self-start rounded-full px-2.5 py-[3px] text-xs font-bold ${r.emailVerified ? "bg-[#E3F3E7] text-[#1B6B34]" : "bg-[#FBF0D9] text-[#6F4304]"}`}>{r.emailVerified ? "Email terverifikasi" : "Email belum diverifikasi"}</span>
+                )}
                 <span className="text-[12.5px] font-medium text-[var(--ink-2)]">
                   Diminta {stamp(r.createdAt)}
                   {r.status === "APPROVED" && r.personName ? ` · ditautkan ke ${r.personName}` : ""}
@@ -71,7 +75,7 @@ export default function RegistrationsPanel() {
               </div>
               {r.status === "PENDING" && (
                 <div className="flex flex-none gap-2 max-md:w-full">
-                  <button type="button" onClick={() => setApprove(r)} className={`${btnPrimary} !h-10 whitespace-nowrap max-md:flex-1`}>Setujui</button>
+                  <button type="button" onClick={() => setApprove(r)} disabled={mailOn && !r.emailVerified} title={mailOn && !r.emailVerified ? "Tunggu pendaftar memverifikasi emailnya" : undefined} className={`${btnPrimary} !h-10 whitespace-nowrap max-md:flex-1`}>Setujui</button>
                   <button type="button" onClick={() => setReject(r)} className="h-10 whitespace-nowrap rounded-xl border border-[#E8C4C4] bg-white px-4 text-sm font-bold text-[#9B1C1C] hover:bg-[#FFF5F5] max-md:flex-1">Tolak</button>
                 </div>
               )}

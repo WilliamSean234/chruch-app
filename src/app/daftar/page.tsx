@@ -21,6 +21,8 @@ export default function DaftarPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
+  const [verify, setVerify] = useState<"OFF" | "SENT" | "FAILED">("OFF");
+  const [resent, setResent] = useState("");
 
   const emailOk = isEmail(email);
   const nameOk = name.trim().length >= 2;
@@ -34,8 +36,14 @@ export default function DaftarPage() {
     setBusy(true); setError("");
     const r = await callApi("POST", "/api/v1/auth/register", { name: name.trim(), email: email.trim(), password: pw, website: trap });
     setBusy(false);
-    if (r.ok) return setSent(true);
+    if (r.ok) { setVerify(r.data?.verify ?? "OFF"); return setSent(true); }
     setError(r.data?.error?.code === "VALIDATION" ? "Periksa isian: email harus benar dan kata sandi minimal 8 karakter." : errMsg(r.data));
+  }
+
+  async function resend() {
+    setResent("");
+    const r = await callApi("POST", "/api/v1/auth/resend-verification", { email: email.trim() });
+    setResent(r.ok ? "Email verifikasi dikirim ulang. Periksa juga folder spam." : errMsg(r.data));
   }
 
   return (
@@ -62,6 +70,13 @@ export default function DaftarPage() {
               Admin gereja akan memeriksa permintaan Anda dan menautkannya ke data jemaat. Anda <b className="text-[var(--ink)]">belum bisa masuk</b> sampai disetujui.
               Setelah itu, masuk dengan email <b className="break-all text-[var(--ink)]">{email.trim().toLowerCase()}</b> dan kata sandi yang baru Anda buat.
             </p>
+            {verify !== "OFF" && (
+              <div className="flex flex-col gap-2 rounded-xl border border-[#EAD9AE] bg-[#FFFBF0] p-3.5 text-sm font-medium leading-relaxed text-[#6F4304]">
+                <span>{verify === "SENT" ? <>Kami mengirim email berisi tautan ke <b className="break-all">{email.trim().toLowerCase()}</b>. <b>Buka tautan itu dulu</b> agar permintaan Anda bisa diproses admin.</> : "Email verifikasi belum berhasil dikirim. Tekan tombol di bawah untuk mencoba lagi."}</span>
+                <button type="button" onClick={() => void resend()} className="self-start rounded-lg border border-[#D9C58F] bg-white px-3 py-1.5 text-[13px] font-bold">Kirim ulang email</button>
+                {resent && <span role="status" className="text-[13px] font-semibold">{resent}</span>}
+              </div>
+            )}
             <Link href="/login" className="grid h-12 place-items-center rounded-xl bg-[var(--primary)] text-[15px] font-bold text-white hover:brightness-110">Kembali ke halaman masuk</Link>
           </div>
         ) : (

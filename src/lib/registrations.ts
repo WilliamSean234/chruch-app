@@ -10,6 +10,8 @@ import { createAccountForPerson } from "./accounts";
 import { audit } from "./audit";
 import type { AuthUser } from "./rbac";
 import { PASSWORD_MIN } from "./passwordRules";
+import { mailConfigured } from "./mailer";
+import { sendVerification } from "./emailVerify";
 
 /** Batas pengiriman: per alamat per jam, dan jumlah permintaan menunggu seluruhnya. */
 export const MAX_PER_IP_PER_HOUR = 5;
@@ -24,7 +26,7 @@ export const registerBody = z.object({
 
 /** Pendaftaran dari halaman publik. Tidak membuat akun: hanya mencatat permintaan untuk disetujui admin. */
 export async function submitRegistration(b: z.infer<typeof registerBody>, ip: string) {
-  if (b.website) return { ok: true as const }; // kolom jebakan terisi: pura-pura berhasil, tidak disimpan
+  if (b.website) return { ok: true as const, verify: "SENT" as "OFF" | "SENT" | "FAILED" }; // kolom jebakan terisi: pura-pura berhasil, tidak disimpan
   const tenant = await prisma.tenant.findFirst({ where: { deletedAt: null }, orderBy: { createdAt: "asc" }, select: { id: true } });
   if (!tenant) throw new ApiError(503, "UNAVAILABLE", "Pendaftaran belum tersedia.");
 
@@ -44,6 +46,19 @@ export async function submitRegistration(b: z.infer<typeof registerBody>, ip: st
     data: { tenantId: tenant.id, name: b.name, email: b.email, passwordHash: await bcrypt.hash(b.password, 10), ip: ip === "unknown" ? null : ip },
   });
   await audit({ tenantId: tenant.id, userId: null, action: "registration.submit", entity: "RegistrationRequest", entityId: r.id, payload: { email: b.email } });
+  // Email verifikasi: permintaan baru bisa disetujui admin setelah pendaftar membuka tautannya. Kegagalan kirim tidak menggagalkan pendaftaran (bisa kirim ulang).
+  const verify = await sendVerification({ tenantId: tenant.id, kind: "REGISTRATION", refId: r.id, email: b.email, name: b.name }).catch(() => "FAILED" as const);
+  return { ok: true as const, verify: verify as "OFF" | "SENT" | "FAILED" };
+}
+
+export const resendBody = z.object({ email: z.string().trim().toLowerCase().max(120).email() });
+
+/** Kirim ulang email verifikasi untuk permintaan yang masih menunggu. Jawabannya selalu sama supaya alamat yang terdaftar tidak bisa ditebak. */
+export async function resendRegistrationVerification(b: z.infer<typeof resendBody>) {
+  const tenant = await prisma.tenant.findFirst({ where: { deletedAt: null }, orderBy: { createdAt: "asc" }, select: { id: true } });
+  if (!tenant) throw new ApiError(503, "UNAVAILABLE", "Pendaftaran belum tersedia.");
+  const req = await prisma.registrationRequest.findFirst({ where: { tenantId: tenant.id, email: b.email, status: "PENDING", emailVerifiedAt: null }, select: { id: true, name: true } });
+  if (req) await sendVerification({ tenantId: tenant.id, kind: "REGISTRATION", refId: req.id, email: b.email, name: req.name });
   return { ok: true as const };
 }
 
@@ -72,8 +87,10 @@ export async function listRegistrations(u: AuthUser, q: z.infer<typeof registrat
     ...pageOf(rows.map((r) => ({
       id: r.id, name: r.name, email: r.email, status: r.status, createdAt: r.createdAt.toISOString(),
       decidedAt: r.decidedAt?.toISOString() ?? null, personName: r.personId ? nameOf.get(r.personId) ?? null : null, rejectReason: r.rejectReason,
+      emailVerified: !!r.emailVerifiedAt,
     })), total, pg),
     pending,
+    mailOn: mailConfigured(), // bila email aktif, hanya permintaan dengan email terverifikasi yang bisa disetujui
   };
 }
 
@@ -102,6 +119,10 @@ export const approveBody = z.object({
 
 /** Setujui: buat akun dari data permintaan dan tautkan ke orang yang sudah ada (atau yang baru dibuat admin). */
 export async function approveRegistration(u: AuthUser, id: string, b: z.infer<typeof approveBody>) {
+  if (mailConfigured()) {
+    const pre = await prisma.registrationRequest.findFirst({ where: { id, tenantId: u.tenantId }, select: { emailVerifiedAt: true, status: true } });
+    if (pre && pre.status === "PENDING" && !pre.emailVerifiedAt) throw conflict("Email pendaftar belum diverifikasi. Minta pendaftar membuka tautan di emailnya; email bisa dikirim ulang dari halaman Daftar.");
+  }
   // "Klaim" dulu secara atomik supaya dua admin tidak menyetujui permintaan yang sama bersamaan.
   const claimed = await prisma.registrationRequest.updateMany({ where: { id, tenantId: u.tenantId, status: "PENDING" }, data: { status: "APPROVED", decidedAt: new Date(), decidedById: u.userId, personId: b.personId } });
   if (claimed.count !== 1) {
@@ -114,6 +135,7 @@ export async function approveRegistration(u: AuthUser, id: string, b: z.infer<ty
     if (!r.passwordHash) throw badRequest("Permintaan ini tidak punya kata sandi tersimpan. Minta pendaftar mengirim ulang.");
     const acc = await createAccountForPerson(u, b.personId, { email: r.email, password: "x".repeat(PASSWORD_MIN), roleCodes: b.roleCodes }, { passwordHash: r.passwordHash });
     await prisma.registrationRequest.update({ where: { id }, data: { passwordHash: null } }); // hash tidak lagi dibutuhkan
+    if (r.emailVerifiedAt) await prisma.user.update({ where: { id: acc.id }, data: { emailVerifiedAt: r.emailVerifiedAt } }); // verifikasi saat mendaftar ikut terbawa ke akun
     await audit({ tenantId: u.tenantId, userId: u.userId, action: "registration.approve", entity: "RegistrationRequest", entityId: id, payload: { personId: b.personId, email: r.email, roles: b.roleCodes.join(",") || "-" } });
     return { id: acc.id, email: acc.email };
   } catch (e) {
