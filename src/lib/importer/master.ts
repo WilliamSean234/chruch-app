@@ -33,8 +33,8 @@ type W = {
   cgs: Prisma.CgGroupCreateManyInput[]; cgRevive: string[];
   communities: Prisma.CommunityCreateManyInput[]; communityRevive: string[];
   teams: Prisma.TeamTypeCreateManyInput[]; teamRevive: string[];
-  rooms: Prisma.RoomCreateManyInput[]; roomRevive: { id: string; active: boolean }[];
-  ministries: Prisma.MinistryCreateManyInput[]; ministryRevive: { id: string; rehearsal: boolean }[];
+  rooms: Prisma.RoomCreateManyInput[]; roomRevive: { id: string; active: boolean; floor: number | null }[];
+  ministries: Prisma.MinistryCreateManyInput[]; ministryRevive: { id: string; rehearsal: boolean; bandOnly: boolean }[];
   personMinistries: Prisma.PersonMinistryCreateManyInput[];
   personCommunities: Prisma.PersonCommunityCreateManyInput[];
   cgUpdates: Map<string, string>; // personId (yang sudah ada) → cgId
@@ -178,11 +178,13 @@ export function stagePelayanan(ctx: Ctx, st: MasterState, rows: Row[]) {
     const list = M.ministries.get(k(name)) ?? [];
     const same = list.find((m) => m.teamId === team.id);
     const rehearsal = yes(r.v.rehearsal, false);
+    if (!isYesNo(r.v.bandOnly)) { rep.err("Pelayanan", r.n, `"Khusus band" harus Ya atau Tidak (isinya "${r.v.bandOnly}").`); continue; }
+    const bandOnly = yes(r.v.bandOnly, false); // posisi band tidak dipakai di ibadah No Band
     if (same && !same.deleted) { rep.skip("Pelayanan", r.n, `"${name}" di ${team.name} sudah ada.`); continue; }
-    if (same?.deleted) { same.deleted = false; same.rehearsal = rehearsal; W.ministryRevive.push({ id: same.id, rehearsal }); rep.ok("Pelayanan"); continue; }
+    if (same?.deleted) { same.deleted = false; same.rehearsal = rehearsal; W.ministryRevive.push({ id: same.id, rehearsal, bandOnly }); rep.ok("Pelayanan"); continue; }
     const rec: MinRec = { id: randomUUID(), name, isNew: true, teamId: team.id, rehearsal };
     M.ministries.set(k(name), [...list, rec]);
-    W.ministries.push({ id: rec.id, tenantId: u.tenantId, teamTypeId: team.id, name, rehearsalRequiredDefault: rehearsal, sortOrder: sort++ });
+    W.ministries.push({ id: rec.id, tenantId: u.tenantId, teamTypeId: team.id, name, rehearsalRequiredDefault: rehearsal, bandOnly, sortOrder: sort++ });
     rep.ok("Pelayanan");
   }
 }
@@ -191,12 +193,19 @@ export function stageRuangan(ctx: Ctx, st: MasterState, rows: Row[]) {
   const { M, W } = st;
   for (const r of rows) {
     if (!isYesNo(r.v.active)) { ctx.rep.seen("Ruangan"); ctx.rep.err("Ruangan", r.n, `"Aktif" harus Ya atau Tidak (isinya "${r.v.active}").`); continue; }
+    let floor: number | null = null; // kosong = belum diisi
+    const fs = r.v.floor.trim();
+    if (fs) {
+      const n = /^-?\d+(\.0+)?$/.test(fs) ? Number(fs) : NaN;
+      if (!Number.isInteger(n) || n < -5 || n > 99) { ctx.rep.seen("Ruangan"); ctx.rep.err("Ruangan", r.n, `Lantai harus angka bulat -5 sampai 99 (isinya "${r.v.floor}"). Kosongkan bila belum diketahui.`); continue; }
+      floor = n;
+    }
     const e = ensure({ ctx, sheet: "Ruangan", row: r.n, name: r.v.name, map: M.rooms, max: 80, label: "Ruangan" });
     if (!e) continue;
     const active = yes(r.v.active, true);
     (e as RoomRec).active = active;
-    if (e.revive) W.roomRevive.push({ id: e.id, active });
-    else W.rooms.push({ id: e.id, tenantId: ctx.u.tenantId, name: e.name, isActive: active });
+    if (e.revive) W.roomRevive.push({ id: e.id, active, floor });
+    else W.rooms.push({ id: e.id, tenantId: ctx.u.tenantId, name: e.name, floor, isActive: active });
   }
 }
 
@@ -211,6 +220,8 @@ export function stageOrang(ctx: Ctx, st: MasterState, rows: Row[]) {
     if (!name) errs.push("Nama wajib diisi.");
     if (name.length > 120) errs.push("Nama terlalu panjang (maks 120 huruf).");
     if (r.v.title.length > 20) errs.push("Gelar terlalu panjang (maks 20 huruf).");
+    const nickname = r.v.nickname.trim().replace(/\s+/g, " ");
+    if (nickname.length > 40) errs.push("Nama panggilan terlalu panjang (maks 40 huruf).");
     const gender = GENDER[k(r.v.gender).replace(/-/g, " ")];
     if (!gender) errs.push(`JK harus L atau P (isinya "${r.v.gender}").`);
     const position = r.v.position ? find(M.positions, r.v.position) : undefined;
@@ -243,7 +254,7 @@ export function stageOrang(ctx: Ctx, st: MasterState, rows: Row[]) {
     const id = randomUUID();
     const rec: PersonRec = {
       id, name, key, isNew: true, cgId: cg?.id ?? null, hasUser: false, ministryIds: new Set(mins.map((m) => m.id)),
-      data: { id, tenantId: u.tenantId, name, nameKey: key, title: r.v.title || null, birthDate: birth, gender: gender!, positionId: position!.id, cgGroupId: cg?.id ?? null, origin, originChurch: origin === "LUAR" ? r.v.originChurch : null },
+      data: { id, tenantId: u.tenantId, name, nameKey: key, title: r.v.title || null, nickname: nickname || null, birthDate: birth, gender: gender!, positionId: position!.id, cgGroupId: cg?.id ?? null, origin, originChurch: origin === "LUAR" ? r.v.originChurch : null },
     };
     M.persons.set(key, rec);
     for (const c of comms) W.personCommunities.push({ personId: id, communityId: c.id });
@@ -415,9 +426,9 @@ export async function flushMaster(st: MasterState) {
       if (W.teams.length) await tx.teamType.createMany({ data: W.teams });
       if (W.teamRevive.length) await tx.teamType.updateMany({ where: { id: { in: W.teamRevive } }, data: live });
       if (W.rooms.length) await tx.room.createMany({ data: W.rooms });
-      for (const x of W.roomRevive) await tx.room.update({ where: { id: x.id }, data: { ...live, isActive: x.active } });
+      for (const x of W.roomRevive) await tx.room.update({ where: { id: x.id }, data: { ...live, isActive: x.active, ...(x.floor !== null ? { floor: x.floor } : {}) } });
       if (W.ministries.length) await tx.ministry.createMany({ data: W.ministries });
-      for (const x of W.ministryRevive) await tx.ministry.update({ where: { id: x.id }, data: { ...live, rehearsalRequiredDefault: x.rehearsal } });
+      for (const x of W.ministryRevive) await tx.ministry.update({ where: { id: x.id }, data: { ...live, rehearsalRequiredDefault: x.rehearsal, bandOnly: x.bandOnly } });
       if (people.length) await tx.person.createMany({ data: people });
       if (W.personMinistries.length) await tx.personMinistry.createMany({ data: W.personMinistries, skipDuplicates: true });
       if (W.personCommunities.length) await tx.personCommunity.createMany({ data: W.personCommunities, skipDuplicates: true });

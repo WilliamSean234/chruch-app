@@ -23,6 +23,7 @@ export type ImportResult = {
   sheets: SheetResult[];
   credentials: Credential[];
   unknownSheets: string[];
+  retiredSheets: string[]; // sheet lama (acara, rapat, ...) yang diabaikan
 };
 
 /** Urutan proses = urutan sheet di template. */
@@ -35,37 +36,37 @@ export const SHEET_LIST = [
   { key: "Akun", label: "Akun login" },
   { key: "TemplateAcara", label: "Template acara" },
   { key: "TemplateSlot", label: "Posisi di template" },
-  { key: "Acara", label: "Acara" },
-  { key: "Penugasan", label: "Penugasan" },
-  { key: "Latihan", label: "Latihan" },
   { key: "KelompokRapat", label: "Kelompok rapat" },
   { key: "JabatanKelompok", label: "Jabatan kelompok" },
   { key: "AnggotaKelompok", label: "Anggota kelompok" },
-  { key: "Rapat", label: "Rapat" },
 ] as const;
 export type SheetKey = (typeof SHEET_LIST)[number]["key"];
 
 /** Kolom tiap sheet: kunci internal → judul kolom di Excel (tanpa tanda *). */
 export const COLS: Record<SheetKey, Record<string, string>> = {
   Pilihan: { position: "Posisi di gereja", cg: "Kelompok CG", community: "Komunitas", team: "Tim pelayanan" },
-  Pelayanan: { team: "Tim", name: "Pelayanan", rehearsal: "Wajib latihan" },
-  Ruangan: { name: "Nama ruangan", active: "Aktif" },
-  Orang: { title: "Gelar", name: "Nama", birth: "Tanggal lahir", gender: "JK", position: "Posisi di gereja", cg: "Kelompok CG", community: "Komunitas", origin: "Asal", originChurch: "Gereja asal", ministries: "Pelayanan" },
+  Pelayanan: { team: "Tim", name: "Pelayanan", rehearsal: "Wajib latihan", bandOnly: "Khusus band" },
+  Ruangan: { name: "Nama ruangan", floor: "Lantai", active: "Aktif" },
+  Orang: { title: "Gelar", name: "Nama", nickname: "Nama panggilan", birth: "Tanggal lahir", gender: "JK", position: "Posisi di gereja", cg: "Kelompok CG", community: "Komunitas", origin: "Asal", originChurch: "Gereja asal", ministries: "Pelayanan" },
   CGLeader: { cg: "Kelompok CG", person: "Nama leader" },
   Akun: { person: "Nama orang", email: "Email", role: "Role", team: "Tim yang dikelola" },
   TemplateAcara: { name: "Nama template", pattern: "Pola", day: "Hari", nth: "Minggu ke", start: "Jam mulai", dur: "Durasi menit", room: "Ruangan", mode: "Mode kehadiran", community: "Komunitas daftar nama" },
   TemplateSlot: { tpl: "Nama template", ministry: "Pelayanan", count: "Jumlah kursi", rehearsal: "Wajib latihan" },
-  Acara: { title: "Judul", date: "Tanggal", start: "Jam mulai", end: "Jam selesai", room: "Ruangan", tpl: "Dari template", status: "Status", mode: "Mode kehadiran" },
-  Penugasan: { title: "Judul acara", date: "Tanggal acara", ministry: "Pelayanan", seat: "Kursi ke", person: "Nama orang" },
-  Latihan: { title: "Judul acara", date: "Tanggal acara", rdate: "Tanggal latihan", start: "Jam mulai", dur: "Durasi menit", room: "Ruangan", note: "Catatan" },
   KelompokRapat: { name: "Nama kelompok", quorum: "Kuorum" },
   JabatanKelompok: { group: "Kelompok", name: "Jabatan", seats: "Jumlah orang", schedule: "Boleh menjadwalkan rapat", write: "Boleh menulis notulen", finalize: "Boleh memfinalkan notulen", manage: "Boleh mengatur anggota" },
   AnggotaKelompok: { group: "Kelompok", person: "Nama orang", positions: "Jabatan" },
-  Rapat: { group: "Kelompok", title: "Judul atau topik", date: "Tanggal", start: "Jam mulai", end: "Jam selesai", room: "Ruangan", showTopic: "Judul tampil di kalender umum", showAttendees: "Peserta tampil di kalender umum" },
 };
 
 /** Kolom yang boleh tidak ada di file lama (dianggap kosong). Kolom baru ditambahkan di sini supaya template lama tetap bisa diimpor. */
-export const OPTIONAL_COLS: Partial<Record<SheetKey, string[]>> = { JabatanKelompok: ["seats"] };
+export const OPTIONAL_COLS: Partial<Record<SheetKey, string[]>> = {
+  JabatanKelompok: ["seats"], Orang: ["nickname"], Ruangan: ["floor"], Pelayanan: ["bandOnly"],
+};
+
+/**
+ * Sheet yang dulu ada di template tetapi sudah dihapus: acara, penugasan, latihan, dan rapat sekarang dibuat lewat aplikasi.
+ * File lama yang masih memilikinya tetap bisa diunggah; sheet itu diabaikan dengan catatan di hasil periksa.
+ */
+export const RETIRED_SHEETS = ["Acara", "Penugasan", "Latihan", "Rapat"] as const;
 
 /** Pembanding judul/nama: huruf kecil, tanda baca dan bintang dibuang. */
 export const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();

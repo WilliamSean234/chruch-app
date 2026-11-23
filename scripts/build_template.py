@@ -21,17 +21,21 @@ def f(**k): return Font(name=FONT, size=k.pop("size", 10), **k)
 POSISI = ["Jemaat", "Pembina pemuda", "Pembina remaja", "Pengurus pemuda", "Pendeta", "Pembicara tamu"]
 CG = ["CG Rungkut", "CG Darmo", "CG Citraland", "CG Gubeng"]
 KOMUNITAS = ["Pemuda", "Young couple", "Anak-anak"]
-TIM = ["Pimpinan ibadah", "Tim pemusik", "Tim EBM", "Usher", "Tim publikasi"]
+TIM = ["Penatalayan ibadah", "Tim EBM", "Usher", "Tim publikasi"]  # sama dengan seed aplikasi
+# tim, pelayanan, wajib latihan, khusus band (posisi band tidak dipakai di ibadah No Band) — sama dengan seed aplikasi
 PELAYANAN = (
-    [("Pimpinan ibadah", "PIC", "Tidak"), ("Pimpinan ibadah", "Liturgos (WL)", "Ya"), ("Pimpinan ibadah", "Pembicara", "Tidak")]
-    + [("Tim pemusik", n, "Ya") for n in ["Keyboard", "Piano", "PSR", "Bass", "Gitar", "Kajon", "Drum", "Singer"]]
-    + [("Tim EBM", n, "Tidak") for n in ["LCD", "Sound", "Lighting", "Multimedia"]]
-    + [("Usher", "Usher", "Tidak"), ("Tim publikasi", "Desain e-flyer", "Tidak")]
+    [("Penatalayan ibadah", "PIC", "Tidak", "Tidak"), ("Penatalayan ibadah", "Liturgos (WL)", "Ya", "Tidak"), ("Penatalayan ibadah", "Pembicara", "Tidak", "Tidak")]
+    + [("Penatalayan ibadah", n, "Ya", "Tidak") for n in ["Keyboard", "Piano", "PSR"]]
+    + [("Penatalayan ibadah", n, "Ya", "Ya") for n in ["Bass", "Gitar", "Kajon", "Drum"]]
+    + [("Penatalayan ibadah", "Singer", "Ya", "Tidak")]
+    + [("Tim EBM", n, "Tidak", "Tidak") for n in ["LCD", "Sound", "Lighting", "Multimedia"]]
+    + [("Usher", "Usher", "Tidak", "Tidak"), ("Tim publikasi", "Desain e-flyer", "Tidak", "Tidak")]
 )
-RUANGAN = [("Ruang A", "Ya"), ("Ruang B", "Ya"), ("Ruang C", "Ya")]
+RUANGAN = [("Ruang A", None, "Ya"), ("Ruang B", None, "Ya"), ("Ruang C", None, "Ya")]  # nama, lantai, aktif
 
 # ───────────────────────── Contoh data ─────────────────────────
 # (gelar, nama, lahir, jk, posisi, cg, komunitas, asal, gereja asal, pelayanan)
+NICK = {"Setia Budi": "Ko Budi", "William Santoso": "Will", "Michael Tanoto": "Ko Mike"}  # nama panggilan contoh
 ORANG = [
     (None, "Setia Budi", d(1984, 3, 12), "L", "Jemaat", "CG Rungkut", "Young couple", "Dalam", None, "PIC, Liturgos (WL)"),
     (None, "Maria Susanti", d(1986, 7, 2), "P", "Jemaat", "CG Rungkut", "Young couple", "Dalam", None, "Liturgos (WL)"),
@@ -65,7 +69,7 @@ CGLEADER = [
 ]
 AKUN = [
     ("Ruth Natalia", "ruth@contoh.id", "Penjadwal", None),
-    ("Grace Angelina", "grace@contoh.id", "Admin Tim", "Tim pemusik"),
+    ("Grace Angelina", "grace@contoh.id", "Admin Tim", "Penatalayan ibadah"),
     ("Michael Tanoto", "michael@contoh.id", "Admin Tim", "Tim EBM"),
     ("Debora Kristina", "debora@contoh.id", "Petugas Absen", None),
     ("William Santoso", "william@contoh.id", "Pelayan", None),
@@ -83,50 +87,19 @@ MANDARIN = [("PIC", 1), ("Liturgos (WL)", 1), ("Pembicara", 1), ("Piano", 1), ("
 FELLOW = [("Pembicara", 1), ("Gitar", 1), ("Kajon", 1), ("Multimedia", 1), ("Desain e-flyer", 1)]
 SLOT = ([("Ibadah Minggu I", m, n, None) for m, n in FULL] + [("Ibadah Minggu II", m, n, None) for m, n in FULL]
         + [("Ibadah Mandarin", m, n, None) for m, n in MANDARIN] + [("Fellowship Pemuda", m, n, "Tidak") for m, n in FELLOW])
-ACARA = [  # judul, tanggal, mulai, selesai, ruangan, template, status, mode
-    ("Ibadah Minggu I", d(2026, 12, 6), t(7, 0), t(9, 0), "Ruang A", "Ibadah Minggu I", "Draft", "Jumlah saja"),
-    ("Ibadah Minggu II", d(2026, 12, 6), t(9, 30), t(11, 30), "Ruang A", "Ibadah Minggu II", "Draft", "Jumlah saja"),
-    ("Ibadah Mandarin", d(2026, 12, 6), t(9, 30), t(11, 30), "Ruang B", "Ibadah Mandarin", "Terbit", "Jumlah saja"),
-    ("Fellowship Pemuda", d(2026, 12, 26), t(18, 0), t(20, 0), "Ruang C", "Fellowship Pemuda", "Draft", "Per nama"),
-    ("Ibadah Natal 2026", d(2026, 12, 24), t(19, 0), t(21, 0), "Ruang A", None, "Draft", "Jumlah saja"),
-]
-def seats(judul, tgl, rows): return [(judul, tgl, p, k, o) for p, k, o in rows]
-D1, D2, D3 = d(2026, 12, 6), d(2026, 12, 6), d(2026, 12, 26)
-PENUGASAN = (
-    seats("Ibadah Minggu I", D1, [("PIC", 1, "Setia Budi"), ("Liturgos (WL)", 1, "Maria Susanti"), ("Pembicara", 1, "Lukas Hartono"), ("Keyboard", 1, "Grace Angelina"),
-        ("Piano", 1, "Joshua Wijaya"), ("Bass", 1, "Kevin Pratama"), ("Gitar", 1, "Nathan Gunawan"), ("Drum", 1, "Daniel Kurniawan"), ("Singer", 1, "Anna Margareta"),
-        ("LCD", 1, "Michael Tanoto"), ("Sound", 1, "Felix Halim"), ("Lighting", 1, "Bryan Salim"), ("Lighting", 2, "Steven Lim"),
-        ("Usher", 1, "Debora Kristina"), ("Usher", 2, "Sarah Wulandari"), ("Usher", 3, "Ruth Natalia")])
-    + seats("Ibadah Mandarin", D2, [("PIC", 1, "Yohana Putri"), ("Liturgos (WL)", 1, "Mei Ling"), ("Pembicara", 1, "Chen Wei"), ("Piano", 1, "Samuel Chandra"),
-        ("Gitar", 1, "William Santoso"), ("Singer", 1, "Priska Lestari"), ("LCD", 1, "Bryan Salim"), ("Sound", 1, "Felix Halim"), ("Usher", 1, "Debora Kristina")])
-    + seats("Fellowship Pemuda", D3, [("Pembicara", 1, "Chen Wei"), ("Gitar", 1, "William Santoso"), ("Kajon", 1, "Nathan Gunawan"),
-        ("Multimedia", 1, "Bryan Salim"), ("Desain e-flyer", 1, "Jessica Tan")])
-)
-LATIHAN = [
-    ("Ibadah Minggu I", d(2026, 12, 6), d(2026, 12, 3), t(19, 30), 90, "Ruang B", "Latihan musik dan singer"),
-    ("Ibadah Minggu I", d(2026, 12, 6), d(2026, 12, 5), t(16, 0), 90, "Ruang B", "Latihan gabungan"),
-]
-
-# Kelompok rapat dan rapat (contoh)
+# Kelompok rapat (contoh)
 KELOMPOK = [("Majelis", 50), ("Pengurus Pemuda", 50), ("Tim EBM", None)]
-# kelompok, jabatan, jadwalkan, tulis notulen, finalkan, atur anggota
+# kelompok, jabatan, jumlah orang, jadwalkan, tulis notulen, finalkan, atur anggota
 JABATAN = [
-    ("Majelis", "Ketua", "Tidak", "Tidak", "Ya", "Ya"), ("Majelis", "Sekretaris", "Ya", "Ya", "Ya", "Tidak"), ("Majelis", "Bendahara", "Tidak", "Tidak", "Tidak", "Tidak"),
-    ("Pengurus Pemuda", "Ketua", "Tidak", "Tidak", "Ya", "Ya"), ("Pengurus Pemuda", "Sekretaris", "Ya", "Ya", "Ya", "Tidak"), ("Pengurus Pemuda", "Penjadwal", "Ya", "Tidak", "Tidak", "Tidak"),
-    ("Tim EBM", "Koordinator", "Ya", "Ya", "Ya", "Ya"),
+    ("Majelis", "Ketua", 1, "Tidak", "Tidak", "Ya", "Ya"), ("Majelis", "Sekretaris", 1, "Ya", "Ya", "Ya", "Tidak"), ("Majelis", "Bendahara", 1, "Tidak", "Tidak", "Tidak", "Tidak"),
+    ("Pengurus Pemuda", "Ketua", 1, "Tidak", "Tidak", "Ya", "Ya"), ("Pengurus Pemuda", "Sekretaris", 1, "Ya", "Ya", "Ya", "Tidak"), ("Pengurus Pemuda", "Penjadwal", 2, "Ya", "Tidak", "Tidak", "Tidak"),
+    ("Tim EBM", "Koordinator", 1, "Ya", "Ya", "Ya", "Ya"),
 ]
 ANGGOTA = [
     ("Majelis", "Lukas Hartono", "Ketua"), ("Majelis", "Setia Budi", "Sekretaris"), ("Majelis", "Rudy Hermawan", "Bendahara"), ("Majelis", "Maria Susanti", None),
     ("Pengurus Pemuda", "William Santoso", "Ketua"), ("Pengurus Pemuda", "Jessica Tan", "Sekretaris, Penjadwal"), ("Pengurus Pemuda", "Nathan Gunawan", None), ("Pengurus Pemuda", "Priska Lestari", None),
     ("Tim EBM", "Michael Tanoto", "Koordinator"), ("Tim EBM", "Bryan Salim", None), ("Tim EBM", "Felix Halim", None),
 ]
-RAPAT = [  # kelompok, judul, tanggal, mulai, selesai, ruangan, judul tampil, peserta tampil
-    ("Majelis", "Perencanaan ibadah Natal", d(2026, 12, 3), t(19, 0), t(21, 0), "Ruang A", "Tidak", "Tidak"),
-    ("Majelis", "Pembahasan anggaran gereja", d(2026, 12, 17), t(19, 0), t(21, 0), "Ruang A", "Tidak", "Tidak"),
-    ("Pengurus Pemuda", "Pembagian tugas Natal", d(2026, 12, 12), t(14, 0), t(16, 0), "Ruang B", "Ya", "Tidak"),
-    ("Tim EBM", "Persiapan ibadah khusus", d(2026, 12, 14), t(19, 0), t(20, 30), "Ruang B", "Tidak", "Tidak"),
-]
-
 # ───────────────────────── Spesifikasi sheet ─────────────────────────
 # kolom: (judul, wajib, lebar, catatan, validasi, format)
 # validasi: ("list", rumus, ketat) | ("int", min, max) | ("date",) | ("time",)
@@ -143,22 +116,25 @@ SHEETS = [
          data=[(POSISI[i] if i < len(POSISI) else None, CG[i] if i < len(CG) else None, KOMUNITAS[i] if i < len(KOMUNITAS) else None, TIM[i] if i < len(TIM) else None)
                for i in range(max(len(POSISI), len(CG), len(KOMUNITAS), len(TIM)))]),
     dict(name="Pelayanan", tab=GOLD, title="Pelayanan — posisi yang bisa diisi orang di dalam tim",
-         note="Satu baris = satu posisi pelayanan. Pilih Tim dari dropdown (daftar tim ada di sheet Pilihan). Wajib latihan = bawaan untuk posisi ini di jadwal.",
+         note="Satu baris = satu posisi pelayanan. Pilih Tim dari dropdown (daftar tim ada di sheet Pilihan). Wajib latihan = bawaan untuk posisi ini di jadwal. Khusus band = posisi band (Bass, Gitar, Drum, ...) yang tidak dipakai di ibadah No Band.",
          master=True, rows=200,
          cols=[("Tim", True, 24, "Pilih dari dropdown.", LST("=lst_tim"), None),
                ("Pelayanan", True, 26, "Mis. Gitar, Drum, LCD, Angklung.", None, None),
-               ("Wajib latihan", False, 16, "Ya / Tidak. Kosong = Tidak.", YT, None)],
+               ("Wajib latihan", False, 16, "Ya / Tidak. Kosong = Tidak.", YT, None),
+               ("Khusus band", False, 14, "Ya = posisi band yang tidak dipakai di ibadah No Band. Kosong = Tidak.", YT, None)],
          data=PELAYANAN),
     dict(name="Ruangan", tab=GOLD, title="Ruangan — tempat ibadah dan latihan",
-         note="Satu baris = satu ruangan. Nama ruangan tidak boleh kembar.",
+         note="Satu baris = satu ruangan. Nama ruangan tidak boleh kembar. Lantai dipakai untuk mengurutkan ruangan (mis. 4 untuk 401A); boleh kosong.",
          master=True, rows=50,
          cols=[("Nama ruangan", True, 28, "Mis. Ruang A, Aula, Ruang Musik.", None, None),
+               ("Lantai", False, 10, "Angka bulat -5 sampai 99. Kosong = belum diisi.", ("int", -5, 99), "0"),
                ("Aktif", False, 12, "Ya / Tidak. Kosong = Ya.", YT, None)],
          data=RUANGAN),
     dict(name="Orang", tab=INDIGO, title="Orang — jemaat dan pelayan",
          note="Satu baris = satu orang. Tulis Nama tanpa gelar (gelar di kolom Gelar). Untuk beberapa Komunitas atau Pelayanan, pisahkan dengan koma. Tanggal lahir: 1990-04-12.",
          cols=[("Gelar", False, 9, "Mis. Pdt., Ps., Dr.", None, None),
                ("Nama", True, 26, "Nama lengkap tanpa gelar. Contoh: Budi Santoso.", None, None),
+               ("Nama panggilan", False, 18, "Dipakai di jadwal yang dibagikan. Contoh: Ko Budi. Maks 40 huruf. Boleh kosong.", None, None),
                ("Tanggal lahir", False, 15, "Format 1990-04-12. Dipakai untuk menghitung usia.", ("date",), "yyyy-mm-dd"),
                ("JK", True, 7, "L = laki-laki, P = perempuan.", LST('"L,P"'), None),
                ("Posisi di gereja", True, 20, "Pilih dari dropdown (sheet Pilihan).", LST("=lst_posisi"), None),
@@ -167,7 +143,7 @@ SHEETS = [
                ("Asal", False, 10, "Dalam / Luar. Kosong = Dalam.", LST('"Dalam,Luar"'), None),
                ("Gereja asal", False, 22, "Wajib bila Asal = Luar.", None, None),
                ("Pelayanan", False, 36, "Pelayanan yang bisa diisi orang ini. Boleh lebih dari satu, pisahkan dengan koma. Contoh: Drum, Gitar, LCD.", LST("=lst_pelayanan", False), None)],
-         data=ORANG, examples=ORANG[:2] + [ORANG[3]]),
+         data=[(r[0], r[1], NICK.get(r[1]), *r[2:]) for r in ORANG], examples=[(r[0], r[1], NICK.get(r[1]), *r[2:]) for r in ORANG[:2] + [ORANG[3]]]),
     dict(name="CGLeader", tab=INDIGO, title="CGLeader — leader di tiap Kelompok CG",
          note="Satu baris = satu leader. Satu CG boleh punya lebih dari satu leader: tulis CG-nya lagi di baris berikutnya dengan nama leader lain. Nama leader harus sudah ada di sheet Orang.",
          cols=[("Kelompok CG", True, 24, "Pilih dari dropdown (sheet Pilihan).", LST("=lst_cg"), None),
@@ -199,44 +175,16 @@ SHEETS = [
                ("Jumlah kursi", False, 14, "Berapa orang yang dibutuhkan untuk posisi ini di acara. Contoh: Usher 3 = tiga orang Usher (Usher 1, 2, 3). Kosong = 1.", ("int", 1, 10), "0"),
                ("Wajib latihan", False, 14, "Ya / Tidak. Kosong = ikut bawaan pelayanan.", YT, None)],
          data=[(a, b, c, e) for a, b, c, e in SLOT], examples=[SLOT[0], SLOT[11]]),
-    dict(name="Acara", tab="1B6B34", title="Acara — jadwal acara yang sudah ditetapkan",
-         note="Satu baris = satu acara pada satu tanggal. Judul + Tanggal dipakai untuk mencocokkan sheet Penugasan dan Latihan. Draft = belum diterbitkan.",
-         cols=[("Judul", True, 24, "Mis. Ibadah Minggu I atau Ibadah Natal 2026.", None, None),
-               ("Tanggal", True, 14, "Format 2026-12-06.", ("date",), "yyyy-mm-dd"),
-               ("Jam mulai", True, 11, "Format 07:00.", ("time",), "hh:mm"),
-               ("Jam selesai", True, 12, "Format 09:00.", ("time",), "hh:mm"),
-               ("Ruangan", True, 16, "Pilih dari dropdown (sheet Ruangan).", LST("=lst_ruangan"), None),
-               ("Dari template", False, 22, "Boleh kosong untuk acara khusus.", LST("=lst_template"), None),
-               ("Status", False, 12, "Draft atau Terbit. Kosong = Draft.", LST('"Draft,Terbit"'), None),
-               ("Mode kehadiran", False, 16, "Jumlah saja / Per nama. Kosong = ikut template.", LST('"Jumlah saja,Per nama"'), None)],
-         data=ACARA, examples=[ACARA[0], ACARA[4]]),
-    dict(name="Penugasan", tab="1B6B34", title="Penugasan — siapa melayani apa di tiap acara",
-         note="Satu baris = satu kursi yang sudah terisi. Judul acara + Tanggal harus ada di sheet Acara. Nama orang harus ada di sheet Orang. Kursi ke- dipakai bila satu posisi punya beberapa kursi (Usher 1, 2, 3).",
-         cols=[("Judul acara", True, 24, "Sama dengan sheet Acara.", None, None),
-               ("Tanggal acara", True, 15, "Sama dengan sheet Acara.", ("date",), "yyyy-mm-dd"),
-               ("Pelayanan", True, 22, "Pilih dari dropdown.", LST("=lst_pelayanan"), None),
-               ("Kursi ke-", False, 10, "Kosong = 1.", ("int", 1, 10), "0"),
-               ("Nama orang", True, 26, "Pilih dari dropdown (sheet Orang).", LST("=lst_orang"), None)],
-         data=PENUGASAN, examples=PENUGASAN[:2]),
-    dict(name="Latihan", tab="1B6B34", title="Latihan — sesi latihan untuk sebuah acara",
-         note="Satu baris = satu sesi latihan. Latihan ke-1, 2, dst. dihitung otomatis menurut urutan tanggal. Pesertanya otomatis semua orang yang wajib latihan di acara itu.",
-         cols=[("Judul acara", True, 24, "Sama dengan sheet Acara.", None, None),
-               ("Tanggal acara", True, 15, "Sama dengan sheet Acara.", ("date",), "yyyy-mm-dd"),
-               ("Tanggal latihan", True, 15, "Format 2026-12-03.", ("date",), "yyyy-mm-dd"),
-               ("Jam mulai", True, 11, "Format 19:30.", ("time",), "hh:mm"),
-               ("Durasi (menit)", True, 14, "Mis. 90.", ("int", 15, 720), "0"),
-               ("Ruangan", True, 16, "Pilih dari dropdown.", LST("=lst_ruangan"), None),
-               ("Catatan", False, 30, "Boleh kosong.", None, None)],
-         data=LATIHAN, examples=LATIHAN[:1]),
     dict(name="KelompokRapat", tab="C0562D", title="KelompokRapat — kelompok yang mengadakan rapat",
          note="Satu baris = satu kelompok (mis. Majelis, Pengurus Pemuda). Setiap kelompok otomatis punya jabatan Anggota. Jabatan lain diisi di sheet JabatanKelompok, anggotanya di sheet AnggotaKelompok. Kelompok yang sudah ada di sistem dilewati.",
          cols=[("Nama kelompok", True, 28, "Mis. Majelis, Pengurus Pemuda. Tidak boleh kembar.", None, None),
                ("Kuorum (%)", False, 14, "Persen anggota yang harus hadir supaya rapat sah, 1-100. Kosong = tanpa kuorum.", ("int", 1, 100), "0")],
          data=KELOMPOK, examples=[KELOMPOK[0]]),
     dict(name="JabatanKelompok", tab="C0562D", title="JabatanKelompok — jabatan di tiap kelompok dan haknya",
-         note="Satu baris = satu jabatan. Hak diisi Ya atau Tidak (kosong = Tidak). Orang yang merangkap beberapa jabatan mendapat gabungan hak. Jabatan Anggota otomatis ada di setiap kelompok, tidak perlu ditulis. Jabatan yang sudah ada di sistem dilewati (haknya tidak diubah).",
+         note="Satu baris = satu jabatan. Jumlah orang kosong = 1. Hak diisi Ya atau Tidak (kosong = Tidak). Orang yang merangkap beberapa jabatan mendapat gabungan hak. Jabatan Anggota otomatis ada di setiap kelompok, tidak perlu ditulis. Jabatan yang sudah ada di sistem dilewati (haknya tidak diubah).",
          cols=[("Kelompok", True, 24, "Sama dengan sheet KelompokRapat (atau kelompok yang sudah ada).", LST("=lst_kelompok", False), None),
                ("Jabatan", True, 22, "Mis. Ketua, Sekretaris, Bendahara, Penjadwal.", None, None),
+               ("Jumlah orang", False, 14, "Paling banyak berapa orang yang boleh memegang jabatan ini (Ketua 1, Penatua 5). Kosong = 1. Tulis \"tanpa batas\" bila tidak dibatasi.", None, None),
                ("Boleh menjadwalkan rapat", False, 22, "Membuat dan mengubah rapat kelompok dan meminjam ruangan.", YT, None),
                ("Boleh menulis notulen", False, 22, "Menulis dan menyimpan draf notulen.", YT, None),
                ("Boleh memfinalkan notulen", False, 22, "Memfinalkan notulen dan membuat revisi.", YT, None),
@@ -248,17 +196,6 @@ SHEETS = [
                ("Nama orang", True, 28, "Sama persis dengan kolom Nama di sheet Orang.", LST("=lst_orang"), None),
                ("Jabatan", False, 30, "Jabatan dari sheet JabatanKelompok. Boleh lebih dari satu, pisahkan koma. Kosong = Anggota.", None, None)],
          data=ANGGOTA, examples=[ANGGOTA[0], ANGGOTA[3]]),
-    dict(name="Rapat", tab="C0562D", title="Rapat — jadwal rapat kelompok",
-         note="Satu baris = satu rapat pada satu tanggal. Seluruh anggota kelompok otomatis diundang. Nama peserta tertentu, tamu, dan tautan lampiran sengaja tidak ada di sini: itu isi rapat dan hanya bisa diatur oleh anggota kelompok lewat aplikasi. Rapat berulang juga dibuat di aplikasi; di sini tulis tiap tanggalnya. Ruangan yang bentrok ditolak.",
-         cols=[("Kelompok", True, 24, "Sama dengan sheet KelompokRapat (atau kelompok yang sudah ada).", LST("=lst_kelompok", False), None),
-               ("Judul atau topik", True, 32, "Mis. Evaluasi pelayanan Oktober.", None, None),
-               ("Tanggal", True, 14, "Format 2026-12-08.", ("date",), "yyyy-mm-dd"),
-               ("Jam mulai", True, 11, "Format 19:00 (24 jam).", ("time",), "hh:mm"),
-               ("Jam selesai", True, 12, "Format 21:00. Paling lama 12 jam.", ("time",), "hh:mm"),
-               ("Ruangan", True, 16, "Pilih dari dropdown (sheet Ruangan).", LST("=lst_ruangan"), None),
-               ("Judul tampil di kalender umum", False, 22, "Ya = judul rapat terlihat di kalender semua orang. Kosong = Tidak.", YT, None),
-               ("Peserta tampil di kalender umum", False, 22, "Ya = daftar peserta ikut terlihat di kalender umum. Kosong = Tidak.", YT, None)],
-         data=RAPAT, examples=[RAPAT[0]]),
 ]
 # sheet sumber nama untuk dropdown: nama → (sheet, kolom, baris awal, baris akhir)
 NAMES = {
@@ -271,32 +208,22 @@ NAMES = {
 PLAN = [
     ("Pilihan", "Posisi di gereja, kelompok CG, komunitas, daftar tim", 1, "Ya"),
     ("Pelayanan", "Posisi pelayanan per tim (Gitar, Drum, LCD, …)", 2, "Ya"),
-    ("Ruangan", "Daftar ruangan", 3, "Ya"),
+    ("Ruangan", "Daftar ruangan beserta lantainya", 3, "Ya"),
     ("Orang", "Jemaat dan pelayan beserta kemampuan pelayanannya", 4, "Ya"),
     ("CGLeader", "Leader tiap Kelompok CG (satu CG boleh banyak leader)", 5, "Tidak"),
     ("Akun", "Siapa yang bisa login, email, dan role", 6, "Tidak"),
     ("TemplateAcara", "Pola acara berulang (Ibadah Minggu, Fellowship, …)", 7, "Tidak"),
     ("TemplateSlot", "Posisi pelayanan dan jumlah kursi di tiap template", 8, "Tidak"),
-    ("Acara", "Acara yang sudah punya tanggal", 9, "Tidak"),
-    ("Penugasan", "Siapa melayani apa di tiap acara", 10, "Tidak"),
-    ("Latihan", "Sesi latihan tiap acara", 11, "Tidak"),
-    ("KelompokRapat", "Kelompok yang mengadakan rapat (Majelis, Pengurus Pemuda, …)", 12, "Tidak"),
-    ("JabatanKelompok", "Jabatan di tiap kelompok dan haknya", 13, "Tidak"),
-    ("AnggotaKelompok", "Anggota dan jabatannya di tiap kelompok", 14, "Tidak"),
-    ("Rapat", "Jadwal rapat kelompok (seluruh anggota diundang)", 15, "Tidak"),
+    ("KelompokRapat", "Kelompok yang mengadakan rapat (Majelis, Pengurus Pemuda, …)", 9, "Tidak"),
+    ("JabatanKelompok", "Jabatan di tiap kelompok, jumlah orangnya, dan haknya", 10, "Tidak"),
+    ("AnggotaKelompok", "Anggota dan jabatannya di tiap kelompok", 11, "Tidak"),
 ]
+def _count(sh, key="B"):
+    return f'=COUNTA({sh}!{key}4:{key}503)-COUNTIF({sh}!A4:A503,"contoh")'
 COUNT = {  # rumus jumlah baris terisi
     "Pilihan": "=COUNTA(Pilihan!A4:A103)", "Pelayanan": "=COUNTA(Pelayanan!B4:B203)", "Ruangan": "=COUNTA(Ruangan!A4:A53)",
-    "Orang": '=COUNTA(Orang!C4:C503)-COUNTIF(Orang!A4:A503,"contoh")', "CGLeader": '=COUNTA(CGLeader!B4:B503)-COUNTIF(CGLeader!A4:A503,"contoh")', "Akun": '=COUNTA(Akun!B4:B503)-COUNTIF(Akun!A4:A503,"contoh")',
-    "TemplateAcara": '=COUNTA(TemplateAcara!B4:B503)-COUNTIF(TemplateAcara!A4:A503,"contoh")',
-    "TemplateSlot": '=COUNTA(TemplateSlot!B4:B503)-COUNTIF(TemplateSlot!A4:A503,"contoh")',
-    "Acara": '=COUNTA(Acara!B4:B503)-COUNTIF(Acara!A4:A503,"contoh")',
-    "Penugasan": '=COUNTA(Penugasan!B4:B503)-COUNTIF(Penugasan!A4:A503,"contoh")',
-    "Latihan": '=COUNTA(Latihan!B4:B503)-COUNTIF(Latihan!A4:A503,"contoh")',
-    "KelompokRapat": '=COUNTA(KelompokRapat!B4:B503)-COUNTIF(KelompokRapat!A4:A503,"contoh")',
-    "JabatanKelompok": '=COUNTA(JabatanKelompok!B4:B503)-COUNTIF(JabatanKelompok!A4:A503,"contoh")',
-    "AnggotaKelompok": '=COUNTA(AnggotaKelompok!B4:B503)-COUNTIF(AnggotaKelompok!A4:A503,"contoh")',
-    "Rapat": '=COUNTA(Rapat!B4:B503)-COUNTIF(Rapat!A4:A503,"contoh")',
+    "Orang": '=COUNTA(Orang!C4:C503)-COUNTIF(Orang!A4:A503,"contoh")',
+    **{sh: _count(sh) for sh in ["CGLeader", "Akun", "TemplateAcara", "TemplateSlot", "KelompokRapat", "JabatanKelompok", "AnggotaKelompok"]},
 }
 
 def make_dv(spec):
@@ -444,8 +371,9 @@ def build(path, filled):
         "• Baris abu-abu bertanda \"contoh\" hanya contoh pengisian: boleh dihapus atau dibiarkan, sistem melewatinya. Baris kosong juga dilewati.",
         "• Kata sandi tidak pernah ditulis di Excel. Sistem membuat kata sandi sementara saat impor akun, dan orangnya wajib menggantinya saat login pertama.",
         "• Nama kembar: orang dengan nama yang sama dianggap orang yang sama dan dilewati. Bedakan dengan nama lengkap bila memang dua orang berbeda.",
-        "• Rapat kelompok: isi KelompokRapat dulu, lalu JabatanKelompok, AnggotaKelompok, dan terakhir Rapat. Seluruh anggota kelompok otomatis diundang. Peserta tertentu, tamu, dan tautan lampiran tidak diimpor karena itu isi rapat yang hanya boleh diatur anggota kelompok lewat aplikasi.",
-        "• Data yang sudah ada di sistem (kelompok, jabatan, anggota, rapat dengan kelompok, judul, dan tanggal yang sama) dilewati, tidak ditimpa. File boleh diunggah berulang kali.",
+        "• Kelompok rapat: isi KelompokRapat dulu, lalu JabatanKelompok, lalu AnggotaKelompok. Jabatan yang jumlah orangnya sudah penuh tidak bisa dipegang orang lain.",
+        "• Acara, penugasan, latihan, dan rapat TIDAK diimpor lewat Excel: semuanya dibuat dan diatur di aplikasi. Sheet itu sudah dihapus dari template; file lama yang masih memilikinya tetap bisa diunggah, sheet itu diabaikan.",
+        "• Data yang sudah ada di sistem (orang, pelayanan, ruangan, kelompok, jabatan, anggota) dilewati, tidak ditimpa. File boleh diunggah berulang kali.",
     ]: line(x)
     r += 1
     section("Arti warna")

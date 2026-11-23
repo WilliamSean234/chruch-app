@@ -2,9 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Report, type Ctx, type Row } from "../src/lib/importer/common";
 import { stageGroups, type GroupState } from "../src/lib/importer/groups";
-import { stageMeetings, meetingKey } from "../src/lib/importer/rapat";
-import { Ledger } from "../src/lib/importer/ledger";
-import { zonedToUtc } from "../src/lib/time";
 import { nameKey } from "../src/lib/names";
 import type { MasterState } from "../src/lib/importer/master";
 
@@ -12,8 +9,6 @@ const row = (n: number, v: Record<string, string>): Row => ({ n, v });
 const KG = (n: number, name: string, quorum = "") => row(n, { name, quorum });
 const JB = (n: number, group: string, name: string, s = "", w = "", f = "", m = "", seats = "") => row(n, { group, name, seats, schedule: s, write: w, finalize: f, manage: m });
 const AG = (n: number, group: string, person: string, positions = "") => row(n, { group, person, positions });
-const RP = (n: number, o: Partial<Record<string, string>> = {}) =>
-  row(n, { group: "Majelis", title: "Rapat bulanan", date: "2026-12-08", start: "19:00", end: "21:00", room: "401A", showTopic: "", showAttendees: "", ...o });
 
 function setup() {
   const person = (id: string, name: string) => [nameKey(name), { id, name, key: nameKey(name), isNew: false, cgId: null, hasUser: false, ministryIds: new Set<string>() }] as const;
@@ -99,53 +94,6 @@ test("kelompok, jabatan, dan anggota yang sudah ada dilewati; anggota yang perna
   assert.equal(ag.skipped, 1); // Setia
   assert.equal(ag.created, 2); // Maria (kembali) + Daniel
   assert.equal(gs.groups.get("majelis")!.members.get("p2")!.rejoin, true);
-});
-
-test("rapat: sah, kembar, sudah ada, bentrok ruangan, dan isian salah", () => {
-  const { st, ctx, gs, sheet } = setup();
-  stageGroups(ctx, st, gs, { ...NONE, KelompokRapat: [KG(4, "Majelis")], AnggotaKelompok: [AG(4, "Majelis", "Setia Budi")] });
-  const ledger = new Ledger();
-  ledger.add("ROOM:r1", zonedToUtc("2026-12-10", "08:00"), zonedToUtc("2026-12-10", "10:00"), "Ibadah lain (EV-1)");
-  const g = gs.groups.get("majelis")!;
-  const existing = new Set([meetingKey(g.id, "Rapat lama", "2026-12-15")]);
-  const plan = stageMeetings(ctx, st, gs, [
-    RP(4),
-    RP(5), // kembar dengan baris 4
-    RP(6, { title: "Rapat lama", date: "2026-12-15" }), // sudah ada
-    RP(7, { title: "Bentrok", date: "2026-12-10", start: "09:00", end: "11:00" }),
-    RP(8, { group: "Tidak Ada" }),
-    RP(9, { start: "21:00", end: "20:00", title: "Terbalik" }),
-    RP(10, { room: "Ruang Tutup", title: "Ruang tutup" }),
-    RP(11, { room: "Ruang Hilang", title: "Ruang hilang" }),
-    RP(12, { title: "Tampil", showTopic: "Ya", showAttendees: "mungkin", date: "2026-12-20" }),
-    RP(13, { title: "Berikut", date: "2026-12-22", showTopic: "Ya" }),
-  ], ledger, existing);
-  const s = sheet("Rapat");
-  assert.equal(plan.length, 2); // baris 4 dan 13
-  assert.deepEqual(plan.map((m) => m.row), [4, 13]);
-  assert.equal(plan[1].showTopic, true);
-  assert.equal(s.skipped, 1);
-  const msgs = s.errors.map((e) => `${e.row}:${e.message}`).join("\n");
-  assert.match(msgs, /5:.*dua kali/);
-  assert.match(msgs, /7:.*sudah dipakai: Ibadah lain/);
-  assert.match(msgs, /8:.*belum ada/);
-  assert.match(msgs, /9:.*setelah jam mulai/);
-  assert.match(msgs, /10:.*nonaktif/);
-  assert.match(msgs, /11:.*belum ada/);
-  assert.match(msgs, /12:.*Ya atau Tidak/);
-});
-
-test("dua rapat dalam file yang bentrok di ruangan sama: yang lebih awal menang", () => {
-  const { st, ctx, gs, sheet } = setup();
-  stageGroups(ctx, st, gs, { ...NONE, KelompokRapat: [KG(4, "Majelis"), KG(5, "Pemuda")] });
-  const plan = stageMeetings(ctx, st, gs, [
-    RP(4, { group: "Pemuda", title: "B", start: "19:30", end: "20:30" }),
-    RP(5, { group: "Majelis", title: "A", start: "19:00", end: "20:00" }),
-  ], new Ledger(), new Set());
-  assert.deepEqual(plan.map((m) => m.title), ["A"]);
-  assert.match(sheet("Rapat").errors[0].message, /Rapat Majelis: A/);
-  // kelompok tanpa anggota mendapat catatan
-  assert.equal(sheet("Rapat").notes.length, 1);
 });
 
 test("jumlah orang per jabatan: kosong = 1, angka, atau tanpa batas; salah isi ditolak", () => {

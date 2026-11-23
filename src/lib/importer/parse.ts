@@ -1,4 +1,4 @@
-import { COLS, norm, OPTIONAL_COLS, SHEET_LIST, type Row, type SheetKey } from "./common";
+import { COLS, norm, OPTIONAL_COLS, RETIRED_SHEETS, SHEET_LIST, type Row, type SheetKey } from "./common";
 import { readXlsx } from "./xlsx";
 
 export type Parsed = {
@@ -6,6 +6,7 @@ export type Parsed = {
   found: Set<SheetKey>;
   headerErrors: Partial<Record<SheetKey, string[]>>;
   unknownSheets: string[];
+  retiredSheets: string[]; // sheet lama (acara, rapat, ...) yang ada di file tetapi sudah tidak diimpor
 };
 
 /** Baca file Excel menjadi baris-baris teks per sheet. Baris kosong dan baris "contoh" dilewati. */
@@ -16,12 +17,15 @@ export function parseWorkbook(buf: Buffer): Parsed {
   const found = new Set<SheetKey>();
   const headerErrors: Parsed["headerErrors"] = {};
   const unknownSheets: string[] = [];
+  const retiredSheets: string[] = [];
+  const retired = new Set(RETIRED_SHEETS.map((x) => norm(x)));
   const byName = new Map(SHEET_LIST.map((s) => [norm(s.key), s.key as SheetKey]));
 
   for (const ws of sheets) {
     const key = byName.get(norm(ws.name));
     if (!key) {
-      if (norm(ws.name) !== "petunjuk") unknownSheets.push(ws.name);
+      if (retired.has(norm(ws.name))) retiredSheets.push(ws.name);
+      else if (norm(ws.name) !== "petunjuk") unknownSheets.push(ws.name);
       continue;
     }
     found.add(key);
@@ -72,5 +76,5 @@ export function parseWorkbook(buf: Buffer): Parsed {
     }
   }
 
-  return { rows, found, headerErrors, unknownSheets };
+  return { rows, found, headerErrors, unknownSheets, retiredSheets };
 }

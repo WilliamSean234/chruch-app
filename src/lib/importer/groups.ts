@@ -15,7 +15,6 @@ export type GPos = { id: string; name: string; isNew: boolean; auto?: boolean; d
 export type GMem = { id: string; personId: string; name: string; isNew: boolean; left: boolean; rejoin?: boolean; positionIds: string[]; row?: number };
 export type Grp = {
   id: string; name: string; isNew: boolean; deleted: boolean; quorum: number | null; sortOrder: number; row?: number;
-  failed?: boolean; // kelompok baru yang gagal disimpan saat apply
   positions: Map<string, GPos>; // kunci: k(nama jabatan)
   members: Map<string, GMem>; // kunci: personId
 };

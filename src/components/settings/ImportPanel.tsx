@@ -6,7 +6,7 @@ import { btnGhost, btnPrimary, card } from "@/components/jadwal/api";
 
 type SheetResult = { key: string; label: string; found: boolean; total: number; created: number; skipped: number; errors: { row: number; message: string }[]; notes: { row: number; message: string }[] };
 type Credential = { name: string; email: string; password: string; role: string };
-type Result = { mode: "preview" | "apply"; ok: boolean; fatal?: string; sheets: SheetResult[]; credentials: Credential[]; unknownSheets: string[] };
+type Result = { mode: "preview" | "apply"; ok: boolean; fatal?: string; sheets: SheetResult[]; credentials: Credential[]; unknownSheets: string[]; retiredSheets?: string[] };
 
 export default function ImportPanel() {
   const [file, setFile] = useState<File | null>(null);
@@ -119,6 +119,7 @@ export default function ImportPanel() {
               </tbody>
             </table>
           </div>
+          {(res.retiredSheets?.length ?? 0) > 0 && <p className="mt-2 text-xs font-medium text-[var(--ink-2)]">Sheet {res.retiredSheets!.join(", ")} diabaikan: acara, penugasan, latihan, dan rapat sekarang dibuat lewat aplikasi, bukan lewat Excel.</p>}
           {res.unknownSheets.length > 0 && <p className="mt-2 text-xs font-medium text-[var(--ink-2)]">Sheet tidak dikenal (diabaikan): {res.unknownSheets.join(", ")}.</p>}
 
           {!done && (
@@ -133,7 +134,7 @@ export default function ImportPanel() {
                 <button type="button" className={btnPrimary} disabled={!!busy || totalNew === 0 || (totalErr > 0 && !agree)} onClick={() => send("apply")}>
                   {busy === "apply" ? "Menyimpan… (bisa beberapa menit)" : `Impor ${totalNew} data`}
                 </button>
-                <span className="text-xs font-medium text-[var(--ink-2)]">Data master (orang, pelayanan, template) dan kelompok rapat disimpan sekaligus. Acara dan rapat disimpan satu per satu.</span>
+                <span className="text-xs font-medium text-[var(--ink-2)]">Data master (orang, pelayanan, template) dan kelompok rapat disimpan sekaligus.</span>
               </div>
             </div>
           )}
