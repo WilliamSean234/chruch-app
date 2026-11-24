@@ -69,7 +69,7 @@ export default function ServiceSummary({ year, month0, teamId, myPersonId, activ
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false); // bawaannya tertutup; judul tetap menampilkan jumlahnya
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [showIdle, setShowIdle] = useState(false);
   const [q, setQ] = useState("");
