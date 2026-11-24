@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { FilterBar, FSearch, FSelect, listCard } from "@/components/ui/Filters";
 import Pager from "@/components/ui/Pager";
 import { useClientPaging } from "@/components/ui/usePagedList";
 import { hm, MONTHS, REHEARSAL_TONE, toneFor, TZ, ymd } from "@/lib/ui";
+import { monthHeading } from "@/lib/seatSections";
+import EventDetailDialog, { type DialogTarget } from "./EventDetailDialog";
 
 export type ScheduleRow = {
   key: string; kind: "SERVICE" | "REHEARSAL"; eventId: string; title: string; startsAt: string; endsAt: string; room: string;
@@ -32,7 +34,7 @@ function DateChip({ iso, bg, fg, big }: { iso: string; bg: string; fg: string; b
 
 const chip = "whitespace-nowrap rounded-full px-2.5 py-1 text-[11.5px] font-extrabold";
 
-export default function MySchedule({ rows, note, nowIso }: { rows: ScheduleRow[]; note?: string; nowIso: string }) {
+export default function MySchedule({ rows, note, nowIso, myPersonId = null }: { rows: ScheduleRow[]; note?: string; nowIso: string; myPersonId?: string | null }) {
   const [now] = useState(() => Date.parse(nowIso));
   const [q, setQ] = useState("");
   const [kind, setKind] = useState("");
@@ -40,6 +42,8 @@ export default function MySchedule({ rows, note, nowIso }: { rows: ScheduleRow[]
   const [month, setMonth] = useState(""); // "01".."12"
   const [year, setYear] = useState(""); // "YYYY"
   const [role, setRole] = useState("");
+  const [open, setOpen] = useState<DialogTarget | null>(null); // jadwal yang rinciannya sedang dibuka
+  const show = (r: ScheduleRow) => setOpen({ eventId: r.eventId, title: r.title, kind: r.kind, startsAt: r.startsAt, endsAt: r.endsAt, room: r.room, status: r.status, canAttend: r.canAttend });
 
   const months = useMemo(() => MONTHS.map((n, i) => ({ value: String(i + 1).padStart(2, "0"), label: n })), []);
   // Hanya tahun yang punya jadwal untuk orang ini.
@@ -124,29 +128,38 @@ export default function MySchedule({ rows, note, nowIso }: { rows: ScheduleRow[]
           </p>
         ) : (
           <ul className="m-0 list-none p-0">
-            {pg.slice.map((r) => {
+            {pg.slice.map((r, i) => {
               const tone = r.kind === "REHEARSAL" ? REHEARSAL_TONE : toneFor(r.title);
+              const group = ymd(r.startsAt).slice(0, 7);
+              const newGroup = i === 0 || ymd(pg.slice[i - 1].startsAt).slice(0, 7) !== group;
               return (
-                <li key={r.key} className="flex items-center gap-3.5 border-b border-[var(--line-2)] p-3.5 last:border-b-0">
-                  <DateChip iso={r.startsAt} bg={tone.bg} fg={tone.fg} />
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="text-[15px] font-extrabold leading-snug">{r.title}</span>
-                    <span className="text-[13px] font-medium text-[var(--ink-2)]">{r.kind === "SERVICE" ? `${r.role} · ` : ""}{hm(r.startsAt)}–{hm(r.endsAt)} · {r.room}</span>
-                    {r.note && <span className="text-xs font-medium text-[var(--ink-2)]">{r.note}</span>}
-                  </div>
-                  <div className="flex flex-none flex-col items-end gap-1.5">
-                    {r.kind === "REHEARSAL" && <span className={`${chip} bg-[#F7EBD2] text-[#6F4304]`}>Wajib</span>}
-                    {r.kind === "SERVICE" && !r.rehearsalRequired && <span className={`${chip} bg-[#ECEEF4] text-[#3A3F58]`}>Tanpa latihan</span>}
-                    {r.status === "DRAFT" && <span className={`${chip} bg-[#FBEFD6] text-[#6F4304]`}>Draf</span>}
-                    {r.canAttend && <Link href={`/hadir/${r.eventId}`} className={`${chip} bg-[var(--primary-soft)] text-[var(--primary-ink)] hover:brightness-95`}>Isi kehadiran</Link>}
-                  </div>
-                </li>
+                <Fragment key={r.key}>
+                  {newGroup && <li className="border-b border-[var(--line-2)] bg-[#FAF8F1] px-3.5 py-2 text-[11.5px] font-extrabold tracking-[0.07em] text-[#8A6119]">{monthHeading(`${group}-01`, MONTHS)}</li>}
+                  <li className="flex items-center gap-3.5 border-b border-[var(--line-2)] p-3.5 last:border-b-0">
+                    <button type="button" onClick={() => show(r)} aria-haspopup="dialog" title="Lihat petugas dan rincian"
+                      className="-m-1 flex min-w-0 flex-1 items-center gap-3.5 rounded-xl p-1 text-left hover:bg-[var(--bg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]">
+                      <DateChip iso={r.startsAt} bg={tone.bg} fg={tone.fg} />
+                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <span className="text-[15px] font-extrabold leading-snug">{r.title}</span>
+                        <span className="text-[13px] font-medium text-[var(--ink-2)]">{r.kind === "SERVICE" ? `${r.role} · ` : ""}{hm(r.startsAt)}–{hm(r.endsAt)} · {r.room}</span>
+                        {r.note && <span className="text-xs font-medium text-[var(--ink-2)]">{r.note}</span>}
+                      </span>
+                    </button>
+                    <div className="flex flex-none flex-col items-end gap-1.5">
+                      {r.kind === "REHEARSAL" && <span className={`${chip} bg-[#F7EBD2] text-[#6F4304]`}>Wajib</span>}
+                      {r.kind === "SERVICE" && !r.rehearsalRequired && <span className={`${chip} bg-[#ECEEF4] text-[#3A3F58]`}>Tanpa latihan</span>}
+                      {r.status === "DRAFT" && <span className={`${chip} bg-[#FBEFD6] text-[#6F4304]`}>Draf</span>}
+                      {r.canAttend && <Link href={`/hadir/${r.eventId}`} className={`${chip} bg-[var(--primary-soft)] text-[var(--primary-ink)] hover:brightness-95`}>Isi kehadiran</Link>}
+                    </div>
+                  </li>
+                </Fragment>
               );
             })}
           </ul>
         )}
         <Pager page={pg.page} pageSize={pg.pageSize} total={pg.total} onPage={pg.setPage} onPageSize={pg.setPageSize} noun="jadwal" />
       </div>
+      {open && <EventDetailDialog target={open} myPersonId={myPersonId} onClose={() => setOpen(null)} />}
     </>
   );
 }

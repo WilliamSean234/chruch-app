@@ -36,7 +36,7 @@ export default async function SayaPage() {
   const first = (person?.name ?? "").split(/\s+/)[0] || "";
   return (
     <AppShell active="saya" title={first ? `Halo, ${first}` : "Jadwal saya"} subtitle={dayLong(now)}>
-      <MySchedule rows={rows} note={note} nowIso={now.toISOString()} />
+      <MySchedule rows={rows} note={note} nowIso={now.toISOString()} myPersonId={u.personId} />
     </AppShell>
   );
 }
