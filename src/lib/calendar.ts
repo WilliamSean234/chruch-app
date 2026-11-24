@@ -7,6 +7,7 @@ import { listMeetings } from "./meetings";
 import { attendanceWriteBlock } from "./eventStatusFlow";
 import { canSeeMeetingSchedule } from "./groups";
 import { dedupeTwinRehearsals } from "./rehearsalRules";
+import { birthdaysInRange } from "./birthdays";
 
 /** Hanya penjadwal yang boleh melihat acara DRAFT; semua orang lain hanya melihat yang sudah diterbitkan. */
 export const canSeeDrafts = (u: AuthUser) => can(u, "event.write");
@@ -73,9 +74,20 @@ export async function listCalendar(u: AuthUser, q: CalendarQuery) {
     ? await prisma.meetingGroup.findMany({ where: { tenantId: u.tenantId, deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } })
     : [];
 
+  // Ulang tahun jemaat (hanya tanggal dan nama). Tidak ikut bila kalender difilter per tim, orang, atau status; "Jadwal saya" hanya ulang tahun sendiri.
+  let birthdays: { date: string; personId: string; name: string }[] = [];
+  if (!q.teamTypeId && !q.personId && !q.status) {
+    const people = await prisma.person.findMany({
+      where: { tenantId: u.tenantId, deletedAt: null, birthDate: { not: null }, ...(q.mine ? { id: u.personId ?? "none" } : {}) },
+      select: { id: true, name: true, nickname: true, birthDate: true },
+    });
+    birthdays = birthdaysInRange(people.map((p) => ({ ...p, birthDate: p.birthDate! })), q.from, q.to);
+  }
+
   return {
     meetings,
     meetingGroups,
+    birthdays,
     // latihan Ibadah Minggu 1 dan 2 yang kembar (jam dan ruangan sama) tampil sekali
     rehearsals: dedupeTwinRehearsals(rehearsalRows.map((r) => ({
       id: r.id, eventId: r.eventId, eventTitle: r.event.title, seq: r.seq, startsAt: r.startsAt.toISOString(), endsAt: r.endsAt.toISOString(),

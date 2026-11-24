@@ -26,9 +26,11 @@ type CalMeeting = {
   id: string; number: string; status: string; startsAt: string; endsAt: string; room: { id: string; name: string };
   group: { id: string; name: string }; displayTitle: string; isMember: boolean; canManage: boolean;
 };
+type CalBirthday = { date: string; personId: string; name: string };
 type Team = { id: string; name: string };
 type AgendaRow = { key: string; kind: "E" | "R" | "M"; id: string; eventId?: string; title: string; sub: string; start: string; end: string; dot: string; cancelled?: boolean; draft?: boolean };
 const RAPAT_TONE = { bg: "#F8E6DD", fg: "#7A3A1E", dot: "#C0562D" };
+const BIRTHDAY_TONE = { bg: "#FCE7F0", fg: "#9D2352", dot: "#D6336C" };
 
 const nowParts = () => { const [y, m] = ymd(new Date()).split("-").map(Number); return { y, m0: m - 1 }; };
 
@@ -50,6 +52,7 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [rehearsals, setRehearsals] = useState<CalRehearsal[]>([]);
   const [meetings, setMeetings] = useState<CalMeeting[]>([]);
+  const [birthdays, setBirthdays] = useState<CalBirthday[]>([]);
   const [meetingGroups, setMeetingGroups] = useState<{ id: string; name: string }[]>([]);
   const [groupId, setGroupId] = useState("");
   const [selMeeting, setSelMeeting] = useState<string | null>(null);
@@ -137,10 +140,10 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
     const r = await fetch(`/api/v1/events?${p}`, { cache: "no-store" });
     if (!r.ok) {
       setError((await r.json().catch(() => null))?.error?.message ?? "Gagal memuat kalender.");
-      setEvents([]); setRehearsals([]); setMeetings([]);
+      setEvents([]); setRehearsals([]); setMeetings([]); setBirthdays([]);
     } else {
       const d = await r.json();
-      setEvents(d.items); setRehearsals(d.rehearsals ?? []); setMeetings(d.meetings ?? []); setMeetingGroups(d.meetingGroups ?? []); setNote(d.note ?? "");
+      setEvents(d.items); setRehearsals(d.rehearsals ?? []); setMeetings(d.meetings ?? []); setBirthdays(d.birthdays ?? []); setMeetingGroups(d.meetingGroups ?? []); setNote(d.note ?? "");
     }
     setLoading(false);
   }, [grid, mine, teamId, person, canSeeCancelled, showCancelled]);
@@ -167,13 +170,14 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
   useEffect(() => { if (selMeeting && !shownMeetings.some((x) => x.id === selMeeting)) setSelMeeting(null); }, [shownMeetings, selMeeting]);
 
   const byDay = useMemo(() => {
-    const m = new Map<string, { e: CalEvent[]; r: CalRehearsal[]; m: CalMeeting[] }>();
-    const get = (k: string) => m.get(k) ?? m.set(k, { e: [], r: [], m: [] }).get(k)!;
+    const m = new Map<string, { e: CalEvent[]; r: CalRehearsal[]; m: CalMeeting[]; b: CalBirthday[] }>();
+    const get = (k: string) => m.get(k) ?? m.set(k, { e: [], r: [], m: [], b: [] }).get(k)!;
+    birthdays.forEach((b) => get(b.date).b.push(b));
     events.forEach((e) => get(ymd(e.startsAt)).e.push(e));
     rehearsals.forEach((r) => get(ymd(r.startsAt)).r.push(r));
     if (canSeeMeetings && showMeetings) shownMeetings.forEach((x) => get(ymd(x.startsAt)).m.push(x));
     return m;
-  }, [events, rehearsals, shownMeetings, showMeetings, canSeeMeetings]);
+  }, [events, rehearsals, birthdays, shownMeetings, showMeetings, canSeeMeetings]);
 
   const move = (delta: number) => {
     const d = new Date(Date.UTC(year, month0 + delta, 1));
@@ -314,12 +318,13 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
                 d?.e.forEach((e) => { const col = toneFor(e.title).dot; if (!dots.includes(col)) dots.push(col); });
                 if (d?.r.length && !dots.includes(REHEARSAL_TONE.dot)) dots.push(REHEARSAL_TONE.dot);
                 if (d?.m.length && !dots.includes(RAPAT_TONE.dot)) dots.push(RAPAT_TONE.dot);
+                if (d?.b.length) dots.push(BIRTHDAY_TONE.dot);
                 const count = d ? d.e.length + d.r.length + d.m.length : 0;
                 const isToday = c.iso === today;
                 const on = c.iso === selDay;
                 return (
                   <button key={c.iso} type="button" onClick={() => { setSelDayRaw(c.iso); setSheet(false); }} aria-pressed={on}
-                    aria-label={`${dayLong(c.iso)}${count ? `, ${count} kegiatan` : ""}`}
+                    aria-label={`${dayLong(c.iso)}${count ? `, ${count} kegiatan` : ""}${d?.b.length ? `, ulang tahun ${d.b.map((x) => x.name).join(", ")}` : ""}`}
                     className="flex h-[60px] flex-col items-center gap-1 border-b border-[var(--line-2)] pt-1.5">
                     <span className={`grid size-8 place-items-center rounded-full text-[15px] font-bold ${isToday ? "bg-[var(--primary)] text-white" : on ? "bg-[var(--primary-soft)] text-[var(--primary-ink)] ring-2 ring-[var(--primary)]" : c.weekday === 0 ? "text-[var(--gold-ink)]" : "text-[var(--ink)]"}`}>{c.day}</span>
                     <span className="flex h-[6px] items-center gap-[3px]" aria-hidden="true">
@@ -344,6 +349,16 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
                   return (
                     <div key={c.iso} className={`flex min-h-[136px] flex-col gap-[5px] border-b border-r border-[var(--line-2)] p-2 pt-2.5 ${c.inMonth ? (c.weekday === 0 ? "bg-[#FFFCF5]" : "bg-white") : "bg-[var(--surface-2)]"}`}>
                       <span className={`grid h-[26px] min-w-[26px] place-items-center self-start rounded-full px-1 text-[13px] font-bold ${isToday ? "bg-[var(--primary)] text-white" : c.inMonth ? "text-[var(--ink)]" : "text-[#A9ADC3]"}`}>{c.day}</span>
+                      {d && d.b.length > 0 && (
+                        <div className="flex flex-col gap-[3px]" title={`Ulang tahun: ${d.b.map((x) => x.name).join(", ")}`}>
+                          {d.b.slice(0, 2).map((x) => (
+                            <span key={x.personId} className="flex min-h-[24px] w-full items-center gap-1.5 rounded-lg px-2 py-[2px] text-[11.5px] font-bold leading-tight" style={{ background: BIRTHDAY_TONE.bg, color: BIRTHDAY_TONE.fg, opacity: c.iso < today ? 0.7 : 1 }}>
+                              <span aria-hidden="true">🎂</span><span className="min-w-0 truncate">{x.name}</span>
+                            </span>
+                          ))}
+                          {d.b.length > 2 && <span className="px-2 text-[11px] font-bold" style={{ color: BIRTHDAY_TONE.fg }}>+{d.b.length - 2} ulang tahun lagi</span>}
+                        </div>
+                      )}
                       {d?.e.map((e) => {
                         const t = toneFor(e.title);
                         const cancelled = e.status === "CANCELLED";
@@ -396,11 +411,11 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-[18px] border-t border-[var(--line)] px-[18px] py-3.5 text-[12.5px] font-semibold text-[var(--ink-2)]">
-            {[["Minggu I", "#3037A8"], ["Minggu II", "#8E2E99"], ["Mandarin", "#B7791F"], ["Fellowship", "#0F766E"], ["Latihan", "#6B7090"], ...(canSeeMeetings && showMeetings ? [["Rapat", "#C0562D"]] : [])].map(([l, c]) => (
+            {[["Minggu I", "#3037A8"], ["Minggu II", "#8E2E99"], ["Mandarin", "#B7791F"], ["Fellowship", "#0F766E"], ["Latihan", "#6B7090"], ...(canSeeMeetings && showMeetings ? [["Rapat", "#C0562D"]] : []), ["Ulang tahun", BIRTHDAY_TONE.dot]].map(([l, c]) => (
               <span key={l} className="flex items-center gap-[7px]"><span className="size-[9px] rounded-full" style={{ background: c }} />{l}</span>
             ))}
             <span className="flex-1" />
-            <span>{loading ? "Memuat…" : `${events.length} acara · ${rehearsals.length} latihan${canSeeMeetings && showMeetings && shownMeetings.length ? ` · ${shownMeetings.length} rapat` : ""}`}</span>
+            <span>{loading ? "Memuat…" : `${events.length} acara · ${rehearsals.length} latihan${canSeeMeetings && showMeetings && shownMeetings.length ? ` · ${shownMeetings.length} rapat` : ""}${birthdays.length ? ` · ${birthdays.length} ulang tahun` : ""}`}</span>
           </div>
         </section>
         {/* HP: agenda untuk tanggal yang diketuk */}
@@ -409,8 +424,9 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
             <span className="text-xs font-extrabold uppercase tracking-[0.07em] text-[var(--gold-ink)]">{dayLong(selDay)}</span>
             <span className="h-px flex-1 bg-[#E8E4D6]" />
           </div>
+          {(byDay.get(selDay)?.b.length ?? 0) > 0 && <BirthdayCard names={byDay.get(selDay)!.b.map((x) => x.name)} />}
           {agenda.length === 0 ? (
-            <p className="rounded-2xl border border-[var(--line)] bg-white px-4 py-6 text-center text-sm font-semibold text-[var(--ink-2)]">{loading ? "Memuat…" : "Tidak ada kegiatan pada tanggal ini."}</p>
+            (byDay.get(selDay)?.b.length ?? 0) === 0 && <p className="rounded-2xl border border-[var(--line)] bg-white px-4 py-6 text-center text-sm font-semibold text-[var(--ink-2)]">{loading ? "Memuat…" : "Tidak ada kegiatan pada tanggal ini."}</p>
           ) : (
             <ul className="m-0 flex list-none flex-col overflow-hidden rounded-2xl border border-[var(--line)] bg-white p-0">
               {agenda.map((r) => (
@@ -525,6 +541,19 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
 }
 
 /** Detail satu sesi latihan di panel kanan: tanggal, ruangan, catatan, dan siapa saja yang wajib hadir. */
+/** Kartu "yang berulang tahun" pada tanggal terpilih (HP). */
+function BirthdayCard({ names }: { names: string[] }) {
+  return (
+    <div className="flex items-start gap-3 rounded-2xl border px-4 py-3" style={{ background: BIRTHDAY_TONE.bg, borderColor: BIRTHDAY_TONE.dot + "55", color: BIRTHDAY_TONE.fg }}>
+      <span aria-hidden="true" className="text-xl leading-none">🎂</span>
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-xs font-extrabold uppercase tracking-[0.06em]">Ulang tahun</span>
+        <span className="break-words text-[15px] font-bold leading-snug">{names.join(", ")}</span>
+      </span>
+    </div>
+  );
+}
+
 function RehearsalPanel({ detail, reh, myPersonId, canEdit, onBack }: { detail: Detail; reh: Detail["rehearsals"][number]; myPersonId: string | null; canEdit: boolean; onBack: () => void }) {
   const tone = REHEARSAL_TONE;
   const required = detail.seats.filter((s) => s.rehearsalRequired);
