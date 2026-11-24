@@ -26,7 +26,7 @@ export default function PersonFilter({ value, onChange, label = "Pelayan", place
     return () => document.removeEventListener("mousedown", close);
   }, []);
 
-  const lbl = "flex flex-col gap-1.5 text-[13px] font-bold";
+  const lbl = "flex flex-col gap-1.5 text-[13px] font-bold max-md:min-w-0 max-md:flex-1 max-md:basis-[calc(50%-6px)]";
   if (value) {
     return (
       <div className={lbl}>{label}

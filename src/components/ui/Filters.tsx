@@ -11,7 +11,7 @@ import { MONTHS, monthRange, ymd } from "@/lib/ui";
  * `moreCount` = jumlah filter tersembunyi yang sedang dipakai; panel otomatis terbuka bila sudah ada yang aktif.
  *
  * Aturan tampilan yang sama di semua halaman: semua kotak setinggi 44px dengan label di atasnya; urutan Cari, lalu bulan (FMonth),
- * lalu kotak pilihan; kotak pilihan selebar 192px (w-48) kecuali isinya sangat panjang; tombol nyala/mati lewat FToggles; "Atur ulang" paling akhir.
+ * lalu kotak pilihan; kotak pilihan selebar 192px (w-48) kecuali isinya sangat panjang, bulan 144px dan tahun 112px; di HP dua kotak berbagi satu baris; tombol nyala/mati lewat FToggles; "Atur ulang" paling akhir.
  */
 export function FilterBar({ children, more, moreCount = 0, mobileExtraCount = 0, active, onReset, lead, surface = "page", sticky = true }: {
   children: ReactNode; more?: ReactNode; moreCount?: number; active?: boolean; onReset?: () => void;
@@ -59,8 +59,8 @@ export function FSelect({ label, value, onChange, options, allLabel = "Semua", c
   label: string; value: string; onChange: (v: string) => void; options?: Opt[]; allLabel?: string; children?: ReactNode; width?: string;
 }) {
   return (
-    <label className={`${lbl} max-md:min-w-0 max-md:max-w-full`}>{label}
-      <select className={`${inputCls} ${width} max-md:max-w-full`} value={value} onChange={(e) => onChange(e.target.value)}>
+    <label className={`${lbl} max-md:min-w-0 max-md:flex-1 max-md:basis-[calc(50%-6px)]`}>{label}
+      <select className={`${inputCls} ${width} max-md:w-full`} value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">{allLabel}</option>
         {options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         {children}
@@ -70,26 +70,29 @@ export function FSelect({ label, value, onChange, options, allLabel = "Semua", c
 }
 
 /**
- * Filter periode per bulan (pengganti "Dari – Sampai"): satu kotak pilihan bulan. Menghasilkan tanggal 1 sampai tanggal terakhir bulan itu
- * lewat `onRange`, jadi API yang memakai `from` dan `to` tidak berubah. Daftar: 24 bulan ke belakang sampai 12 bulan ke depan.
+ * Filter periode per bulan (pengganti "Dari – Sampai"): dua kotak pendek berdampingan, Bulan dan Tahun. Menghasilkan tanggal 1 sampai
+ * tanggal terakhir bulan itu lewat `onRange`, jadi API yang memakai `from` dan `to` tidak berubah. Tahun: 3 tahun ke belakang sampai 2 tahun ke depan.
  */
-export function FMonth({ from, onRange, label = "Bulan" }: { from: string; onRange: (from: string, to: string) => void; label?: string }) {
-  const cur = ymd(new Date());
-  const base = Number(cur.slice(0, 4)) * 12 + Number(cur.slice(5, 7)) - 1;
-  const idx = (iso: string) => Number(iso.slice(0, 4)) * 12 + Number(iso.slice(5, 7)) - 1;
-  const sel = idx(from);
-  const lo = Math.min(base - 24, sel), hi = Math.max(base + 12, sel);
-  const opts: { value: string; label: string }[] = [];
-  for (let i = hi; i >= lo; i--) {
-    const y = Math.floor(i / 12), m = i % 12;
-    opts.push({ value: `${y}-${String(m + 1).padStart(2, "0")}`, label: `${MONTHS[m]} ${y}` });
-  }
+export function FMonth({ from, onRange }: { from: string; onRange: (from: string, to: string) => void }) {
+  const thisYear = Number(ymd(new Date()).slice(0, 4));
+  const y = Number(from.slice(0, 4)), m = Number(from.slice(5, 7));
+  const lo = Math.min(thisYear - 3, y), hi = Math.max(thisYear + 2, y);
+  const years: number[] = [];
+  for (let i = hi; i >= lo; i--) years.push(i);
+  const set = (yy: number, mm: number) => { const r = monthRange(`${yy}-${String(mm).padStart(2, "0")}-01`); onRange(r.from, r.to); };
   return (
-    <label className={`${lbl} max-md:min-w-0 max-md:max-w-full`}>{label}
-      <select className={`${inputCls} w-48 max-md:max-w-full`} value={from.slice(0, 7)} onChange={(e) => { const r = monthRange(`${e.target.value}-01`); onRange(r.from, r.to); }}>
-        {opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    </label>
+    <div className="flex gap-2 max-md:basis-full">
+      <label className={`${lbl} max-md:min-w-0 max-md:flex-1`}>Bulan
+        <select className={`${inputCls} w-36 max-md:w-full`} value={m} onChange={(e) => set(y, Number(e.target.value))}>
+          {MONTHS.map((n, i) => <option key={n} value={i + 1}>{n}</option>)}
+        </select>
+      </label>
+      <label className={`${lbl} max-md:min-w-0 max-md:flex-1`}>Tahun
+        <select className={`${inputCls} w-28 max-md:w-full`} value={y} onChange={(e) => set(Number(e.target.value), m)}>
+          {years.map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>
+      </label>
+    </div>
   );
 }
 
