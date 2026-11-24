@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { Children, isValidElement, useState, type ReactNode } from "react";
 import { inputCls } from "@/components/jadwal/api";
 import { stickyCard, stickyPage } from "@/components/ui/sticky";
 import { MONTHS, monthRange, ymd } from "@/lib/ui";
@@ -10,42 +10,64 @@ import { MONTHS, monthRange, ymd } from "@/lib/ui";
  * sisanya disembunyikan di "Filter lainnya" (more) yang bisa dibuka-tutup, dengan angka bila ada yang sedang aktif.
  * `moreCount` = jumlah filter tersembunyi yang sedang dipakai; panel otomatis terbuka bila sudah ada yang aktif.
  *
- * Aturan tampilan yang sama di semua halaman: semua kotak setinggi 44px dengan label di atasnya; urutan Cari, lalu bulan (FMonth),
+ * Aturan tampilan yang sama di semua halaman: semua kotak setinggi 44px dengan label di atasnya; urutan Cari, lalu bulan dan tahun (FMonth),
  * lalu kotak pilihan; kotak pilihan selebar 192px (w-48) kecuali isinya sangat panjang, bulan 144px dan tahun 112px; di HP dua kotak berbagi satu baris; tombol nyala/mati lewat FToggles; "Atur ulang" paling akhir.
+ * Menempel saat digulir: di layar lebar seluruh baris, di HP hanya kotak cari (filter lain ikut tergulir agar layar tidak habis).
  */
 export function FilterBar({ children, more, moreCount = 0, mobileExtraCount = 0, active, onReset, lead, surface = "page", sticky = true }: {
   children: ReactNode; more?: ReactNode; moreCount?: number; active?: boolean; onReset?: () => void;
   /** Filter yang hanya berpindah ke "Filter lainnya" di HP (mis. tanggal): ikut dihitung pada angka di HP saja. */
   mobileExtraCount?: number;
-  /** Baris tambahan di atas filter yang ikut menempel (mis. pilihan waktu atau tanggal). */
+  /** Baris tambahan di atas filter (mis. pilihan waktu): di layar lebar ikut menempel, di HP ikut tergulir. */
   lead?: ReactNode;
   /** "card" bila bar berada di dalam kartu putih. */
   surface?: "page" | "card";
-  /** Selalu menempel di bawah header saat digulir. Matikan hanya bila bar berada di dalam dialog. */
+  /** Menempel di bawah header saat digulir. Matikan hanya bila bar berada di dalam dialog. */
   sticky?: boolean;
 }) {
   const [open, setOpen] = useState(moreCount > 0);
+  // Kotak cari (bila anak pertama adalah FSearch) dipisahkan dari filter lain: di HP hanya kotak cari yang menempel, filter lain ikut tergulir
+  // supaya layar tidak habis. Di layar lebar semuanya satu baris yang menempel. Filter lain dirender dua kali (satu per ukuran layar; yang tidak dipakai disembunyikan CSS).
+  const kids = Children.toArray(children);
+  const first = kids[0];
+  const hasSearch = isValidElement(first) && first.type === FSearch;
+  const search = hasSearch ? first : null;
+  const rest = hasSearch ? kids.slice(1) : kids;
+
+  const moreBtn = more ? (
+    <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
+      className={`flex h-11 items-center gap-2 rounded-xl border px-3.5 text-[13px] font-bold ${open ? ON : moreCount > 0 ? ON : mobileExtraCount > 0 ? `${OFF} max-md:border-[var(--primary)] max-md:bg-[var(--primary-soft)] max-md:text-[var(--primary-ink)]` : OFF}`}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
+      Filter lainnya
+      {moreCount > 0 && <span className="grid size-5 place-items-center rounded-full bg-[var(--primary)] text-[11px] font-extrabold text-white max-md:hidden">{moreCount}</span>}
+      {moreCount + mobileExtraCount > 0 && <span className="grid size-5 place-items-center rounded-full bg-[var(--primary)] text-[11px] font-extrabold text-white md:hidden">{moreCount + mobileExtraCount}</span>}
+      <span aria-hidden="true" className={`text-[11px] transition-transform ${open ? "rotate-180" : ""}`}>▾</span>
+    </button>
+  ) : null;
+  const resetBtn = onReset && active ? (
+    <button type="button" onClick={onReset} className="h-11 rounded-xl px-3 text-[13px] font-bold text-[var(--primary-ink)] hover:bg-[var(--primary-soft)]">Atur ulang</button>
+  ) : null;
+  const morePanel = more && open ? <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface-2)] p-3.5">{more}</div> : null;
+  const hasRest = rest.length > 0 || !!moreBtn || !!resetBtn;
+
   return (
-    <div className={`flex flex-col gap-3 ${sticky ? (surface === "card" ? stickyCard : stickyPage) : ""}`} role="search">
-      {lead}
-      <div className="flex flex-wrap items-end gap-3">
-        {children}
-        {more && (
-          <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
-            className={`flex h-11 items-center gap-2 rounded-xl border px-3.5 text-[13px] font-bold ${open ? ON : moreCount > 0 ? ON : mobileExtraCount > 0 ? `${OFF} max-md:border-[var(--primary)] max-md:bg-[var(--primary-soft)] max-md:text-[var(--primary-ink)]` : OFF}`}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
-            Filter lainnya
-            {moreCount > 0 && <span className="grid size-5 place-items-center rounded-full bg-[var(--primary)] text-[11px] font-extrabold text-white max-md:hidden">{moreCount}</span>}
-            {moreCount + mobileExtraCount > 0 && <span className="grid size-5 place-items-center rounded-full bg-[var(--primary)] text-[11px] font-extrabold text-white md:hidden">{moreCount + mobileExtraCount}</span>}
-            <span aria-hidden="true" className={`text-[11px] transition-transform ${open ? "rotate-180" : ""}`}>▾</span>
-          </button>
-        )}
-        {onReset && active && (
-          <button type="button" onClick={onReset} className="h-11 rounded-xl px-3 text-[13px] font-bold text-[var(--primary-ink)] hover:bg-[var(--primary-soft)]">Atur ulang</button>
-        )}
+    <>
+      {lead && search && <div className="md:hidden">{lead}</div>}
+      <div className={`flex flex-col gap-3 ${sticky ? (surface === "card" ? stickyCard : stickyPage) : ""} ${search ? "" : "max-md:hidden"}`} role="search">
+        {lead && <div className={search ? "max-md:hidden" : ""}>{lead}</div>}
+        <div className="flex flex-wrap items-end gap-3">
+          {search}
+          <div className="contents max-md:hidden">{rest}{moreBtn}{resetBtn}</div>
+        </div>
+        {morePanel && <div className="max-md:hidden">{morePanel}</div>}
       </div>
-      {more && open && <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface-2)] p-3.5">{more}</div>}
-    </div>
+      {/* HP: filter selain kotak cari, tidak menempel */}
+      <div className={`flex flex-col gap-3 md:hidden ${search ? "max-md:-mt-3" : ""}`}>
+        {!search && lead}
+        {hasRest && <div className="flex flex-wrap items-end gap-3">{rest}{moreBtn}{resetBtn}</div>}
+        {morePanel}
+      </div>
+    </>
   );
 }
 
