@@ -140,13 +140,13 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
               {lookups?.cgs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </FSelect>
             {canGroups && (
-              <FSelect label="Kelompok" value={groupId} onChange={setGroupId} allLabel="Semua kelompok" width="w-48">
+              <FSelect label="Kelompok" value={groupId} onChange={setGroupId} allLabel="Semua kelompok">
                 <option value="NONE">Tidak di kelompok mana pun</option>
                 {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
               </FSelect>
             )}
-            <FSelect label="Jenis kelamin" value={gender} onChange={setGender} allLabel="Semua" width="w-36" options={[{ value: "L", label: "Laki-laki" }, { value: "P", label: "Perempuan" }]} />
-            <FSelect label="Asal" value={origin} onChange={setOrigin} allLabel="Semua" width="w-40" options={[{ value: "DALAM", label: "Dalam gereja" }, { value: "LUAR", label: "Dari luar" }]} />
+            <FSelect label="Jenis kelamin" value={gender} onChange={setGender} allLabel="Semua" options={[{ value: "L", label: "Laki-laki" }, { value: "P", label: "Perempuan" }]} />
+            <FSelect label="Asal" value={origin} onChange={setOrigin} allLabel="Semua" options={[{ value: "DALAM", label: "Dalam gereja" }, { value: "LUAR", label: "Dari luar" }]} />
             <FNumber label="Usia dari" value={ageMin} onChange={setAgeMin} placeholder="17" />
             <FNumber label="Usia sampai" value={ageMax} onChange={setAgeMax} placeholder="30" />
             {canAccount && (
@@ -159,7 +159,7 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
           </>
         }>
         <FSearch label="Cari nama" value={q} onChange={setQ} placeholder="Nama orang" />
-        <FSelect label="Pelayanan" value={ministryId} onChange={setMinistryId} allLabel="Semua pelayanan" width="w-48">
+        <FSelect label="Pelayanan" value={ministryId} onChange={setMinistryId} allLabel="Semua pelayanan">
           <option value="NONE">Belum punya pelayanan</option>
           {lookups?.teams.map((t) => <optgroup key={t.id} label={t.name}>{t.ministries.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</optgroup>)}
         </FSelect>

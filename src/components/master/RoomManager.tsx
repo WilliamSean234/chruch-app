@@ -95,9 +95,9 @@ export default function RoomManager({ canManage, version, onChange }: { canManag
     <div className="flex flex-col gap-4">
       <p className="text-sm font-medium text-[var(--ink-2)]">Ruangan yang nonaktif tidak muncul saat membuat jadwal baru, tetapi jadwal lama tetap utuh. Satu ruangan tidak bisa dipakai dua acara pada jam yang beririsan.</p>
       <FilterBar active={dirty} onReset={() => { setQ(""); setFloor(""); setStatus(""); }} moreCount={status ? 1 : 0}
-        more={<FSelect label="Status" value={status} onChange={setStatus} allLabel="Semua status" width="w-40" options={[{ value: "ACTIVE", label: "Aktif" }, { value: "INACTIVE", label: "Nonaktif" }]} />}>
+        more={<FSelect label="Status" value={status} onChange={setStatus} allLabel="Semua status" options={[{ value: "ACTIVE", label: "Aktif" }, { value: "INACTIVE", label: "Nonaktif" }]} />}>
         <FSearch label="Cari ruangan" value={q} onChange={setQ} placeholder="Kode ruangan, mis. 401A" />
-        <FSelect label="Lantai" value={floor} onChange={setFloor} allLabel="Semua lantai" width="w-44">
+        <FSelect label="Lantai" value={floor} onChange={setFloor} allLabel="Semua lantai">
           {opts?.floors.map((f) => <option key={f} value={f}>{floorText(f)}</option>)}
           {opts?.hasNoFloor && <option value="NONE">Belum diisi</option>}
         </FSelect>

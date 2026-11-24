@@ -73,15 +73,15 @@ export default function AccountsPanel({ selfId, isSuper }: { selfId: string; isS
       <FilterBar active={!!(q || role || status || groupId)} onReset={() => { setQ(""); setRole(""); setStatus(""); setGroupId(""); setPage(1); }} moreCount={(status ? 1 : 0) + (groupId ? 1 : 0)}
         more={
           <>
-            <FSelect label="Status" value={status} onChange={(v) => { setStatus(v); setPage(1); }} allLabel="Semua status" width="w-40" options={[{ value: "active", label: "Aktif" }, { value: "inactive", label: "Nonaktif" }]} />
-            <FSelect label="Kelompok" value={groupId} onChange={(v) => { setGroupId(v); setPage(1); }} allLabel="Semua kelompok" width="w-48">
+            <FSelect label="Status" value={status} onChange={(v) => { setStatus(v); setPage(1); }} allLabel="Semua status" options={[{ value: "active", label: "Aktif" }, { value: "inactive", label: "Nonaktif" }]} />
+            <FSelect label="Kelompok" value={groupId} onChange={(v) => { setGroupId(v); setPage(1); }} allLabel="Semua kelompok">
               <option value="NONE">Tidak di kelompok mana pun</option>
               {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
             </FSelect>
           </>
         }>
         <FSearch label="Cari nama atau email" value={q} onChange={setQ} placeholder="mis. Ruth atau ruth@…" />
-        <FSelect label="Role" value={role} onChange={(v) => { setRole(v); setPage(1); }} allLabel="Semua role" width="w-48">
+        <FSelect label="Role" value={role} onChange={(v) => { setRole(v); setPage(1); }} allLabel="Semua role">
           <option value="NONE">Tanpa role</option>
           {Object.entries(ROLE_LABEL).map(([c, l]) => <option key={c} value={c}>{l}</option>)}
         </FSelect>

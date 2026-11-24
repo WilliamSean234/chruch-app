@@ -38,12 +38,12 @@ export default function AuditPanel() {
       </p>
       <FilterBar active={dirty} onReset={reset} moreCount={userId ? 1 : 0} mobileExtraCount={dateExtra}
         more={<>
-          <FSelect label="Pengguna" value={userId} onChange={setUserId} allLabel="Semua pengguna" width="w-52" options={opts?.users.map((x) => ({ value: x.id, label: x.name }))} />
+          <FSelect label="Pengguna" value={userId} onChange={setUserId} allLabel="Semua pengguna" options={opts?.users.map((x) => ({ value: x.id, label: x.name }))} />
           <FDateRange where="more" from={from} to={to} onFrom={setFrom} onTo={setTo} />
         </>}>
         <FSearch value={q} onChange={setQ} placeholder="Jenis aktivitas atau alasan" />
-        <FSelect label="Jenis" value={category} onChange={setCategory} allLabel="Semua jenis" width="w-52" options={opts?.categories.map((c) => ({ value: c.key, label: c.label }))} />
         <FDateRange where="main" from={from} to={to} onFrom={setFrom} onTo={setTo} />
+        <FSelect label="Jenis" value={category} onChange={setCategory} allLabel="Semua jenis" options={opts?.categories.map((c) => ({ value: c.key, label: c.label }))} />
       </FilterBar>
 
       {list.error && <Alert>{list.error}</Alert>}

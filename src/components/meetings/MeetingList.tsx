@@ -49,13 +49,13 @@ export default function MeetingList() {
           <>
             <FDateRange where="more" from={from} to={to} onFrom={setFrom} onTo={setTo} />
             <FSelect label="Ruangan" value={roomId} onChange={setRoomId} allLabel="Semua ruangan"><RoomOptions rooms={opts?.rooms ?? []} /></FSelect>
-            <FSelect label="Status" value={status} onChange={setStatus} allLabel="Semua status" width="w-40" options={[{ value: "PUBLISHED", label: "Berlaku" }, { value: "CANCELLED", label: "Dibatalkan" }]} />
+            <FSelect label="Status" value={status} onChange={setStatus} allLabel="Semua status" options={[{ value: "PUBLISHED", label: "Berlaku" }, { value: "CANCELLED", label: "Dibatalkan" }]} />
           </>
         }>
         <FSearch value={q} onChange={setQ} placeholder="Kelompok, topik, ruangan, atau nomor" />
-        <FSelect label="Kelompok" value={groupId} onChange={setGroupId} allLabel="Semua kelompok" width="w-52" options={opts?.groups.map((g) => ({ value: g.id, label: g.name }))} />
-        <FSelect label="Keanggotaan" value={mine} onChange={setMine} allLabel="Semua rapat" width="w-44" options={[{ value: "true", label: "Kelompok saya" }]} />
         <FDateRange where="main" from={from} to={to} onFrom={setFrom} onTo={setTo} />
+        <FSelect label="Kelompok" value={groupId} onChange={setGroupId} allLabel="Semua kelompok" options={opts?.groups.map((g) => ({ value: g.id, label: g.name }))} />
+        <FSelect label="Keanggotaan" value={mine} onChange={setMine} allLabel="Semua rapat" options={[{ value: "true", label: "Kelompok saya" }]} />
       </FilterBar>
 
       {list.error && <Alert>{list.error}</Alert>}

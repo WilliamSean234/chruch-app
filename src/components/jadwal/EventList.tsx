@@ -58,18 +58,18 @@ export default function EventList() {
           <>
             <FDateRange where="more" from={from} to={to} onFrom={setFrom} onTo={setTo} />
             <FSelect label="Ruangan" value={roomId} onChange={setRoomId} allLabel="Semua ruangan"><RoomOptions rooms={opts?.rooms ?? []} /></FSelect>
-            <FSelect label="Sesi latihan" value={rehearsal} onChange={setRehearsal} allLabel="Semua" width="w-44"
+            <FSelect label="Sesi latihan" value={rehearsal} onChange={setRehearsal} allLabel="Semua"
               options={[{ value: "YES", label: "Sudah ada latihan" }, { value: "NO", label: "Belum ada latihan" }]} />
-            <FSelect label="Urutan" value={order} onChange={(v) => setOrder(v || "asc")} allLabel="Terdekat dulu" width="w-40" options={[{ value: "desc", label: "Terjauh dulu" }]} />
+            <FSelect label="Urutan" value={order} onChange={(v) => setOrder(v || "asc")} allLabel="Terdekat dulu" options={[{ value: "desc", label: "Terjauh dulu" }]} />
           </>
         }>
         <FSearch value={q} onChange={setQ} placeholder="Judul atau nomor acara" />
         <FDateRange where="main" from={from} to={to} onFrom={setFrom} onTo={setTo} />
-        <FSelect label="Jenis ibadah" value={templateId} onChange={setTemplateId} allLabel="Semua ibadah" width="w-52">
+        <FSelect label="Jenis ibadah" value={templateId} onChange={setTemplateId} allLabel="Semua ibadah">
           {opts?.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           <option value="NONE">Acara satu kali (tanpa template)</option>
         </FSelect>
-        <FSelect label="Status" value={status} onChange={setStatus} allLabel="Semua status" width="w-40"
+        <FSelect label="Status" value={status} onChange={setStatus} allLabel="Semua status"
           options={[{ value: "DRAFT", label: "Draf" }, { value: "PUBLISHED", label: "Terbit" }, { value: "CANCELLED", label: "Dibatalkan" }]} />
       </FilterBar>
       {list.error && <Alert>{list.error}</Alert>}

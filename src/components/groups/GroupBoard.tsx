@@ -251,7 +251,7 @@ function MemberList({ detail, posName, onEdit, onChanged }: { detail: Detail; po
     <>
       <FilterBar surface="card" active={!!(q || pos)} onReset={() => { setQ(""); setPos(""); }}>
         <FSearch label="Cari anggota" value={q} onChange={setQ} placeholder="Nama anggota" />
-        <FSelect label="Jabatan" value={pos} onChange={setPos} allLabel="Semua jabatan" width="w-48">
+        <FSelect label="Jabatan" value={pos} onChange={setPos} allLabel="Semua jabatan">
           {detail.positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           <option value="NONE">Belum ada jabatan</option>
         </FSelect>

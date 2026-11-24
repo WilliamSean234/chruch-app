@@ -107,10 +107,10 @@ export default function MeetingAttendance({ groupId, groupName, rows, attendance
           )}
 
           <FilterBar surface="card" active={dirty} onReset={() => { setQ(""); setStatus(""); setKind(""); }}
-            more={<FSelect label="Jenis" value={kind} onChange={setKind} allLabel="Anggota dan tamu" width="w-48" options={[{ value: "MEMBER", label: "Anggota saja" }, { value: "GUEST", label: "Tamu saja" }]} />}
+            more={<FSelect label="Jenis" value={kind} onChange={setKind} allLabel="Anggota dan tamu" options={[{ value: "MEMBER", label: "Anggota saja" }, { value: "GUEST", label: "Tamu saja" }]} />}
             moreCount={kind ? 1 : 0}>
             <FSearch value={q} onChange={setQ} placeholder="Cari nama peserta" />
-            <FSelect label="Status" value={status} onChange={setStatus} allLabel="Semua status" width="w-44"
+            <FSelect label="Status" value={status} onChange={setStatus} allLabel="Semua status"
               options={Object.entries(STATUS).map(([value, s]) => ({ value, label: s.label }))} />
           </FilterBar>
 

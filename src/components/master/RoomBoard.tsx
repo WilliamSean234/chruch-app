@@ -160,7 +160,7 @@ export default function RoomBoard({ canManage, canOpenEvents = true, canOpenMeet
         {rooms && rooms.length > 0 && (
           <>
               <FSearch label="Cari ruangan" value={boardQ} onChange={setBoardQ} placeholder="Kode ruangan, mis. 401A" />
-              <FSelect label="Lantai" value={boardFloor} onChange={setBoardFloor} allLabel="Semua lantai" width="w-44">
+              <FSelect label="Lantai" value={boardFloor} onChange={setBoardFloor} allLabel="Semua lantai">
                 {floors.map((f) => <option key={f} value={f}>{floorText(f)}</option>)}
                 {rooms.some((r) => r.floor === null) && <option value="NONE">Belum diisi</option>}
               </FSelect>

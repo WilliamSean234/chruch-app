@@ -8,6 +8,9 @@ import { stickyCard, stickyPage } from "@/components/ui/sticky";
  * Baris filter seragam untuk semua daftar. Yang paling sering dipakai langsung terlihat (children);
  * sisanya disembunyikan di "Filter lainnya" (more) yang bisa dibuka-tutup, dengan angka bila ada yang sedang aktif.
  * `moreCount` = jumlah filter tersembunyi yang sedang dipakai; panel otomatis terbuka bila sudah ada yang aktif.
+ *
+ * Aturan tampilan yang sama di semua halaman: semua kotak setinggi 44px dengan label di atasnya; urutan Cari, lalu tanggal (Dari – Sampai),
+ * lalu kotak pilihan; kotak pilihan selebar 192px (w-48) kecuali isinya sangat panjang; tombol nyala/mati lewat FToggles; "Atur ulang" paling akhir.
  */
 export function FilterBar({ children, more, moreCount = 0, mobileExtraCount = 0, active, onReset, lead, surface = "page", sticky = true }: {
   children: ReactNode; more?: ReactNode; moreCount?: number; active?: boolean; onReset?: () => void;
@@ -51,7 +54,7 @@ const OFF = "border-[var(--line)] bg-white text-[var(--ink-2)] hover:bg-[#f3f4f9
 
 export type Opt = { value: string; label: string };
 
-export function FSelect({ label, value, onChange, options, allLabel = "Semua", children, width = "w-44" }: {
+export function FSelect({ label, value, onChange, options, allLabel = "Semua", children, width = "w-48" }: {
   label: string; value: string; onChange: (v: string) => void; options?: Opt[]; allLabel?: string; children?: ReactNode; width?: string;
 }) {
   return (
@@ -66,7 +69,7 @@ export function FSelect({ label, value, onChange, options, allLabel = "Semua", c
 }
 
 export function FDate({ label, value, onChange, className = "" }: { label: string; value: string; onChange: (v: string) => void; className?: string }) {
-  return <label className={`${lbl} max-md:min-w-0 max-md:basis-[calc(50%-6px)] ${className}`}>{label}<input type="date" className={`${inputCls} w-44 max-md:min-w-0 max-md:max-w-full max-md:w-full`} value={value} onChange={(e) => onChange(e.target.value)} /></label>;
+  return <label className={`${lbl} max-md:min-w-0 max-md:basis-[calc(50%-6px)] ${className}`}>{label}<input type="date" className={`${inputCls} w-48 max-md:min-w-0 max-md:max-w-full max-md:w-full`} value={value} onChange={(e) => onChange(e.target.value)} /></label>;
 }
 
 /**
@@ -82,6 +85,20 @@ export function FDateRange({ from, to, onFrom, onTo, where, fromLabel = "Dari", 
       <FDate label={fromLabel} value={from} onChange={onFrom} className={cls} />
       <FDate label={toLabel} value={to} onChange={onTo} className={cls} />
     </>
+  );
+}
+
+/** Kelompok tombol nyala/mati berlabel (mis. "Tampilkan": Rapat, Acara batal), tingginya sama dengan kotak isian lain. */
+export function FToggles({ label, children }: { label: string; children: ReactNode }) {
+  return <div role="group" aria-label={label} className={lbl}>{label}<div className="flex flex-wrap gap-2">{children}</div></div>;
+}
+export function FToggle({ on, onClick, color, children, title, danger = false }: { on: boolean; onClick: () => void; color?: string; children: ReactNode; title?: string; danger?: boolean }) {
+  return (
+    <button type="button" onClick={onClick} aria-pressed={on} title={title}
+      className={`flex h-11 items-center gap-2 whitespace-nowrap rounded-xl border px-3.5 text-[13px] font-bold ${on ? (danger ? "border-[#E8B4B4] bg-[#FDECEC] text-[#9B1C1C]" : ON) : OFF}`}>
+      {color && <span className="size-[9px] flex-none rounded-full" style={{ background: color, opacity: on ? 1 : 0.35 }} aria-hidden="true" />}
+      {children}
+    </button>
   );
 }
 

@@ -42,7 +42,7 @@ export default function RegistrationsPanel() {
       </p>
       <FilterBar active={dirty} onReset={() => { setQ(""); setStatus("PENDING"); }}>
         <FSearch value={q} onChange={setQ} placeholder="Nama atau email" />
-        <FSelect label="Status" value={status} onChange={setStatus} allLabel="Semua status" width="w-44"
+        <FSelect label="Status" value={status} onChange={setStatus} allLabel="Semua status"
           options={[{ value: "PENDING", label: "Menunggu" }, { value: "APPROVED", label: "Disetujui" }, { value: "REJECTED", label: "Ditolak" }]} />
       </FilterBar>
 

@@ -210,7 +210,7 @@ function NamesMode({ eventId, initial, published, assigned }: { eventId: string;
 
       <FilterBar active={!!(q || status)} onReset={() => { setQ(""); setStatus(""); }}>
         <FSearch value={q} onChange={setQ} placeholder={community ? "Cari nama" : "Ketik minimal 2 huruf"} />
-        <FSelect label="Status" value={status} onChange={setStatus} width="w-40" options={[{ value: "present", label: "Sudah hadir" }, { value: "absent", label: "Belum hadir" }]} />
+        <FSelect label="Status" value={status} onChange={setStatus} options={[{ value: "present", label: "Sudah hadir" }, { value: "absent", label: "Belum hadir" }]} />
       </FilterBar>
 
       <div className="flex items-center justify-between text-[13px] font-bold text-[var(--ink-2)]">

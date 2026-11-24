@@ -4,6 +4,7 @@ import { stickyPage } from "@/components/ui/sticky";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import PersonFilter, { type PersonLite } from "@/components/PersonFilter";
+import { FSelect, FToggle, FToggles } from "@/components/ui/Filters";
 import ServiceSummary from "./ServiceSummary";
 import AssignDropDialog, { type DropPerms, type DropPerson } from "./AssignDropDialog";
 import { dayLong, dayShort, hm, MONTHS, monthGrid, REHEARSAL_TONE, STATUS_LABEL, toneFor, WEEKDAYS, ymd } from "@/lib/ui";
@@ -225,56 +226,58 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
   const selRehearsal = detail && selectedRehearsal ? detail.rehearsals.find((r) => r.id === selectedRehearsal) : undefined;
   const tone = detail ? toneFor(detail.title) : null;
   const st = detail ? (STATUS_LABEL[detail.status] ?? STATUS_LABEL.DRAFT) : null;
-  const seg = (on: boolean) => `h-[38px] rounded-[9px] px-4 text-[13.5px] font-bold ${on ? "bg-white text-[var(--primary-ink)] shadow-sm" : "text-[var(--ink-2)]"}`;
+  const seg = (on: boolean) => `h-9 rounded-[9px] px-4 text-[13px] font-bold max-md:flex-1 ${on ? "bg-white text-[var(--primary-ink)] shadow-sm" : "text-[var(--ink-2)]"}`;
+  const viewSwitch = (
+    <div className="flex gap-0.5 rounded-xl bg-[#e7e9f3] p-1" role="group" aria-label="Tampilan jadwal">
+      <button onClick={() => setMine(false)} className={seg(!mine)}>Semua jadwal</button>
+      <button onClick={() => setMine(true)} className={seg(mine)} disabled={!hasPerson} title={hasPerson ? "" : "Akun belum dihubungkan ke data orang"}>Jadwal saya</button>
+    </div>
+  );
+  const resetFilters = () => { setMine(false); setTeamId(""); setPerson(null); setGroupId(""); setShowMeetings(true); setShowCancelled(false); };
 
   return (
     <>
-      <div ref={toolbarRef} className={`flex flex-wrap items-center gap-3 ${stickyPage}`}>
-        <div className="flex items-center gap-1 rounded-xl bg-[#e7e9f3] p-1 max-md:flex-1" role="group" aria-label="Pilih bulan">
-          <button onClick={() => move(-1)} className="grid size-[38px] place-items-center rounded-[9px] font-bold text-[var(--ink-2)] hover:bg-white/70" aria-label="Bulan sebelumnya">‹</button>
-          <span className="min-w-36 px-2 text-center text-[14px] font-extrabold max-md:min-w-0 max-md:flex-1">{MONTHS[month0]} {year}</span>
-          <button onClick={() => move(1)} className="grid size-[38px] place-items-center rounded-[9px] font-bold text-[var(--ink-2)] hover:bg-white/70" aria-label="Bulan berikutnya">›</button>
+      <div ref={toolbarRef} className={`flex flex-col gap-3 ${stickyPage}`}>
+        {/* Baris 1: pindah bulan di kiri, cara melihat jadwal di kanan (HP: tombol Filter) */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1 rounded-xl bg-[#e7e9f3] p-1 max-md:flex-1" role="group" aria-label="Pilih bulan">
+            <button onClick={() => move(-1)} className="grid size-9 place-items-center rounded-[9px] font-bold text-[var(--ink-2)] hover:bg-white/70" aria-label="Bulan sebelumnya">‹</button>
+            <span className="min-w-36 px-2 text-center text-[14px] font-extrabold max-md:min-w-0 max-md:flex-1">{MONTHS[month0]} {year}</span>
+            <button onClick={() => move(1)} className="grid size-9 place-items-center rounded-[9px] font-bold text-[var(--ink-2)] hover:bg-white/70" aria-label="Bulan berikutnya">›</button>
+          </div>
+          <button onClick={() => { setYear(start.y); setMonth0(start.m0); }} className="h-11 rounded-xl border border-[var(--line)] bg-white px-4 text-[13px] font-bold text-[var(--ink-2)] hover:bg-[#f3f4f9]">Hari ini</button>
+          <span className="flex-1 max-md:hidden" />
+          <div className="max-md:hidden">{viewSwitch}</div>
+          <button type="button" onClick={() => setFiltersOpen((v) => !v)} aria-expanded={filtersOpen}
+            className={`flex h-11 items-center gap-2 rounded-xl border px-3.5 text-[13px] font-bold md:hidden ${filtersOpen || activeFilters > 0 ? "border-[var(--primary)] bg-[var(--primary-soft)] text-[var(--primary-ink)]" : "border-[var(--line)] bg-white text-[var(--ink-2)]"}`}>
+            Filter{activeFilters > 0 && <span className="grid size-5 place-items-center rounded-full bg-[var(--primary)] text-[11px] font-extrabold text-white">{activeFilters}</span>}
+          </button>
         </div>
-        <button onClick={() => { setYear(start.y); setMonth0(start.m0); }} className="h-[46px] rounded-xl border border-[var(--line)] bg-white px-4 text-[13.5px] font-semibold">Hari ini</button>
-        <button type="button" onClick={() => setFiltersOpen((v) => !v)} aria-expanded={filtersOpen}
-          className={`flex h-[46px] items-center gap-2 rounded-xl border px-3.5 text-[13.5px] font-semibold md:hidden ${filtersOpen || activeFilters > 0 ? "border-[var(--primary)] bg-[var(--primary-soft)] text-[var(--primary-ink)]" : "border-[var(--line)] bg-white"}`}>
-          Filter{activeFilters > 0 && <span className="grid size-5 place-items-center rounded-full bg-[var(--primary)] text-[11px] font-extrabold text-white">{activeFilters}</span>}
-        </button>
-        <div className={`${filtersOpen ? "flex" : "hidden"} w-full flex-wrap items-center gap-3 md:contents`}>
-
-        <div className="flex gap-0.5 rounded-xl bg-[#e7e9f3] p-1" role="group" aria-label="Tampilan jadwal">
-          <button onClick={() => setMine(false)} className={seg(!mine)}>Semua jadwal</button>
-          <button onClick={() => setMine(true)} className={seg(mine)} disabled={!hasPerson} title={hasPerson ? "" : "Akun belum dihubungkan ke data orang"}>Jadwal saya</button>
-        </div>
-
-        {canFilter && (
-          <>
-            <select value={teamId} onChange={(e) => setTeamId(e.target.value)} aria-label="Filter tim" className="h-[46px] rounded-xl border border-[var(--line)] bg-white px-3 text-[13.5px] font-semibold">
-              <option value="">Semua tim</option>
-              {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-            <PersonFilter value={person} onChange={setPerson} />
-          </>
-        )}
-
-        {canSeeMeetings && <button type="button" onClick={toggleMeetings} aria-pressed={showMeetings}
-          title={showMeetings ? "Sembunyikan rapat dari kalender" : "Tampilkan rapat di kalender"}
-          className={`inline-flex h-[46px] items-center gap-2 rounded-xl border px-4 text-[13.5px] font-semibold ${showMeetings ? "border-[var(--line)] bg-white text-[var(--ink)]" : "border-dashed border-[var(--line)] bg-transparent text-[var(--ink-2)]"}`}>
-          <span className="size-[9px] rounded-full" style={{ background: RAPAT_TONE.dot, opacity: showMeetings ? 1 : 0.35 }} aria-hidden="true" />
-          {showMeetings ? "Rapat tampil" : "Rapat disembunyikan"}{shownMeetings.length > 0 && <span className="text-xs font-bold text-[var(--ink-2)]">({shownMeetings.length})</span>}
-        </button>}
-        {canSeeCancelled && <button type="button" onClick={() => setShowCancelled((v) => !v)} aria-pressed={showCancelled}
-          title={showCancelled ? "Sembunyikan acara batal" : "Tampilkan acara batal (hanya terlihat oleh admin)"}
-          className={`inline-flex h-[46px] items-center gap-2 rounded-xl border px-4 text-[13.5px] font-semibold ${showCancelled ? "border-[#E8B4B4] bg-[#FDECEC] text-[#9B1C1C]" : "border-dashed border-[var(--line)] bg-transparent text-[var(--ink-2)]"}`}>
-          <span className="size-[9px] rounded-full bg-[#B42318]" style={{ opacity: showCancelled ? 1 : 0.35 }} aria-hidden="true" />
-          {showCancelled ? "Acara batal tampil" : "Acara batal disembunyikan"}
-        </button>}
-        {canSeeMeetings && showMeetings && meetingGroups.length > 0 && (
-          <select value={groupId} onChange={(e) => setGroupId(e.target.value)} aria-label="Filter kelompok rapat" className="h-[46px] rounded-xl border border-[var(--line)] bg-white px-3 text-[13.5px] font-semibold">
-            <option value="">Semua kelompok rapat</option>
-            {meetingGroups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-          </select>
-        )}
+        {/* Baris 2: filter berlabel, gaya sama dengan halaman daftar lain (HP: terbuka lewat tombol Filter) */}
+        <div className={`${filtersOpen ? "flex" : "hidden"} flex-wrap items-end gap-3 md:flex`} role="search">
+          <div className="w-full md:hidden">{viewSwitch}</div>
+          {canFilter && (
+            <>
+              <FSelect label="Tim" value={teamId} onChange={setTeamId} allLabel="Semua tim" options={teams.map((t) => ({ value: t.id, label: t.name }))} />
+              <PersonFilter value={person} onChange={setPerson} />
+            </>
+          )}
+          {canSeeMeetings && showMeetings && meetingGroups.length > 0 && (
+            <FSelect label="Kelompok rapat" value={groupId} onChange={setGroupId} allLabel="Semua kelompok" options={meetingGroups.map((g) => ({ value: g.id, label: g.name }))} />
+          )}
+          {(canSeeMeetings || canSeeCancelled) && (
+            <FToggles label="Tampilkan">
+              {canSeeMeetings && (
+                <FToggle on={showMeetings} onClick={toggleMeetings} color={RAPAT_TONE.dot} title={showMeetings ? "Sembunyikan rapat dari kalender" : "Tampilkan rapat di kalender"}>
+                  Rapat{shownMeetings.length > 0 && <span className="text-xs font-bold opacity-70">({shownMeetings.length})</span>}
+                </FToggle>
+              )}
+              {canSeeCancelled && (
+                <FToggle on={showCancelled} onClick={() => setShowCancelled((v) => !v)} color="#B42318" danger title={showCancelled ? "Sembunyikan acara batal" : "Tampilkan acara batal (hanya terlihat oleh admin)"}>Acara batal</FToggle>
+              )}
+            </FToggles>
+          )}
+          {activeFilters > 0 && <button type="button" onClick={resetFilters} className="h-11 rounded-xl px-3 text-[13px] font-bold text-[var(--primary-ink)] hover:bg-[var(--primary-soft)]">Atur ulang</button>}
         </div>
       </div>
 

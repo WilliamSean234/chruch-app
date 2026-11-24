@@ -48,7 +48,7 @@ export default function RuleCheckList() {
       <FilterBar active={dirty} onReset={() => { setRule(""); setPast(""); }}>
         <FSelect label="Jenis aturan" value={rule} onChange={setRule} allLabel="Semua aturan" width="w-72"
           options={rules.map((r) => ({ value: r.code, label: `${r.label}${r.events ? ` (${r.events})` : ""}` }))} />
-        <FSelect label="Waktu" value={past} onChange={setPast} allLabel="Yang akan datang" width="w-48" options={[{ value: "1", label: "Termasuk yang sudah lewat" }]} />
+        <FSelect label="Waktu" value={past} onChange={setPast} allLabel="Yang akan datang" options={[{ value: "1", label: "Termasuk yang sudah lewat" }]} />
       </FilterBar>
       {list.error && <Alert>{list.error}</Alert>}
       {rule && <p className="-mt-1 text-xs font-semibold text-[var(--ink-2)]">{rules.find((r) => r.code === rule)?.hint}</p>}
