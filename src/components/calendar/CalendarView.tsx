@@ -552,18 +552,22 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
 }
 
 /** Detail satu sesi latihan di panel kanan: tanggal, ruangan, catatan, dan siapa saja yang wajib hadir. */
-/** HP: yang berulang tahun pada tanggal terpilih, satu baris per orang: gelembung merah muda (nama) lalu gelembung biru untuk tiap komunitasnya. Tanpa detail. */
+/** HP: kartu merah muda "Ulang tahun" pada tanggal terpilih; satu baris per orang, nama di kiri dan gelembung biru komunitasnya di ujung kanan. Tanpa detail. */
 function BirthdayCard({ items }: { items: CalBirthday[] }) {
   return (
-    <div className="flex flex-col gap-2" aria-label="Ulang tahun">
+    <div className="flex flex-col overflow-hidden rounded-2xl border pb-1" style={{ background: BIRTHDAY_TONE.bg, borderColor: BIRTHDAY_TONE.dot + "55", color: BIRTHDAY_TONE.fg }}>
+      <span className="px-4 pt-3 text-xs font-extrabold uppercase tracking-[0.06em]">Ulang tahun</span>
       {items.map((b) => (
-        <div key={b.personId} className="flex flex-wrap items-center gap-1.5">
-          <span className="inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1.5 text-[14px] font-extrabold leading-snug" style={{ background: BIRTHDAY_TONE.bg, color: BIRTHDAY_TONE.fg, boxShadow: `inset 0 0 0 1px ${BIRTHDAY_TONE.dot}55` }}>
-            <span aria-hidden="true">🎂</span><span className="min-w-0 break-words">{b.name}</span>
-          </span>
-          {b.communities.map((c) => (
-            <span key={c} className="rounded-full bg-[var(--primary-soft)] px-3 py-1.5 text-[13px] font-bold leading-snug text-[var(--primary-ink)]">{c}</span>
-          ))}
+        <div key={b.personId} className="flex items-center gap-3 px-4 py-2.5">
+          <span aria-hidden="true" className="text-lg leading-none">🎂</span>
+          <span className="min-w-0 flex-1 break-words text-[15px] font-bold leading-snug">{b.name}</span>
+          {b.communities.length > 0 && (
+            <span className="flex max-w-[55%] flex-none flex-wrap justify-end gap-1.5">
+              {b.communities.map((c) => (
+                <span key={c} className="rounded-full bg-[var(--primary-soft)] px-2.5 py-1 text-[12.5px] font-bold leading-tight text-[var(--primary-ink)]">{c}</span>
+              ))}
+            </span>
+          )}
         </div>
       ))}
     </div>
