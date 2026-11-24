@@ -61,3 +61,8 @@ export const initials = (name: string) => name.split(/\s+/).filter(Boolean).slic
 
 /** "Lantai 4" untuk ruangan berlantai; kosong bila lantainya belum diisi. */
 export const floorText = (floor: number | null | undefined) => (floor === null || floor === undefined ? "" : floor === 0 ? "Lantai dasar" : floor < 0 ? `Basement ${-floor}` : `Lantai ${floor}`);
+
+/** Kunci sessionStorage: layar pembuka tampil sekali tiap aplikasi dibuka (satu sesi), tidak di tiap pindah halaman atau muat ulang. */
+export const SPLASH_KEY = "splash-seen";
+/** Dijalankan di <body> sebelum halaman tampil: bila sesi ini sudah melihat layar pembuka, sembunyikan sejak awal (tanpa berkedip). */
+export const SPLASH_GUARD = `try{if(sessionStorage.getItem("${SPLASH_KEY}"))document.documentElement.dataset.splash="off"}catch(e){}`;

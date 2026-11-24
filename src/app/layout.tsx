@@ -6,6 +6,8 @@ import ToastHost from "@/components/ui/Toast";
 import NoticeHost from "@/components/ui/NoticeHost";
 import PwaRegister from "@/components/ui/PwaRegister";
 import PullToRefresh from "@/components/ui/PullToRefresh";
+import SplashScreen from "@/components/ui/SplashScreen";
+import { SPLASH_GUARD } from "@/lib/ui";
 
 const manrope = Manrope({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"], variable: "--font-manrope", display: "swap" });
 
@@ -25,8 +27,11 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, maxi
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="id" className={manrope.variable}>
-      <body>{children}<ConfirmHost /><NoticeHost /><ToastHost /><PwaRegister /><PullToRefresh /></body>
+    <html lang="id" className={manrope.variable} suppressHydrationWarning>
+      <body>
+        <script dangerouslySetInnerHTML={{ __html: SPLASH_GUARD }} />
+        <SplashScreen />
+        {children}<ConfirmHost /><NoticeHost /><ToastHost /><PwaRegister /><PullToRefresh /></body>
     </html>
   );
 }

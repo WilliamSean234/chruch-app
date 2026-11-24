@@ -110,3 +110,166 @@ input[type="datetime-local"]::-webkit-datetime-edit {
     display: none !important;
   }
 }
+
+/* ───────── Layar pembuka (SplashScreen) ─────────
+   Tampil sekali tiap aplikasi dibuka. Semua gerakan dan hilangnya layar dikerjakan CSS, jadi layar tidak pernah
+   macet menutupi halaman. html[data-splash="off"] = sesi ini sudah melihatnya. */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 34px;
+  overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 36%, #4a52d6 0%, #3037a8 40%, #181c5e 100%);
+  padding: env(safe-area-inset-top) 24px env(safe-area-inset-bottom);
+  animation: splash-out 0.6s cubic-bezier(0.4, 0, 0.6, 1) 2.45s forwards;
+}
+html[data-splash="off"] .splash {
+  display: none;
+}
+@keyframes splash-out {
+  to { opacity: 0; transform: scale(1.08); visibility: hidden; pointer-events: none; }
+}
+.splash-glow {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  width: 150vmax;
+  height: 150vmax;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(240, 210, 138, 0.28), rgba(240, 210, 138, 0.06) 45%, transparent 70%);
+  animation: splash-breathe 2.6s ease-in-out infinite;
+}
+@keyframes splash-breathe {
+  0%, 100% { opacity: 0.55; scale: 0.7; }
+  50% { opacity: 1; scale: 0.82; }
+}
+.splash-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 240px;
+  height: 240px;
+}
+.splash-ring {
+  position: absolute;
+  inset: 40px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(240, 210, 138, 0.55);
+  opacity: 0;
+  animation: splash-ring 2.2s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+}
+@keyframes splash-ring {
+  0% { transform: scale(0.5); opacity: 0.7; }
+  100% { transform: scale(2.1); opacity: 0; }
+}
+.splash-spark {
+  position: absolute;
+  bottom: 18%;
+  border-radius: 50%;
+  background: #f0d28a;
+  box-shadow: 0 0 10px 2px rgba(240, 210, 138, 0.7);
+  opacity: 0;
+  animation: splash-float ease-out infinite;
+}
+@keyframes splash-float {
+  0% { transform: translateY(0) scale(0.6); opacity: 0; }
+  20% { opacity: 0.95; }
+  100% { transform: translateY(-190px) scale(1.1); opacity: 0; }
+}
+.splash-emblem {
+  position: relative;
+  filter: drop-shadow(0 10px 30px rgba(10, 12, 60, 0.55));
+  animation: splash-pop 0.9s cubic-bezier(0.2, 1.2, 0.3, 1) 0.1s both;
+}
+@keyframes splash-pop {
+  from { transform: scale(0.6) translateY(14px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+/* lambang: garis emas tergambar, lalu terisi putih, lalu salib tergambar */
+.splash-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: splash-stroke 1s ease-in-out 0.25s forwards;
+}
+.splash-fill {
+  animation: splash-fade 0.5s ease-out 1.05s both;
+}
+.splash-cross {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: splash-stroke 0.55s ease-out 1.45s forwards;
+}
+@keyframes splash-stroke {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes splash-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.splash-text {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.splash-title {
+  display: flex;
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #fff;
+  line-height: 1.1;
+}
+.splash-title span {
+  display: inline-block;
+  animation: splash-rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(1.05s + var(--i) * 55ms);
+}
+@keyframes splash-rise {
+  from { transform: translateY(22px); opacity: 0; filter: blur(4px); }
+  to { transform: none; opacity: 1; filter: none; }
+}
+.splash-tag {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: #f0d28a;
+  animation: splash-fade 0.7s ease-out 1.7s both;
+}
+.splash-bar {
+  margin-top: 14px;
+  width: 120px;
+  height: 3px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+  animation: splash-fade 0.4s ease-out 1.5s both;
+}
+.splash-bar i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #f0d28a, #fff);
+  transform-origin: left;
+  animation: splash-load 0.95s ease-in-out 1.55s both;
+}
+@keyframes splash-load {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .splash { animation: splash-out 0.35s ease 1s forwards; }
+  .splash *, .splash-glow { animation: none !important; }
+  .splash-ring, .splash-spark { display: none; }
+  .splash-draw { stroke-dashoffset: 0; }
+  .splash-cross { stroke-dashoffset: 0; }
+}
