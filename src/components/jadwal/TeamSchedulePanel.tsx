@@ -15,7 +15,7 @@ import { COMBINED_FORMAT } from "@/lib/scheduleMerge";
 const MONTHS = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 const SHORT = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 
-export type FormatInfo = { key: string; label: string; title: string; perService: boolean; pen?: boolean };
+export type FormatInfo = { key: string; label: string; title: string; perService: boolean; pen?: boolean; canImport?: boolean };
 type Col = { key: string; label: string; ministry: string; ministryId: string | null; service?: 1 | 2 | null; slotNo?: number; bandOnly?: boolean };
 type RowAttrs = { band?: "BAND" | "NO_BAND" | null; padus?: string; theme?: string };
 type Row = { date: string; month: number; line: number; names: Record<string, string>; attrs: RowAttrs | null; existing: { 1?: ExistingService; 2?: ExistingService } };
@@ -40,7 +40,7 @@ function download(blob: Blob, name: string) {
 }
 
 /** Pilihan "Gabungan": beberapa tim dalam satu tabel melebar (hanya untuk membagikan; mengunggah tetap per tim). */
-const COMBINED: FormatInfo = { key: COMBINED_FORMAT, label: "Gabungan", title: "JADWAL GABUNGAN", perService: false };
+const COMBINED: FormatInfo = { key: COMBINED_FORMAT, label: "Gabungan", title: "JADWAL GABUNGAN", perService: false, canImport: false };
 
 export default function TeamSchedulePanel({ formats }: { formats: FormatInfo[] }) {
   const [tab, setTab] = useState<"upload" | "export">("upload");
@@ -48,7 +48,8 @@ export default function TeamSchedulePanel({ formats }: { formats: FormatInfo[] }
   const choices = formats.length > 1 ? [...formats, COMBINED] : formats;
   const fmt = choices.find((f) => f.key === fmtKey) ?? formats[0]!;
   const combined = fmt.key === COMBINED_FORMAT;
-  const view = combined ? "export" : tab;
+  const mayUpload = fmt.canImport !== false; // Penjadwal tidak boleh mengunggah jadwal EBM, hanya membagikan
+  const view = combined || !mayUpload ? "export" : tab;
   return (
     <div className="flex flex-col gap-5">
       {choices.length > 1 && (
@@ -60,7 +61,7 @@ export default function TeamSchedulePanel({ formats }: { formats: FormatInfo[] }
           ))}
         </div>
       )}
-      {!combined && <div role="tablist" className="flex gap-2">
+      {!combined && mayUpload && <div role="tablist" className="flex gap-2">
         {([["upload", "Unggah jadwal"], ["export", "Bagikan jadwal"]] as const).map(([k, l]) => (
           <button key={k} role="tab" aria-selected={tab === k} type="button" onClick={() => setTab(k)}
             className={`h-11 flex-1 rounded-xl px-5 text-sm font-bold md:flex-none ${tab === k ? "bg-[var(--primary)] text-white" : "border border-[var(--line)] bg-white text-[var(--primary-ink)] hover:bg-[var(--bg)]"}`}>{l}</button>

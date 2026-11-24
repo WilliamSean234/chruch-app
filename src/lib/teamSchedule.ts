@@ -6,8 +6,8 @@
  */
 import { z } from "zod";
 import { prisma } from "./prisma";
-import { ApiError, badRequest, conflict, notFound } from "./errors";
-import { can, requirePermission, requireTeamAccess, type AuthUser } from "./rbac";
+import { ApiError, badRequest, conflict, forbidden, notFound } from "./errors";
+import { can, isSuperadmin, requirePermission, requireTeamAccess, type AuthUser } from "./rbac";
 import { audit } from "./audit";
 import { addMinutes, localParts, zonedToUtc } from "./time";
 import { promoteOrphanOverrides, releaseBookings } from "./booking";
@@ -82,6 +82,20 @@ async function findTeam(tenantId: string, format: TeamFormat): Promise<Team> {
 function authorize(u: AuthUser, team: Team) {
   requirePermission(u, "assignment.write");
   requireTeamAccess(u, team.id);
+}
+
+/**
+ * Mengunggah (mengubah) jadwal tim EBM hanya untuk Superadmin dan Admin Tim EBM. Penjadwal boleh melihat dan membagikan
+ * jadwal EBM, tetapi hanya boleh mengunggah jadwal Usher dan Penatalayan.
+ */
+function canImportTeam(u: AuthUser, team: Team, format: TeamFormat): boolean {
+  if (format.teamKind !== "EBM") return true;
+  return isSuperadmin(u) || u.roles.some((r) => r.code === "ADMIN_TIM" && r.teamTypeId === team.id);
+}
+
+function authorizeImport(u: AuthUser, team: Team, format: TeamFormat) {
+  authorize(u, team);
+  if (!canImportTeam(u, team, format)) throw forbidden(`Jadwal ${format.teamShort} hanya bisa diunggah oleh Admin Tim ${format.teamShort} atau Superadmin. Anda masih bisa melihat dan membagikannya.`);
 }
 
 type FormatState = {
@@ -193,7 +207,7 @@ async function candidates(tenantId: string, teamId: string, useEbmGroup: boolean
 
 export async function previewSchedule(u: AuthUser, formatKey: string, year: number, sheets: XSheet[]) {
   const base = getFormat(formatKey);
-  authorize(u, await findTeam(u.tenantId, base));
+  authorizeImport(u, await findTeam(u.tenantId, base), base);
   if (!Number.isInteger(year) || year < 2000 || year > 2100) throw badRequest("Tahun tidak valid.");
 
   const parsed = base.pen ? parsePenSheet(sheets, base, year) : parseTeamSheet(sheets, base, year);
@@ -293,7 +307,7 @@ export async function applyDate(u: AuthUser, formatKey: string, b: z.infer<typeo
   const slotKey = (c: { ministry: string; service?: 1 | 2; slotNo?: number }) => `${c.ministry.toLowerCase()}|${c.service ?? 0}|${c.slotNo ?? 1}`;
   if (new Set(format.columns.map(slotKey)).size !== format.columns.length) throw badRequest("Nama pelayanan baru sama dengan pelayanan yang sudah ada di format.");
   const probe = await findTeam(u.tenantId, format);
-  authorize(u, probe);
+  authorizeImport(u, probe, format);
 
   const [y, m, d] = b.date.split("-").map(Number) as [number, number, number];
   if (y !== b.year) throw badRequest(`Tanggal ${b.date} di luar tahun ${b.year}.`);
@@ -425,7 +439,7 @@ export async function applyDate(u: AuthUser, formatKey: string, b: z.infer<typeo
 /** Simpan ejaan nama di file sebagai alias, supaya unggahan berikutnya cocok otomatis. */
 export async function saveAliases(u: AuthUser, formatKey: string, b: z.infer<typeof aliasBody>) {
   const format = getFormat(formatKey);
-  authorize(u, await findTeam(u.tenantId, format));
+  authorizeImport(u, await findTeam(u.tenantId, format), format);
   let saved = 0;
   for (const it of b.items) {
     const p = await prisma.person.findFirst({ where: { id: it.personId, tenantId: u.tenantId, deletedAt: null }, select: { id: true, name: true, nickname: true, aliases: true } });
@@ -682,14 +696,15 @@ export async function templateWorkbook(u: AuthUser, formatKey: string, year: num
 // izin tampilan tombol (dipakai halaman)
 export const canUploadSchedule = (u: AuthUser) => can(u, "assignment.write");
 
-/** Format jadwal yang boleh dipakai pengguna ini: timnya ada, dan pengguna boleh mengatur tim itu (Admin Tim dibatasi ke timnya). */
-export async function availableFormats(u: AuthUser): Promise<{ key: string; label: string; title: string; perService: boolean; pen: boolean }[]> {
+/** Format jadwal yang boleh dilihat/dibagikan pengguna ini: timnya ada, dan pengguna boleh mengatur tim itu (Admin Tim dibatasi ke timnya). `canImport` = boleh juga mengunggahnya. */
+export async function availableFormats(u: AuthUser): Promise<{ key: string; label: string; title: string; perService: boolean; pen: boolean; canImport: boolean }[]> {
   if (!can(u, "assignment.write")) return [];
-  const out: { key: string; label: string; title: string; perService: boolean; pen: boolean }[] = [];
+  const out: { key: string; label: string; title: string; perService: boolean; pen: boolean; canImport: boolean }[] = [];
   for (const f of Object.values(ALL_FORMATS)) {
     try {
-      authorize(u, await findTeam(u.tenantId, f));
-      out.push({ key: f.key, label: f.teamShort, title: f.title, perService: !!f.groups, pen: !!f.pen });
+      const team = await findTeam(u.tenantId, f);
+      authorize(u, team);
+      out.push({ key: f.key, label: f.teamShort, title: f.title, perService: !!f.groups, pen: !!f.pen, canImport: canImportTeam(u, team, f) });
     } catch (e) {
       if (!(e instanceof ApiError)) throw e; // tim belum ada atau bukan tanggung jawab pengguna: format ini tidak ditawarkan
     }
