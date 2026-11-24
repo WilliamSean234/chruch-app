@@ -3,6 +3,7 @@ import MySchedule, { type ScheduleRow } from "@/components/saya/MySchedule";
 import { mySchedule } from "@/lib/calendar";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/rbac";
+import { mergeTwinRehearsalRows } from "@/lib/scheduleRows";
 import { dayLong, MONTHS_AHEAD, MONTHS_BACK, ymd } from "@/lib/ui";
 
 export default async function SayaPage() {
@@ -28,15 +29,17 @@ export default async function SayaPage() {
       rows.push({
         key: `r-${it.eventId}-${h.seq}`, kind: "REHEARSAL", eventId: it.eventId, title: `Latihan ${it.title}`, startsAt: h.startsAt, endsAt: h.endsAt, room: h.room,
         role: it.role, status: it.status, rehearsalRequired: true, canAttend: false, attendanceMode: it.attendanceMode, note: h.note ?? undefined,
+        events: [{ id: it.eventId, title: it.title, startsAt: it.startsAt, endsAt: it.endsAt, status: it.status }],
       });
     }
   }
   rows.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  const merged = mergeTwinRehearsalRows(rows); // latihan Ibadah Minggu 1 dan 2 yang sama tampil satu baris
 
   const first = (person?.name ?? "").split(/\s+/)[0] || "";
   return (
     <AppShell active="saya" title={first ? `Halo, ${first}` : "Jadwal saya"} subtitle={dayLong(now)}>
-      <MySchedule rows={rows} note={note} nowIso={now.toISOString()} myPersonId={u.personId} />
+      <MySchedule rows={merged} note={note} nowIso={now.toISOString()} myPersonId={u.personId} />
     </AppShell>
   );
 }

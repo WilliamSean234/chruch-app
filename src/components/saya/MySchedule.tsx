@@ -7,11 +7,14 @@ import Pager from "@/components/ui/Pager";
 import { useClientPaging } from "@/components/ui/usePagedList";
 import { hm, MONTHS, REHEARSAL_TONE, toneFor, TZ, ymd } from "@/lib/ui";
 import { monthHeading } from "@/lib/seatSections";
+import type { RehearsalEvent } from "@/lib/scheduleRows";
 import EventDetailDialog, { type DialogTarget } from "./EventDetailDialog";
 
 export type ScheduleRow = {
   key: string; kind: "SERVICE" | "REHEARSAL"; eventId: string; title: string; startsAt: string; endsAt: string; room: string;
   role: string; status: string; rehearsalRequired: boolean; canAttend: boolean; attendanceMode: string; note?: string;
+  /** Latihan: acara yang memakai sesi ini (Ibadah Minggu 1 dan 2 bisa berbagi satu latihan). */
+  events?: RehearsalEvent[];
 };
 
 const fmt = (iso: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("id-ID", { timeZone: TZ, ...o }).format(new Date(iso));
@@ -43,7 +46,7 @@ export default function MySchedule({ rows, note, nowIso, myPersonId = null }: { 
   const [year, setYear] = useState(""); // "YYYY"
   const [role, setRole] = useState("");
   const [open, setOpen] = useState<DialogTarget | null>(null); // jadwal yang rinciannya sedang dibuka
-  const show = (r: ScheduleRow) => setOpen({ eventId: r.eventId, title: r.title, kind: r.kind, startsAt: r.startsAt, endsAt: r.endsAt, room: r.room, status: r.status, canAttend: r.canAttend });
+  const show = (r: ScheduleRow) => setOpen({ eventId: r.eventId, title: r.title, kind: r.kind, startsAt: r.startsAt, endsAt: r.endsAt, room: r.room, status: r.status, canAttend: r.canAttend, events: r.events ?? [{ id: r.eventId, title: r.title, startsAt: r.startsAt, endsAt: r.endsAt, status: r.status }] });
 
   const months = useMemo(() => MONTHS.map((n, i) => ({ value: String(i + 1).padStart(2, "0"), label: n })), []);
   // Hanya tahun yang punya jadwal untuk orang ini.
@@ -53,7 +56,7 @@ export default function MySchedule({ rows, note, nowIso, myPersonId = null }: { 
 
   // Pelayanan berikutnya: tidak ikut terkena filter, selalu yang terdekat untuk orang ini.
   const next = useMemo(() => rows.find((r) => r.kind === "SERVICE" && Date.parse(r.endsAt) >= now) ?? null, [rows, now]);
-  const nextRehearsal = useMemo(() => (next ? rows.find((r) => r.kind === "REHEARSAL" && r.eventId === next.eventId && Date.parse(r.endsAt) >= now) ?? null : null), [rows, next, now]);
+  const nextRehearsal = useMemo(() => (next ? rows.find((r) => r.kind === "REHEARSAL" && (r.events?.some((e) => e.id === next.eventId) ?? r.eventId === next.eventId) && Date.parse(r.endsAt) >= now) ?? null : null), [rows, next, now]);
 
   const list = useMemo(() => {
     const needle = q.trim().toLowerCase();
