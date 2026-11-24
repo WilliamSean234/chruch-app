@@ -1,7 +1,8 @@
 /** Jenis notifikasi dan untuk siapa. Aman dipakai di sisi browser (tanpa impor server). */
-export type Audience = "PELAYAN" | "PENJADWAL" | "KELOMPOK";
+export type Audience = "SEMUA" | "PELAYAN" | "PENJADWAL" | "KELOMPOK";
 
 export const NOTIF_KINDS = [
+  { kind: "ULANG_TAHUN", audience: "SEMUA", label: "Ulang tahun jemaat", hint: "Pagi hari ketika ada jemaat yang berulang tahun. Satu pesan gabungan bila lebih dari satu orang; ulang tahun Anda sendiri tidak diberitahukan ke Anda." },
   { kind: "PELAYAN_DIBERITAHU", audience: "PELAYAN", label: "Pemberitahuan jadwal dari Penjadwal", hint: "Saat Penjadwal menekan tombol beri tahu pelayan pada acara yang sudah terbit." },
   { kind: "PELAYAN_BATAL", audience: "PELAYAN", label: "Jadwal dibatalkan atau diganti", hint: "Saat acara terbit tempat Anda bertugas dibatalkan, atau tugas Anda dialihkan atau ditambahkan karena penggantian." },
   { kind: "PELAYAN_H1", audience: "PELAYAN", label: "Pengingat sehari sebelumnya", hint: "Satu pesan gabungan sore sebelum acara atau latihan. Tidak ada pengingat di hari tanpa jadwal." },
@@ -12,7 +13,7 @@ export const NOTIF_KINDS = [
 ] as const;
 
 export type NotifKind = (typeof NOTIF_KINDS)[number]["kind"];
-export const AUDIENCE_LABEL: Record<Audience, string> = { PELAYAN: "Sebagai pelayan", PENJADWAL: "Sebagai penjadwal", KELOMPOK: "Sebagai anggota kelompok" };
+export const AUDIENCE_LABEL: Record<Audience, string> = { SEMUA: "Untuk semua", PELAYAN: "Sebagai pelayan", PENJADWAL: "Sebagai penjadwal", KELOMPOK: "Sebagai anggota kelompok" };
 
 const KINDS = new Set<string>(NOTIF_KINDS.map((k) => k.kind));
 export const isNotifKind = (v: string): v is NotifKind => KINDS.has(v);

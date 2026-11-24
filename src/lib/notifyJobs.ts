@@ -6,6 +6,7 @@ import { listViolations } from "./eventViolations";
 import { dayShort, hm, MONTHS } from "./ui";
 import { addDaysYmd, attendanceStage, diffDaysYmd, digestSummary, limitedList, monthBounds, shortHash } from "./notifyText";
 import type { NotifKind } from "./notificationKinds";
+import { birthdayMessage, birthdaysOn } from "./birthdays";
 
 /**
  * Pekerjaan notifikasi terjadwal (dipanggil dari cron harian dan bulanan). Prinsip: satu pesan gabungan per orang per pekerjaan,
@@ -230,4 +231,39 @@ export async function monthlyDigest(tenantId: string, now = new Date()) {
 /** Jalankan satu pekerjaan dengan aman: kegagalan satu pekerjaan tidak menghentikan yang lain. */
 export async function safely<T>(name: string, fn: () => Promise<T>): Promise<T | { error: string }> {
   try { return await fn(); } catch (e) { console.error(`[cron] ${name}`, e); return { error: e instanceof Error ? e.message : "gagal" }; }
+}
+
+// ───────── Ulang tahun jemaat: pagi hari, ke semua akun aktif ─────────
+/**
+ * Satu pesan gabungan per akun berisi semua yang berulang tahun hari ini. Ulang tahun pemilik akun itu sendiri tidak diikutkan
+ * di pesannya; bila hanya dia yang berulang tahun, ia tidak menerima apa pun. Pemilik yang mematikan jenis ULANG_TAHUN dilewati oleh notifyUsers.
+ */
+export async function remindBirthdays(tenantId: string, now = new Date()) {
+  const today = localParts(now).date;
+  const people = await prisma.person.findMany({
+    where: { tenantId, deletedAt: null, birthDate: { not: null } },
+    select: { id: true, name: true, nickname: true, birthDate: true },
+  });
+  const todays = birthdaysOn(people.map((p) => ({ ...p, birthDate: p.birthDate! })), today);
+  const out = { birthdays: todays.length, recipients: 0, sent: 0, skipped: 0 };
+  if (!todays.length) return out;
+
+  const users = await prisma.user.findMany({ where: { tenantId, isActive: true, deletedAt: null }, select: { id: true, personId: true } });
+  // akun dikelompokkan menurut daftar nama yang diterimanya (hampir semua akun menerima daftar yang sama)
+  const groups = new Map<string, { names: string[]; userIds: string[] }>();
+  for (const u of users) {
+    const names = todays.filter((b) => b.personId !== u.personId).map((b) => b.name);
+    if (!names.length) { out.skipped++; continue; }
+    const key = names.join("|");
+    const g = groups.get(key) ?? { names, userIds: [] };
+    g.userIds.push(u.id);
+    groups.set(key, g);
+  }
+  for (const g of groups.values()) {
+    out.recipients += g.userIds.length;
+    const r = await notifyUsers(tenantId, g.userIds, { kind: "ULANG_TAHUN", dedupeKey: `ultah:${today}`, ...birthdayMessage(g.names), url: "/" });
+    out.sent += r.sent.length;
+    out.skipped += g.userIds.length - r.sent.length;
+  }
+  return out;
 }

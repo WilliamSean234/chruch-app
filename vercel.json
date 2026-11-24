@@ -1,6 +1,7 @@
 {
   "regions": ["sin1"],
   "crons": [
+    { "path": "/api/cron/ultah", "schedule": "0 23 * * *" },
     { "path": "/api/cron/harian", "schedule": "0 10 * * *" },
     { "path": "/api/cron/bulanan", "schedule": "0 1 1 * *" }
   ]

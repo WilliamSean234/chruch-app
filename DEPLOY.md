@@ -134,10 +134,11 @@ Tersimpan di tabel `LoginThrottle` (migrasi `login_throttle`), jadi tetap berlak
 
 ## Pengingat terjadwal (cron)
 
-`vercel.json` menjadwalkan dua pekerjaan (hanya berjalan di deploy Production; paket Hobby paling sering sekali sehari, jamnya bisa meleset sampai sekitar 1 jam):
+`vercel.json` menjadwalkan tiga pekerjaan (hanya berjalan di deploy Production; paket Hobby paling sering sekali sehari, jamnya bisa meleset sampai sekitar 1 jam):
 
 | Jalur | Waktu (WIB) | Isi |
 |---|---|---|
+| `/api/cron/ultah` | sekitar 06.00 tiap hari | kabari semua akun siapa yang berulang tahun hari ini (tidak dikirim bila tidak ada; bisa dimatikan tiap pemilik akun di Profil) |
 | `/api/cron/harian` | sekitar 17.00 tiap hari | pengingat H-1 pelayan (acara dan latihan besok), pengingat H-1 rapat kelompok, kehadiran belum diisi (penjadwal), pelanggaran aturan baru (penjadwal) |
 | `/api/cron/bulanan` | sekitar 08.00 tanggal 1 | ringkasan jadwal tiap orang untuk bulan itu (tidak dikirim bila kosong) |
 

@@ -23,9 +23,9 @@ function deviceLabel(ua: string | null): string {
   return br ? `${os} · ${br}` : os;
 }
 
-/** Peran notifikasi yang berlaku untuk akun ini: pelayan (punya data Orang), penjadwal, anggota kelompok. */
+/** Peran notifikasi yang berlaku untuk akun ini: semua akun, pelayan (punya data Orang), penjadwal, anggota kelompok. */
 async function audiencesOf(u: AuthUser): Promise<Audience[]> {
-  const out: Audience[] = [];
+  const out: Audience[] = ["SEMUA"]; // setiap pemilik akun
   if (u.personId) out.push("PELAYAN");
   if (can(u, "event.write")) out.push("PENJADWAL");
   if (u.personId && (await prisma.groupMember.count({ where: { personId: u.personId, leftAt: null, group: { tenantId: u.tenantId, deletedAt: null } } })) > 0) out.push("KELOMPOK");

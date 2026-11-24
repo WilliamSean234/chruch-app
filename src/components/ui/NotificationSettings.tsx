@@ -114,7 +114,7 @@ export default function NotificationSettings() {
     : "Browser ini belum mendukung notifikasi. Di Android gunakan Chrome; di iPhone pasang aplikasi ke Layar Utama.";
   else if (perm === "denied") state = "Notifikasi diblokir untuk aplikasi ini. Aktifkan lagi lewat pengaturan notifikasi di HP atau browser Anda, lalu muat ulang halaman ini.";
 
-  const byAudience = (["PELAYAN", "PENJADWAL", "KELOMPOK"] as Audience[]).map((a) => ({ a, items: info.kinds.filter((k) => k.audience === a) })).filter((g) => g.items.length > 0);
+  const byAudience = (["SEMUA", "PELAYAN", "PENJADWAL", "KELOMPOK"] as Audience[]).map((a) => ({ a, items: info.kinds.filter((k) => k.audience === a) })).filter((g) => g.items.length > 0);
   const here = !!mine && info.devices.some((d) => d.endpoint === mine);
 
   return (
