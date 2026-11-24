@@ -433,7 +433,7 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
             <span className="text-xs font-extrabold uppercase tracking-[0.07em] text-[var(--gold-ink)]">{dayLong(selDay)}</span>
             <span className="h-px flex-1 bg-[#E8E4D6]" />
           </div>
-          {(byDay.get(selDay)?.b.length ?? 0) > 0 && <BirthdayCard items={byDay.get(selDay)!.b} selected={sheet ? selBirthday : null} onPick={pickBirthday} />}
+          {(byDay.get(selDay)?.b.length ?? 0) > 0 && <BirthdayCard items={byDay.get(selDay)!.b} />}
           {agenda.length === 0 ? (
             (byDay.get(selDay)?.b.length ?? 0) === 0 && <p className="rounded-2xl border border-[var(--line)] bg-white px-4 py-6 text-center text-sm font-semibold text-[var(--ink-2)]">{loading ? "Memuat…" : "Tidak ada kegiatan pada tanggal ini."}</p>
           ) : (
@@ -552,17 +552,19 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
 }
 
 /** Detail satu sesi latihan di panel kanan: tanggal, ruangan, catatan, dan siapa saja yang wajib hadir. */
-/** Kartu "yang berulang tahun" pada tanggal terpilih (HP); ketuk nama untuk melihat detailnya. */
-function BirthdayCard({ items, selected, onPick }: { items: CalBirthday[]; selected: string | null; onPick: (b: CalBirthday) => void }) {
+/** HP: yang berulang tahun pada tanggal terpilih, satu baris per orang: gelembung merah muda (nama) lalu gelembung biru untuk tiap komunitasnya. Tanpa detail. */
+function BirthdayCard({ items }: { items: CalBirthday[] }) {
   return (
-    <div className="flex flex-col overflow-hidden rounded-2xl border" style={{ background: BIRTHDAY_TONE.bg, borderColor: BIRTHDAY_TONE.dot + "55", color: BIRTHDAY_TONE.fg }}>
-      <span className="px-4 pt-3 text-xs font-extrabold uppercase tracking-[0.06em]">Ulang tahun</span>
+    <div className="flex flex-col gap-2" aria-label="Ulang tahun">
       {items.map((b) => (
-        <button key={b.personId} type="button" onClick={() => onPick(b)} aria-pressed={selected === bKey(b)} className={`flex w-full items-center gap-3 px-4 py-2.5 text-left ${selected === bKey(b) ? "bg-white/60" : ""}`}>
-          <span aria-hidden="true" className="text-lg leading-none">🎂</span>
-          <span className="min-w-0 flex-1 break-words text-[15px] font-bold leading-snug">{b.name}</span>
-          <span aria-hidden="true" className="text-lg font-bold">›</span>
-        </button>
+        <div key={b.personId} className="flex flex-wrap items-center gap-1.5">
+          <span className="inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1.5 text-[14px] font-extrabold leading-snug" style={{ background: BIRTHDAY_TONE.bg, color: BIRTHDAY_TONE.fg, boxShadow: `inset 0 0 0 1px ${BIRTHDAY_TONE.dot}55` }}>
+            <span aria-hidden="true">🎂</span><span className="min-w-0 break-words">{b.name}</span>
+          </span>
+          {b.communities.map((c) => (
+            <span key={c} className="rounded-full bg-[var(--primary-soft)] px-3 py-1.5 text-[13px] font-bold leading-snug text-[var(--primary-ink)]">{c}</span>
+          ))}
+        </div>
       ))}
     </div>
   );
