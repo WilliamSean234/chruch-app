@@ -67,7 +67,7 @@ export async function visibleNav(user: AuthUser) {
 }
 
 /** Tab bawah di HP: hanya yang paling sering dipakai; sisanya ada di halaman Profil. */
-const TAB_KEYS: NavKey[] = ["saya", "kalender", "rapat", "notifikasi"];
+const TAB_KEYS: NavKey[] = ["saya", "kalender", "rapat"];
 
 export default async function AppShell({ active, title, subtitle, actions, back, hideTabs, children }: {
   active: NavKey; title: string; subtitle?: string; actions?: React.ReactNode;

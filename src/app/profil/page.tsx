@@ -19,7 +19,7 @@ export default async function ProfilPage() {
   const name = person?.name ?? (email.split("@")[0] || "Pengguna");
   const roleText = isSuperadmin(u) ? ROLE_LABEL.SUPERADMIN : [...new Set(u.roles.map((r) => ROLE_LABEL[r.code] ?? r.code))].join(", ") || "Anggota";
   // Menu yang tidak muat di tab bawah (HP) ada di sini.
-  const more = nav.filter((n) => !["saya", "kalender", "rapat", "notifikasi"].includes(n.key));
+  const more = nav.filter((n) => !["saya", "kalender", "rapat"].includes(n.key));
 
   return (
     <AppShell active="profil" title="Profil" subtitle={church?.name ?? "Akun saya"}>
