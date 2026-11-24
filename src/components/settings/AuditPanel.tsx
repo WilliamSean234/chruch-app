@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Alert, FDateRange, FilterBar, FSearch, FSelect, listCard } from "@/components/ui/Filters";
+import { Alert, FMonth, FilterBar, FSearch, FSelect, listCard } from "@/components/ui/Filters";
 import Pager from "@/components/ui/Pager";
 import { useDebounced, usePagedList } from "@/components/ui/usePagedList";
 import { monthRange, ymd } from "@/lib/ui";
@@ -36,13 +36,12 @@ export default function AuditPanel() {
       <p className="m-0 text-[13.5px] font-medium leading-relaxed text-[var(--ink-2)]">
         Catatan siapa mengubah apa dan kapan. Isi rapat (nama peserta, judul tautan, notulen) sengaja tidak ditampilkan di sini.
       </p>
-      <FilterBar active={dirty} onReset={reset} moreCount={userId ? 1 : 0} mobileExtraCount={dateExtra}
+      <FilterBar active={dirty} onReset={reset} moreCount={userId ? 1 : 0}
         more={<>
           <FSelect label="Pengguna" value={userId} onChange={setUserId} allLabel="Semua pengguna" options={opts?.users.map((x) => ({ value: x.id, label: x.name }))} />
-          <FDateRange where="more" from={from} to={to} onFrom={setFrom} onTo={setTo} />
         </>}>
         <FSearch value={q} onChange={setQ} placeholder="Jenis aktivitas atau alasan" />
-        <FDateRange where="main" from={from} to={to} onFrom={setFrom} onTo={setTo} />
+        <FMonth from={from} onRange={(f, t) => { setFrom(f); setTo(t); }} />
         <FSelect label="Jenis" value={category} onChange={setCategory} allLabel="Semua jenis" options={opts?.categories.map((c) => ({ value: c.key, label: c.label }))} />
       </FilterBar>
 
@@ -50,7 +49,7 @@ export default function AuditPanel() {
 
       <section className={listCard} aria-busy={list.loading}>
         {list.items === null && <p className="px-6 py-10 text-center text-sm font-semibold text-[var(--ink-2)]">Memuat…</p>}
-        {list.items?.length === 0 && !list.error && <p className="px-6 py-10 text-center text-sm font-semibold text-[var(--ink-2)]">{dirty ? "Tidak ada aktivitas yang cocok dengan filter ini." : "Tidak ada aktivitas pada rentang tanggal ini."}</p>}
+        {list.items?.length === 0 && !list.error && <p className="px-6 py-10 text-center text-sm font-semibold text-[var(--ink-2)]">{dirty ? "Tidak ada aktivitas yang cocok dengan filter ini." : "Tidak ada aktivitas pada bulan ini."}</p>}
         {list.items?.map((r) => {
           const t = toneOf(r.action);
           return (

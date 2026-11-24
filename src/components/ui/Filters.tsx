@@ -3,13 +3,14 @@
 import { useState, type ReactNode } from "react";
 import { inputCls } from "@/components/jadwal/api";
 import { stickyCard, stickyPage } from "@/components/ui/sticky";
+import { MONTHS, monthRange, ymd } from "@/lib/ui";
 
 /**
  * Baris filter seragam untuk semua daftar. Yang paling sering dipakai langsung terlihat (children);
  * sisanya disembunyikan di "Filter lainnya" (more) yang bisa dibuka-tutup, dengan angka bila ada yang sedang aktif.
  * `moreCount` = jumlah filter tersembunyi yang sedang dipakai; panel otomatis terbuka bila sudah ada yang aktif.
  *
- * Aturan tampilan yang sama di semua halaman: semua kotak setinggi 44px dengan label di atasnya; urutan Cari, lalu tanggal (Dari – Sampai),
+ * Aturan tampilan yang sama di semua halaman: semua kotak setinggi 44px dengan label di atasnya; urutan Cari, lalu bulan (FMonth),
  * lalu kotak pilihan; kotak pilihan selebar 192px (w-48) kecuali isinya sangat panjang; tombol nyala/mati lewat FToggles; "Atur ulang" paling akhir.
  */
 export function FilterBar({ children, more, moreCount = 0, mobileExtraCount = 0, active, onReset, lead, surface = "page", sticky = true }: {
@@ -68,23 +69,27 @@ export function FSelect({ label, value, onChange, options, allLabel = "Semua", c
   );
 }
 
-export function FDate({ label, value, onChange, className = "" }: { label: string; value: string; onChange: (v: string) => void; className?: string }) {
-  return <label className={`${lbl} max-md:min-w-0 max-md:basis-[calc(50%-6px)] ${className}`}>{label}<input type="date" className={`${inputCls} w-48 max-md:min-w-0 max-md:max-w-full max-md:w-full`} value={value} onChange={(e) => onChange(e.target.value)} /></label>;
-}
-
 /**
- * Pasangan "Dari – Sampai". Pakai dua kali dalam satu FilterBar: where="main" (terlihat di layar lebar, disembunyikan di HP)
- * di children, dan where="more" (hanya di HP) di dalam `more`, supaya bagian atas HP tidak penuh.
+ * Filter periode per bulan (pengganti "Dari – Sampai"): satu kotak pilihan bulan. Menghasilkan tanggal 1 sampai tanggal terakhir bulan itu
+ * lewat `onRange`, jadi API yang memakai `from` dan `to` tidak berubah. Daftar: 24 bulan ke belakang sampai 12 bulan ke depan.
  */
-export function FDateRange({ from, to, onFrom, onTo, where, fromLabel = "Dari", toLabel = "Sampai" }: {
-  from: string; to: string; onFrom: (v: string) => void; onTo: (v: string) => void; where: "main" | "more"; fromLabel?: string; toLabel?: string;
-}) {
-  const cls = where === "main" ? "max-md:hidden" : "md:hidden";
+export function FMonth({ from, onRange, label = "Bulan" }: { from: string; onRange: (from: string, to: string) => void; label?: string }) {
+  const cur = ymd(new Date());
+  const base = Number(cur.slice(0, 4)) * 12 + Number(cur.slice(5, 7)) - 1;
+  const idx = (iso: string) => Number(iso.slice(0, 4)) * 12 + Number(iso.slice(5, 7)) - 1;
+  const sel = idx(from);
+  const lo = Math.min(base - 24, sel), hi = Math.max(base + 12, sel);
+  const opts: { value: string; label: string }[] = [];
+  for (let i = hi; i >= lo; i--) {
+    const y = Math.floor(i / 12), m = i % 12;
+    opts.push({ value: `${y}-${String(m + 1).padStart(2, "0")}`, label: `${MONTHS[m]} ${y}` });
+  }
   return (
-    <>
-      <FDate label={fromLabel} value={from} onChange={onFrom} className={cls} />
-      <FDate label={toLabel} value={to} onChange={onTo} className={cls} />
-    </>
+    <label className={`${lbl} max-md:min-w-0 max-md:max-w-full`}>{label}
+      <select className={`${inputCls} w-48 max-md:max-w-full`} value={from.slice(0, 7)} onChange={(e) => { const r = monthRange(`${e.target.value}-01`); onRange(r.from, r.to); }}>
+        {opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </label>
   );
 }
 

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Fragment, useState } from "react";
-import { FDateRange, FilterBar, FSearch, FSelect, listCard, Alert } from "@/components/ui/Filters";
+import { FMonth, FilterBar, FSearch, FSelect, listCard, Alert } from "@/components/ui/Filters";
 import Pager from "@/components/ui/Pager";
 import { CompactList, CompactRow, Detail, useOpenRows } from "@/components/ui/CompactList";
 import RoomOptions from "@/components/ui/RoomOptions";
@@ -53,10 +53,9 @@ export default function EventList() {
 
   return (
     <div className="flex flex-col gap-4">
-      <FilterBar active={dirty} onReset={reset} moreCount={(roomId ? 1 : 0) + (rehearsal ? 1 : 0) + (order !== "asc" ? 1 : 0)} mobileExtraCount={(from !== def.from ? 1 : 0) + (to !== def.to ? 1 : 0)}
+      <FilterBar active={dirty} onReset={reset} moreCount={(roomId ? 1 : 0) + (rehearsal ? 1 : 0) + (order !== "asc" ? 1 : 0)}
         more={
           <>
-            <FDateRange where="more" from={from} to={to} onFrom={setFrom} onTo={setTo} />
             <FSelect label="Ruangan" value={roomId} onChange={setRoomId} allLabel="Semua ruangan"><RoomOptions rooms={opts?.rooms ?? []} /></FSelect>
             <FSelect label="Sesi latihan" value={rehearsal} onChange={setRehearsal} allLabel="Semua"
               options={[{ value: "YES", label: "Sudah ada latihan" }, { value: "NO", label: "Belum ada latihan" }]} />
@@ -64,7 +63,7 @@ export default function EventList() {
           </>
         }>
         <FSearch value={q} onChange={setQ} placeholder="Judul atau nomor acara" />
-        <FDateRange where="main" from={from} to={to} onFrom={setFrom} onTo={setTo} />
+        <FMonth from={from} onRange={(f, t) => { setFrom(f); setTo(t); }} />
         <FSelect label="Jenis ibadah" value={templateId} onChange={setTemplateId} allLabel="Semua ibadah">
           {opts?.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           <option value="NONE">Acara satu kali (tanpa template)</option>
