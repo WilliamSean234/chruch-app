@@ -9,7 +9,7 @@ import { canScheduleInAnyGroup, isInAnyGroup } from "@/lib/groups";
 import { initials, ROLE_LABEL } from "@/lib/ui";
 import BrandMark from "@/components/ui/BrandMark";
 
-export type NavKey = "saya" | "profil" | "kalender" | "jadwal" | "rapat" | "kelompok" | "template" | "orang" | "ruangan" | "pengaturan";
+export type NavKey = "saya" | "profil" | "kalender" | "jadwal" | "rapat" | "kelompok" | "template" | "orang" | "ruangan" | "notifikasi" | "pengaturan";
 
 const icon = (d: React.ReactNode) => (
   <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>
@@ -24,6 +24,7 @@ const ICONS: Record<NavKey, React.ReactNode> = {
   template: icon(<><path d="M12 3l9 5-9 5-9-5 9-5z" /><path d="M3 13l9 5 9-5" /></>),
   orang: icon(<><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5" /><path d="M16 4.8a3.4 3.4 0 010 6.4M18 14.8c2 .6 3.2 2.3 3.5 5.2" /></>),
   ruangan: icon(<><path d="M5 21V8a7 7 0 0114 0v13" /><path d="M3 21h18M9 21v-6a3 3 0 016 0v6" /></>),
+  notifikasi: icon(<><path d="M6 17V11a6 6 0 0112 0v6l1.5 2h-15L6 17z" /><path d="M10 21a2 2 0 004 0" /></>),
   pengaturan: icon(<><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" /></>),
 };
 
@@ -37,6 +38,7 @@ const NAV: { key: NavKey; label: string; href: string; ready: boolean; show: (u:
   { key: "template", label: "Template acara", href: "/template", ready: true, show: (u) => can(u, "template.write") },
   { key: "orang", label: "Orang & pelayanan", href: "/orang", ready: true, show: (u) => can(u, "person.write") },
   { key: "ruangan", label: "Ruangan", href: "/ruangan", ready: true, show: () => true }, // semua orang boleh melihat ruangan; mengubah tetap dibatasi
+  { key: "notifikasi", label: "Notifikasi", href: "/notifikasi", ready: true, show: () => true },
   { key: "pengaturan", label: "Pengaturan", href: "/pengaturan", ready: true, show: (u) => can(u, "user.manage") },
 ];
 
@@ -65,7 +67,7 @@ export async function visibleNav(user: AuthUser) {
 }
 
 /** Tab bawah di HP: hanya yang paling sering dipakai; sisanya ada di halaman Profil. */
-const TAB_KEYS: NavKey[] = ["saya", "kalender", "rapat"];
+const TAB_KEYS: NavKey[] = ["saya", "kalender", "rapat", "notifikasi"];
 
 export default async function AppShell({ active, title, subtitle, actions, back, hideTabs, children }: {
   active: NavKey; title: string; subtitle?: string; actions?: React.ReactNode;

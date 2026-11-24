@@ -4,7 +4,7 @@ import { useState } from "react";
 import { callApi, errMsg } from "@/components/jadwal/api";
 import { showToast } from "@/components/ui/Toast";
 
-/** Status verifikasi email di Profil. Email yang terverifikasi dipakai sebagai cadangan bila notifikasi HP belum aktif. */
+/** Status verifikasi email (tab Notifikasi). Email yang terverifikasi dipakai sebagai cadangan bila notifikasi HP belum aktif. */
 export default function EmailStatus({ email, verified, mailOn }: { email: string; verified: boolean; mailOn: boolean }) {
   const [busy, setBusy] = useState(false);
   if (!verified && !mailOn) return null; // belum ada yang bisa dilakukan

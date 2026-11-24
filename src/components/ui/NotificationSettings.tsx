@@ -25,7 +25,7 @@ function keyBytes(b64: string) {
 const isIos = () => typeof navigator !== "undefined" && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
 const isStandalone = () => typeof window !== "undefined" && (window.matchMedia("(display-mode: standalone)").matches || (navigator as unknown as { standalone?: boolean }).standalone === true);
 
-/** Pengaturan notifikasi di Profil: aktifkan di HP ini, kirim tes, dan pilih jenis yang diterima. */
+/** Pengaturan notifikasi (tab Notifikasi): aktifkan di HP ini, kirim tes, dan pilih jenis yang diterima. */
 export default function NotificationSettings() {
   const [info, setInfo] = useState<Info | null>(null);
   const [error, setError] = useState<string | null>(null);
