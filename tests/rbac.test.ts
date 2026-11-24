@@ -45,3 +45,13 @@ test("Penjadwal dan Superadmin boleh mengubah data siapa pun", () => {
   assert.doesNotThrow(() => requirePersonInScope(user([role("PENJADWAL")], ["person.write"]), []));
   assert.doesNotThrow(() => requirePersonInScope(user([role("SUPERADMIN", null, true)]), ["tim-usher"]));
 });
+
+test("Pengawas hanya membaca log: tanpa izin ubah dan tanpa cakupan tim", () => {
+  const u = user([role("PENGAWAS")], ["audit.read", "calendar.read", "schedule.read-own"]);
+  assert.equal(can(u, "audit.read"), true);
+  assert.equal(can(u, "user.manage"), false);
+  assert.equal(can(u, "assignment.write"), false);
+  assert.equal(can(u, "event.write"), false);
+  assert.deepEqual(teamScope(u), []); // tidak boleh mengatur tim mana pun
+  assert.equal(can(user([role("PELAYAN")], ["calendar.read"]), "audit.read"), false);
+});

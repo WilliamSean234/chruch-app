@@ -14,7 +14,7 @@ const query = z.object({
   teamTypeId: z.string().uuid().optional(),
   positionId: z.string().uuid().optional(),
   cgGroupId: z.union([z.string().uuid(), z.literal("NONE")]).optional(), // NONE = belum punya CG
-  role: z.enum(["NO_ACCOUNT", "NO_ROLE", "SUPERADMIN", "PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN"]).optional(), // NO_ACCOUNT = belum punya akun, NO_ROLE = akun tanpa role
+  role: z.enum(["NO_ACCOUNT", "NO_ROLE", "SUPERADMIN", "PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN", "PENGAWAS"]).optional(), // NO_ACCOUNT = belum punya akun, NO_ROLE = akun tanpa role
   groupId: z.union([z.string().uuid(), z.literal("NONE")]).optional(), // kelompok rapat; untuk yang berhak mengelola data orang
   gender: z.enum(["L", "P"]).optional(),
   origin: z.enum(["DALAM", "LUAR"]).optional(),

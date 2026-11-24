@@ -34,7 +34,7 @@ export function requirePermission(u: AuthUser, permission: string): void {
  */
 export function teamScope(u: AuthUser): string[] | null {
   if (isSuperadmin(u)) return null;
-  const unrestrictedRole = u.roles.some((r) => r.code !== "ADMIN_TIM" && r.code !== "PELAYAN" && r.code !== "PETUGAS_ABSEN");
+  const unrestrictedRole = u.roles.some((r) => r.code !== "ADMIN_TIM" && r.code !== "PELAYAN" && r.code !== "PETUGAS_ABSEN" && r.code !== "PENGAWAS");
   if (unrestrictedRole) return null;
   const adminTim = u.roles.filter((r) => r.code === "ADMIN_TIM");
   if (adminTim.some((r) => r.teamTypeId === null)) return null;

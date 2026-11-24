@@ -54,7 +54,7 @@ export const STATUS_LABEL: Record<string, { text: string; bg: string; fg: string
 };
 
 export const ROLE_LABEL: Record<string, string> = {
-  SUPERADMIN: "Superadmin", PENJADWAL: "Penjadwal", ADMIN_TIM: "Admin Tim", PETUGAS_ABSEN: "Petugas Absen", PELAYAN: "Pelayan",
+  SUPERADMIN: "Superadmin", PENJADWAL: "Penjadwal", ADMIN_TIM: "Admin Tim", PETUGAS_ABSEN: "Petugas Absen", PELAYAN: "Pelayan", PENGAWAS: "Pengawas",
 };
 
 export const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");

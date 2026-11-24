@@ -9,7 +9,7 @@ import { canScheduleInAnyGroup, isInAnyGroup } from "@/lib/groups";
 import { initials, ROLE_LABEL } from "@/lib/ui";
 import BrandMark from "@/components/ui/BrandMark";
 
-export type NavKey = "saya" | "profil" | "kalender" | "jadwal" | "rapat" | "kelompok" | "template" | "orang" | "ruangan" | "notifikasi" | "pengaturan";
+export type NavKey = "saya" | "profil" | "kalender" | "jadwal" | "rapat" | "kelompok" | "template" | "orang" | "ruangan" | "notifikasi" | "log" | "pengaturan";
 
 const icon = (d: React.ReactNode) => (
   <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>
@@ -25,6 +25,7 @@ const ICONS: Record<NavKey, React.ReactNode> = {
   orang: icon(<><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5" /><path d="M16 4.8a3.4 3.4 0 010 6.4M18 14.8c2 .6 3.2 2.3 3.5 5.2" /></>),
   ruangan: icon(<><path d="M5 21V8a7 7 0 0114 0v13" /><path d="M3 21h18M9 21v-6a3 3 0 016 0v6" /></>),
   notifikasi: icon(<><path d="M6 17V11a6 6 0 0112 0v6l1.5 2h-15L6 17z" /><path d="M10 21a2 2 0 004 0" /></>),
+  log: icon(<><path d="M7 3h8l4 4v14H7z" /><path d="M15 3v4h4M10 12h6M10 16h6" /></>),
   pengaturan: icon(<><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" /></>),
 };
 
@@ -39,6 +40,8 @@ const NAV: { key: NavKey; label: string; href: string; ready: boolean; show: (u:
   { key: "orang", label: "Orang & pelayanan", href: "/orang", ready: true, show: (u) => can(u, "person.write") },
   { key: "ruangan", label: "Ruangan", href: "/ruangan", ready: true, show: () => true }, // semua orang boleh melihat ruangan; mengubah tetap dibatasi
   { key: "notifikasi", label: "Notifikasi", href: "/notifikasi", ready: true, show: () => true },
+  // Pengawas: hanya membaca log. Superadmin membukanya lewat tab Log di Pengaturan.
+  { key: "log", label: "Log aktivitas", href: "/log", ready: true, show: (u) => can(u, "audit.read") && !can(u, "user.manage") },
   { key: "pengaturan", label: "Pengaturan", href: "/pengaturan", ready: true, show: (u) => can(u, "user.manage") },
 ];
 

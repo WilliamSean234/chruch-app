@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { forbidden } from "./errors";
-import { isSuperadmin, type AuthUser } from "./rbac";
+import { can, type AuthUser } from "./rbac";
 import { creatorNames } from "./creators";
 import { addMinutes, DATE_RE, zonedToUtc } from "./time";
 import { pageOf, pagingQuery, resolvePaging } from "./paging";
@@ -68,7 +68,7 @@ export const auditQuery = z.object({
 });
 
 export async function listAuditLogs(u: AuthUser, q: z.infer<typeof auditQuery>) {
-  if (!isSuperadmin(u)) throw forbidden("Log aktivitas hanya untuk Superadmin.");
+  if (!can(u, "audit.read")) throw forbidden("Log aktivitas hanya untuk Superadmin dan Pengawas.");
   const pg = resolvePaging(q);
   const cat = CATEGORIES.find((c) => c.key === q.category);
   const where: Prisma.AuditLogWhereInput = {

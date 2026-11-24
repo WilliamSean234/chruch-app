@@ -16,7 +16,7 @@ const TONE: Record<string, { bg: string; fg: string }> = {
 };
 const toneOf = (action: string) => TONE[action.split(".")[0]] ?? TONE.import;
 
-/** Tab "Log aktivitas" di Pengaturan (Superadmin). */
+/** Log aktivitas: tab di Pengaturan (Superadmin) dan halaman /log (Pengawas). */
 export default function AuditPanel() {
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("");

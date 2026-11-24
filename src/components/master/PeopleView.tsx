@@ -29,9 +29,9 @@ const fullName = (x: { name: string; title?: string | null }) => (x.title && !x.
 const POS_COLORS = [["#E6E8F8", "#3037A8"], ["#FFF3D6", "#6F4304"], ["#FCE8EC", "#9B1C3A"], ["#DDF3F2", "#0F5E5A"], ["#EFE6FA", "#5B2A9E"]] as const;
 const posColor = (name: string) => POS_COLORS[[...name.toLowerCase()].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % POS_COLORS.length];
 const ROLE_TONE: Record<string, [string, string]> = {
-  SUPERADMIN: ["#FCE8EC", "#9B1C3A"], PENJADWAL: ["#E6E8F8", "#3037A8"], ADMIN_TIM: ["#EFE6FA", "#5B2A9E"], PETUGAS_ABSEN: ["#FFF3D6", "#6F4304"], PELAYAN: ["#E3F4E8", "#1B6B34"],
+  SUPERADMIN: ["#FCE8EC", "#9B1C3A"], PENJADWAL: ["#E6E8F8", "#3037A8"], ADMIN_TIM: ["#EFE6FA", "#5B2A9E"], PETUGAS_ABSEN: ["#FFF3D6", "#6F4304"], PELAYAN: ["#E3F4E8", "#1B6B34"], PENGAWAS: ["#DDF3F2", "#0F5E5A"],
 };
-const ROLE_ORDER = ["SUPERADMIN", "PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN"];
+const ROLE_ORDER = ["SUPERADMIN", "PENGAWAS", "PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN"];
 
 /** Role akun login: chip per role. Tanpa akun cukup "–"; akun nonaktif diberi tanda. */
 function RoleChips({ account }: { account: PersonDto["account"] }) {
@@ -153,7 +153,7 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
               <FSelect label="Role" value={roleF} onChange={setRoleF} allLabel="Semua role">
                 <option value="NO_ACCOUNT">Belum punya akun</option>
                 <option value="NO_ROLE">Akun tanpa role</option>
-                {["SUPERADMIN", "PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN"].map((c) => <option key={c} value={c}>{ROLE_LABEL[c]}</option>)}
+                {["SUPERADMIN", "PENGAWAS", "PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN"].map((c) => <option key={c} value={c}>{ROLE_LABEL[c]}</option>)}
               </FSelect>
             )}
           </>

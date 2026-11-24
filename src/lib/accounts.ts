@@ -13,7 +13,7 @@ import { syncTkiGroup } from "./tkiGroup";
 export const accountBody = z.object({
   email: z.string().trim().toLowerCase().email(),
   password: z.string().min(8, "Kata sandi minimal 8 karakter").max(100),
-  roleCodes: z.array(z.enum(["SUPERADMIN", "PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN"])).default([]), // kosong = hanya bisa melihat kalender dan jadwal sendiri
+  roleCodes: z.array(z.enum(["SUPERADMIN", "PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN", "PENGAWAS"])).default([]), // kosong = hanya bisa melihat kalender dan jadwal sendiri
   teamTypeId: z.string().uuid().nullish(), // wajib bila ADMIN_TIM
   ebmScheduler: z.boolean().optional(), // Admin Tim EBM sekaligus jadi anggota kelompok EBM dengan jabatan Penjadwal EBM (hanya Superadmin)
 });
@@ -24,7 +24,7 @@ export async function createAccountForPerson(
   /** Persetujuan permintaan daftar: kata sandi sudah dipilih sendiri oleh pendaftar (hash dibawa dari permintaan), jadi tidak wajib diganti. */
   own?: { passwordHash: string },
 ) {
-  if (b.roleCodes.includes("SUPERADMIN") && !isSuperadmin(actor)) throw forbidden("Hanya Superadmin yang boleh membuat Superadmin.");
+  if ((b.roleCodes.includes("SUPERADMIN") || b.roleCodes.includes("PENGAWAS")) && !isSuperadmin(actor)) throw forbidden("Hanya Superadmin yang boleh membuat Superadmin atau Pengawas.");
   if (b.roleCodes.includes("ADMIN_TIM") && !b.teamTypeId) throw badRequest("Pilih tim yang dikelola untuk Admin Tim.");
 
   const person = await prisma.person.findFirst({ where: { id: personId, tenantId: actor.tenantId, deletedAt: null }, include: { user: true } });
@@ -72,7 +72,7 @@ export async function deactivateAccount(tenantId: string, personId: string) {
 
 export const accountPatch = z
   .object({
-    roleCodes: z.array(z.enum(["SUPERADMIN", "PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN"])).optional(),
+    roleCodes: z.array(z.enum(["SUPERADMIN", "PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN", "PENGAWAS"])).optional(),
     teamTypeId: z.string().uuid().nullish(),
     isActive: z.boolean().optional(),
     ebmScheduler: z.boolean().optional(), // beri jabatan Penjadwal EBM di kelompok EBM (hanya menambah; mencabutnya lewat halaman Kelompok)
@@ -90,7 +90,7 @@ export async function updateAccount(actor: AuthUser, target: string | { userId: 
   if (!user) throw notFound("Akun");
   const targetIsSuper = user.roles.some((r) => r.role.isSuperadmin);
   if (targetIsSuper && !isSuperadmin(actor)) throw forbidden("Akun Superadmin hanya bisa diubah oleh Superadmin.");
-  if (b.roleCodes?.includes("SUPERADMIN") && !isSuperadmin(actor)) throw forbidden("Hanya Superadmin yang boleh memberi role Superadmin.");
+  if ((b.roleCodes?.includes("SUPERADMIN") || b.roleCodes?.includes("PENGAWAS")) && !isSuperadmin(actor)) throw forbidden("Hanya Superadmin yang boleh memberi role Superadmin atau Pengawas.");
   if (b.roleCodes?.includes("ADMIN_TIM") && !b.teamTypeId) throw badRequest("Pilih tim yang dikelola untuk Admin Tim.");
   if (b.ebmScheduler) {
     if (!user.personId) throw badRequest("Akun ini tidak terhubung ke data orang.");
@@ -156,7 +156,7 @@ export async function changeOwnPassword(actor: AuthUser, b: z.infer<typeof passw
 
 export const accountListQuery = z.object({
   search: z.string().trim().optional(),
-  role: z.enum(["NONE", "SUPERADMIN", "PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN"]).optional(), // NONE = akun tanpa role
+  role: z.enum(["NONE", "SUPERADMIN", "PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN", "PENGAWAS"]).optional(), // NONE = akun tanpa role
   status: z.enum(["active", "inactive"]).optional(),
   groupId: z.union([z.string().uuid(), z.literal("NONE")]).optional(), // kelompok rapat; NONE = tidak di kelompok mana pun
   ...pagingQuery,

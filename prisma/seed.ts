@@ -23,6 +23,7 @@ const PERMISSIONS = [
   "attendance.write", // input kehadiran (petugas dibatasi ke acara yang ditugaskan)
   "calendar.read",
   "schedule.read-own",
+  "audit.read", // membaca Log aktivitas (Superadmin dan Pengawas)
 ] as const;
 
 const ROLES: { code: string; name: string; isSuperadmin?: boolean; permissions: string[] }[] = [
@@ -55,6 +56,12 @@ const ROLES: { code: string; name: string; isSuperadmin?: boolean; permissions: 
     permissions: ["attendance.write", "calendar.read", "schedule.read-own"],
   },
   { code: "PELAYAN", name: "Pelayan", permissions: ["calendar.read", "schedule.read-own"] },
+  {
+    // pengawas: hanya membaca Log aktivitas, tanpa hak mengubah data apa pun
+    code: "PENGAWAS",
+    name: "Pengawas",
+    permissions: ["audit.read", "calendar.read", "schedule.read-own"],
+  },
 ];
 
 // ───────── Tim paten & posisi ─────────

@@ -179,7 +179,7 @@ export default function AccountsPanel({ selfId, isSuper }: { selfId: string; isS
 type PatchFn = (b: unknown) => Promise<{ ok: boolean; data: { error?: { message?: string; code?: string } } | null }>;
 
 function RoleDialog({ acc, teams, isSuper, self, onClose, patch, onDone }: { acc: Acc; teams: Team[]; isSuper: boolean; self: boolean; onClose: () => void; patch: PatchFn; onDone: () => void }) {
-  const options = ["PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN", ...(isSuper ? ["SUPERADMIN"] : [])];
+  const options = ["PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN", ...(isSuper ? ["PENGAWAS", "SUPERADMIN"] : [])];
   const [sel, setSel] = useState<string[]>(acc.roleCodes);
   const [teamId, setTeamId] = useState(acc.teamTypeId ?? "");
   const [busy, setBusy] = useState(false);

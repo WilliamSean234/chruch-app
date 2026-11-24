@@ -177,7 +177,7 @@ function AccountSection({ person, teams, isSuper, onChanged }: { person: PersonD
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
   const [issued, setIssued] = useState<{ email: string; password: string } | null>(null); // kata sandi yang baru dibuat/direset, untuk dicatat
-  const roles = ["NONE", "PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN", ...(isSuper ? ["SUPERADMIN"] : [])];
+  const roles = ["NONE", "PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN", ...(isSuper ? ["PENGAWAS", "SUPERADMIN"] : [])];
   const roleLabel = (c: string) => (c === "NONE" ? "Tanpa role (hanya melihat jadwal)" : ROLE_LABEL[c] ?? c);
   const accRoles = acc?.roleCodes ?? [];
   const roleText = accRoles.length ? accRoles.map((c) => ROLE_LABEL[c] ?? c).join(", ") : "Tanpa role (hanya melihat jadwal)";
