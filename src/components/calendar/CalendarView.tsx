@@ -26,7 +26,8 @@ type CalMeeting = {
   id: string; number: string; status: string; startsAt: string; endsAt: string; room: { id: string; name: string };
   group: { id: string; name: string }; displayTitle: string; isMember: boolean; canManage: boolean;
 };
-type CalBirthday = { date: string; personId: string; name: string };
+type CalBirthday = { date: string; personId: string; name: string; fullName: string; communities: string[] };
+const bKey = (b: CalBirthday) => `${b.date}|${b.personId}`;
 type Team = { id: string; name: string };
 type AgendaRow = { key: string; kind: "E" | "R" | "M"; id: string; eventId?: string; title: string; sub: string; start: string; end: string; dot: string; cancelled?: boolean; draft?: boolean };
 const RAPAT_TONE = { bg: "#F8E6DD", fg: "#7A3A1E", dot: "#C0562D" };
@@ -56,6 +57,7 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
   const [meetingGroups, setMeetingGroups] = useState<{ id: string; name: string }[]>([]);
   const [groupId, setGroupId] = useState("");
   const [selMeeting, setSelMeeting] = useState<string | null>(null);
+  const [selBirthday, setSelBirthday] = useState<string | null>(null); // kunci ulang tahun yang dibuka di panel samping
   // Tampilkan/sembunyikan rapat di kalender (hanya untuk yang boleh melihat rapat); klik tombol hanya berlaku selama halaman terbuka.
   const [showMeetings, setShowMeetings] = useState(canSeeMeetings);
   const toggleMeetings = () => {
@@ -198,12 +200,18 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
     return rows.sort((a, b) => a.start.localeCompare(b.start));
   }, [byDay, selDay]);
   const openRow = (r: AgendaRow) => {
-    if (r.kind === "E") { setSelected(r.id); setSelectedRehearsal(null); setSelMeeting(null); }
-    else if (r.kind === "R") { setSelected(r.eventId ?? null); setSelectedRehearsal(r.id); setSelMeeting(null); }
-    else setSelMeeting(r.id);
+    if (r.kind === "E") { setSelected(r.id); setSelectedRehearsal(null); setSelMeeting(null); setSelBirthday(null); }
+    else if (r.kind === "R") { setSelected(r.eventId ?? null); setSelectedRehearsal(r.id); setSelMeeting(null); setSelBirthday(null); }
+    else { setSelMeeting(r.id); setSelBirthday(null); }
     setSheet(true);
     setTimeout(() => asideRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   };
+  const pickBirthday = (b: CalBirthday) => {
+    setSelBirthday(bKey(b)); setSelMeeting(null);
+    setSheet(true);
+    setTimeout(() => asideRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+  };
+  const selBirthdayInfo = selBirthday ? birthdays.find((b) => bKey(b) === selBirthday) : undefined;
   const rowOn = (r: AgendaRow) => sheet && (r.kind === "E" ? selected === r.id && !selectedRehearsal && !selMeeting : r.kind === "R" ? selectedRehearsal === r.id && !selMeeting : selMeeting === r.id);
   const activeFilters = [mine, teamId, person, groupId, canSeeMeetings && !showMeetings, canSeeCancelled && showCancelled].filter(Boolean).length;
 
@@ -295,7 +303,7 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
           onDone={(msg) => {
             const id = dialog.eventId;
             setDialog(null); setFlash(msg);
-            setSelected(id); setSelectedRehearsal(null); setSelMeeting(null);
+            setSelected(id); setSelectedRehearsal(null); setSelMeeting(null); setSelBirthday(null);
             setDetailKey((k) => k + 1); setRefreshKey((k) => k + 1);
             void load();
           }}
@@ -350,13 +358,14 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
                     <div key={c.iso} className={`flex min-h-[136px] flex-col gap-[5px] border-b border-r border-[var(--line-2)] p-2 pt-2.5 ${c.inMonth ? (c.weekday === 0 ? "bg-[#FFFCF5]" : "bg-white") : "bg-[var(--surface-2)]"}`}>
                       <span className={`grid h-[26px] min-w-[26px] place-items-center self-start rounded-full px-1 text-[13px] font-bold ${isToday ? "bg-[var(--primary)] text-white" : c.inMonth ? "text-[var(--ink)]" : "text-[#A9ADC3]"}`}>{c.day}</span>
                       {d && d.b.length > 0 && (
-                        <div className="flex flex-col gap-[3px]" title={`Ulang tahun: ${d.b.map((x) => x.name).join(", ")}`}>
-                          {d.b.slice(0, 2).map((x) => (
-                            <span key={x.personId} className="flex min-h-[24px] w-full items-center gap-1.5 rounded-lg px-2 py-[2px] text-[11.5px] font-bold leading-tight" style={{ background: BIRTHDAY_TONE.bg, color: BIRTHDAY_TONE.fg, opacity: c.iso < today ? 0.7 : 1 }}>
+                        <div className="flex flex-col gap-[3px]">
+                          {d.b.map((x) => (
+                            <button key={x.personId} type="button" onClick={() => pickBirthday(x)} title={`Ulang tahun: ${x.name}`}
+                              className="flex min-h-[24px] w-full items-center gap-1.5 rounded-lg px-2 py-[2px] text-left text-[11.5px] font-bold leading-tight hover:brightness-95"
+                              style={{ background: BIRTHDAY_TONE.bg, color: BIRTHDAY_TONE.fg, boxShadow: bKey(x) === selBirthday ? `0 0 0 2px ${BIRTHDAY_TONE.dot}` : undefined, opacity: c.iso < today ? 0.7 : 1 }}>
                               <span aria-hidden="true">🎂</span><span className="min-w-0 truncate">{x.name}</span>
-                            </span>
+                            </button>
                           ))}
-                          {d.b.length > 2 && <span className="px-2 text-[11px] font-bold" style={{ color: BIRTHDAY_TONE.fg }}>+{d.b.length - 2} ulang tahun lagi</span>}
                         </div>
                       )}
                       {d?.e.map((e) => {
@@ -365,7 +374,7 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
                         const droppable = !!dragPerson && !cancelled;
                         const over = droppable && dropOver === e.id;
                         return (
-                          <button key={e.id} onClick={() => { setSelected(e.id); setSelectedRehearsal(null); setSelMeeting(null); }}
+                          <button key={e.id} onClick={() => { setSelected(e.id); setSelectedRehearsal(null); setSelMeeting(null); setSelBirthday(null); }}
                             onDragOver={(ev) => { if (droppable) { ev.preventDefault(); ev.dataTransfer.dropEffect = "copy"; } }}
                             onDragEnter={() => { if (droppable) setDropOver(e.id); }}
                             onDragLeave={() => setDropOver((cur) => (cur === e.id ? null : cur))}
@@ -388,7 +397,7 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
                         );
                       })}
                       {d?.m.map((x) => (
-                        <button key={x.id} onClick={() => setSelMeeting(x.id)} title={`${x.displayTitle} — ${x.room.name}`}
+                        <button key={x.id} onClick={() => { setSelMeeting(x.id); setSelBirthday(null); }} title={`${x.displayTitle} — ${x.room.name}`}
                           className="flex min-h-[30px] w-full items-start gap-1.5 rounded-lg px-2 py-1 text-left text-[11.5px] font-bold leading-tight hover:brightness-95"
                           style={{ background: RAPAT_TONE.bg, color: RAPAT_TONE.fg, boxShadow: x.id === selMeeting ? `0 0 0 2px ${RAPAT_TONE.dot}` : undefined, opacity: c.iso < today ? 0.62 : 1 }}>
                           <span className="mt-[3px] size-[7px] flex-none rounded-full" style={{ background: RAPAT_TONE.dot }} aria-hidden="true" />
@@ -396,7 +405,7 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
                         </button>
                       ))}
                       {d?.r.map((r) => (
-                        <button key={r.id} onClick={() => { setSelected(r.eventId); setSelectedRehearsal(r.id); setSelMeeting(null); }} title={`Latihan ${r.seq} — ${r.eventTitle} (${r.room.name})${r.mine ? " · Saya wajib hadir" : ""}`}
+                        <button key={r.id} onClick={() => { setSelected(r.eventId); setSelectedRehearsal(r.id); setSelMeeting(null); setSelBirthday(null); }} title={`Latihan ${r.seq} — ${r.eventTitle} (${r.room.name})${r.mine ? " · Saya wajib hadir" : ""}`}
                           className="flex min-h-[30px] w-full items-center gap-1.5 rounded-lg px-2 py-[3px] text-left text-[11.5px] font-bold leading-tight hover:brightness-95"
                           style={{ background: REHEARSAL_TONE.bg, color: REHEARSAL_TONE.fg, boxShadow: r.id === selectedRehearsal ? `0 0 0 2px ${REHEARSAL_TONE.dot}` : undefined, opacity: c.iso < today ? 0.62 : 1 }}>
                           <span className="size-[7px] flex-none rounded-full" style={{ background: REHEARSAL_TONE.dot }} aria-hidden="true" />
@@ -424,7 +433,7 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
             <span className="text-xs font-extrabold uppercase tracking-[0.07em] text-[var(--gold-ink)]">{dayLong(selDay)}</span>
             <span className="h-px flex-1 bg-[#E8E4D6]" />
           </div>
-          {(byDay.get(selDay)?.b.length ?? 0) > 0 && <BirthdayCard names={byDay.get(selDay)!.b.map((x) => x.name)} />}
+          {(byDay.get(selDay)?.b.length ?? 0) > 0 && <BirthdayCard items={byDay.get(selDay)!.b} selected={sheet ? selBirthday : null} onPick={pickBirthday} />}
           {agenda.length === 0 ? (
             (byDay.get(selDay)?.b.length ?? 0) === 0 && <p className="rounded-2xl border border-[var(--line)] bg-white px-4 py-6 text-center text-sm font-semibold text-[var(--ink-2)]">{loading ? "Memuat…" : "Tidak ada kegiatan pada tanggal ini."}</p>
           ) : (
@@ -453,7 +462,9 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
 
         <aside ref={asideRef} className={`${sheet ? "" : "max-md:hidden"} lg:sticky lg:top-[calc(var(--header-h)+16px)] lg:max-h-[calc(100vh-var(--header-h)-32px)] lg:self-start lg:overflow-y-auto flex min-w-[300px] max-md:min-w-0 max-w-[400px] flex-[1_1_320px] flex-col gap-[18px] rounded-[20px] border border-[var(--line)] bg-white p-[22px] max-md:order-3 max-md:w-full max-md:min-w-0 max-md:max-w-none max-md:scroll-mt-28`} aria-live="polite">
           <button type="button" onClick={() => setSheet(false)} className="-mb-2 flex h-9 items-center gap-1.5 self-end rounded-lg px-2.5 text-[13px] font-bold text-[var(--primary-ink)] hover:bg-[var(--primary-soft)] md:hidden">Tutup ✕</button>
-          {selMeeting ? (
+          {selBirthdayInfo ? (
+            <BirthdayPanel b={selBirthdayInfo} />
+          ) : selMeeting ? (
             <MeetingPanel id={selMeeting} onClose={() => setSelMeeting(null)} />
           ) : !detail || !tone || !st ? (
             <p className="py-10 text-center text-sm font-semibold text-[var(--ink-2)]">{events.length === 0 && (!canSeeMeetings || !showMeetings || shownMeetings.length === 0) && !loading ? "Tidak ada acara pada tampilan ini." : "Pilih acara di kalender untuk melihat detailnya."}</p>
@@ -541,16 +552,51 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
 }
 
 /** Detail satu sesi latihan di panel kanan: tanggal, ruangan, catatan, dan siapa saja yang wajib hadir. */
-/** Kartu "yang berulang tahun" pada tanggal terpilih (HP). */
-function BirthdayCard({ names }: { names: string[] }) {
+/** Kartu "yang berulang tahun" pada tanggal terpilih (HP); ketuk nama untuk melihat detailnya. */
+function BirthdayCard({ items, selected, onPick }: { items: CalBirthday[]; selected: string | null; onPick: (b: CalBirthday) => void }) {
   return (
-    <div className="flex items-start gap-3 rounded-2xl border px-4 py-3" style={{ background: BIRTHDAY_TONE.bg, borderColor: BIRTHDAY_TONE.dot + "55", color: BIRTHDAY_TONE.fg }}>
-      <span aria-hidden="true" className="text-xl leading-none">🎂</span>
-      <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-xs font-extrabold uppercase tracking-[0.06em]">Ulang tahun</span>
-        <span className="break-words text-[15px] font-bold leading-snug">{names.join(", ")}</span>
-      </span>
+    <div className="flex flex-col overflow-hidden rounded-2xl border" style={{ background: BIRTHDAY_TONE.bg, borderColor: BIRTHDAY_TONE.dot + "55", color: BIRTHDAY_TONE.fg }}>
+      <span className="px-4 pt-3 text-xs font-extrabold uppercase tracking-[0.06em]">Ulang tahun</span>
+      {items.map((b) => (
+        <button key={b.personId} type="button" onClick={() => onPick(b)} aria-pressed={selected === bKey(b)} className={`flex w-full items-center gap-3 px-4 py-2.5 text-left ${selected === bKey(b) ? "bg-white/60" : ""}`}>
+          <span aria-hidden="true" className="text-lg leading-none">🎂</span>
+          <span className="min-w-0 flex-1 break-words text-[15px] font-bold leading-snug">{b.name}</span>
+          <span aria-hidden="true" className="text-lg font-bold">›</span>
+        </button>
+      ))}
     </div>
+  );
+}
+
+/** Rincian satu ulang tahun di panel samping: tanggal, nama lengkap, dan komunitas yang diikuti. Usia sengaja tidak ditampilkan. */
+function BirthdayPanel({ b }: { b: CalBirthday }) {
+  const tone = BIRTHDAY_TONE;
+  return (
+    <>
+      <div className="flex items-center gap-4">
+        <div className="flex h-[76px] w-16 flex-none flex-col items-center justify-center rounded-t-[32px] rounded-b-[10px] leading-[1.1]" style={{ background: tone.bg, color: tone.fg, border: `1.5px solid ${tone.dot}` }}>
+          <span className="text-[11px] font-bold uppercase tracking-[0.06em]">{WEEKDAYS[new Date(`${b.date}T00:00:00Z`).getUTCDay()]}</span>
+          <span className="text-[26px] font-extrabold">{b.date.slice(8)}</span>
+          <span className="text-[11px] font-bold">{MONTHS[Number(b.date.slice(5, 7)) - 1].slice(0, 3)}</span>
+        </div>
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <h2 className="break-words text-[19px] font-extrabold leading-tight tracking-tight">{b.name}</h2>
+          <span className="self-start rounded-full px-2.5 py-[3px] text-xs font-bold" style={{ background: tone.bg, color: tone.fg }}>🎂 Ulang tahun</span>
+        </div>
+      </div>
+      <p className="-mt-2 text-xs font-semibold text-[var(--ink-2)]">{dayLong(b.date)}</p>
+      {b.fullName !== b.name && (
+        <div className="flex flex-col gap-0.5 rounded-xl bg-[var(--bg)] px-3 py-2.5"><span className="text-[11.5px] font-semibold text-[var(--ink-2)]">Nama lengkap</span><span className="break-words text-sm font-bold">{b.fullName}</span></div>
+      )}
+      <div className="flex flex-col gap-2 rounded-xl bg-[var(--bg)] px-3 py-2.5">
+        <span className="text-[11.5px] font-semibold text-[var(--ink-2)]">Komunitas</span>
+        {b.communities.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {b.communities.map((c) => <span key={c} className="rounded-full bg-white px-2.5 py-1 text-[13px] font-bold text-[var(--primary-ink)] ring-1 ring-[var(--line)]">{c}</span>)}
+          </div>
+        ) : <span className="text-sm font-semibold text-[var(--ink-2)]">Belum tergabung dalam komunitas.</span>}
+      </div>
+    </>
   );
 }
 

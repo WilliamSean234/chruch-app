@@ -75,13 +75,15 @@ export async function listCalendar(u: AuthUser, q: CalendarQuery) {
     : [];
 
   // Ulang tahun jemaat (hanya tanggal dan nama). Tidak ikut bila kalender difilter per tim, orang, atau status; "Jadwal saya" hanya ulang tahun sendiri.
-  let birthdays: { date: string; personId: string; name: string }[] = [];
+  let birthdays: { date: string; personId: string; name: string; fullName: string; communities: string[] }[] = [];
   if (!q.teamTypeId && !q.personId && !q.status) {
     const people = await prisma.person.findMany({
       where: { tenantId: u.tenantId, deletedAt: null, birthDate: { not: null }, ...(q.mine ? { id: u.personId ?? "none" } : {}) },
-      select: { id: true, name: true, nickname: true, birthDate: true },
+      select: { id: true, name: true, nickname: true, birthDate: true, communities: { where: { community: { deletedAt: null } }, select: { community: { select: { name: true } } } } },
     });
-    birthdays = birthdaysInRange(people.map((p) => ({ ...p, birthDate: p.birthDate! })), q.from, q.to);
+    const info = new Map(people.map((p) => [p.id, { fullName: p.name, communities: p.communities.map((c) => c.community.name).sort((x, y) => x.localeCompare(y, "id")) }] as const));
+    birthdays = birthdaysInRange(people.map((p) => ({ id: p.id, name: p.name, nickname: p.nickname, birthDate: p.birthDate! })), q.from, q.to)
+      .map((b) => ({ ...b, ...info.get(b.personId)! }));
   }
 
   return {
