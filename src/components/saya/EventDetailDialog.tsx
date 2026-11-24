@@ -85,6 +85,13 @@ export default function EventDetailDialog({ target, myPersonId, onClose }: { tar
               </div>
             )}
 
+            {isRehearsal && (
+              <div className="flex flex-col gap-0.5 rounded-xl bg-[var(--bg)] p-3">
+                <span className="text-[11.5px] font-semibold text-[var(--ink-2)]">Latihan untuk acara</span>
+                <span className="text-sm font-extrabold">{detail.title}</span>
+                <span className="text-[13px] font-semibold text-[var(--ink-2)]">{dayLong(detail.startsAt)}, {hm(detail.startsAt)}–{hm(detail.endsAt)} · {detail.room.name}</span>
+              </div>
+            )}
             {isRehearsal && <p className="m-0 text-[13px] font-semibold text-[var(--ink-2)]">Yang wajib hadir di latihan ini:</p>}
             {sections.length === 0 && <p className="m-0 text-[13px] text-[var(--ink-2)]">{isRehearsal ? "Belum ada petugas yang wajib latihan." : "Belum ada petugas yang dijadwalkan."}</p>}
             {sections.map((s) => (
