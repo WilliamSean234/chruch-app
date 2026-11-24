@@ -6,7 +6,7 @@ import { ebmOutsideWarning, judgePair, teamKind, type OutsideSeat } from "./seat
 import { assertNotLocked, isEditable, isLockedByAge } from "./eventStatusFlow";
 import { audit } from "./audit";
 import { findPairEvent, getEvent } from "./events";
-import { twinInfo } from "./rehearsals";
+import { mirrorSessionsFrom, setSeatRequired, twinInfo } from "./rehearsals";
 import { can, requirePermission, requireTeamAccess, type AuthUser } from "./rbac";
 import { nameKey } from "./names";
 import { afterResponse } from "./notify";
@@ -289,6 +289,8 @@ export const copyBody = z.object({ sourceEventId: z.string().uuid() });
  * Isi kursi yang masih kosong di acara ini dengan orang dari kursi yang sama (posisi dan nomor kursi) di acara sumber.
  * Kursi yang sudah berorang tidak disentuh. Tiap kursi melewati pemeriksaan biasa (bentrok, aturan EBM, merangkap);
  * yang ditolak dilewati dan dilaporkan, sisanya tetap terisi. Sesudahnya tiap kursi tetap bisa diubah satu per satu.
+ * Sesi latihan ikut: sesi sumber yang belum ada di acara ini dibuat dengan jam dan ruangan yang sama, dan kursi yang baru terisi
+ * mengikuti status "wajib latihan" kursi sumbernya.
  */
 export async function copyPersonnel(u: AuthUser, targetEventId: string, sourceEventId: string) {
   if (targetEventId === sourceEventId) throw badRequest("Pilih acara lain sebagai sumber.");
@@ -305,6 +307,7 @@ export async function copyPersonnel(u: AuthUser, targetEventId: string, sourceEv
   let filled = 0;
   const skipped: { label: string; person: string; reason: string }[] = [];
   const notes = new Set<string>();
+  const needRequired: { seatId: string; label: string }[] = [];
   for (const seat of target.assignments) {
     if (seat.personId) continue;
     const src = from.get(`${seat.ministryId}:${seat.slotNo}`);
@@ -313,11 +316,21 @@ export async function copyPersonnel(u: AuthUser, targetEventId: string, sourceEv
     try {
       const r = await assignCore(u, targetEventId, seat.id, { personId: src.personId }, { mirror: false, notify: false });
       filled++;
+      if (src.rehearsalRequired) needRequired.push({ seatId: seat.id, label });
       for (const w of r.warnings) if (!w.includes("belum tercatat bisa")) notes.add(w);
     } catch (e) {
       if (e instanceof ApiError) skipped.push({ label, person: src.person!.name, reason: e.message });
       else throw e;
     }
   }
-  return { filled, skipped, notes: [...notes], event: await getEvent(u.tenantId, targetEventId) };
+  // Sesi latihan dibuat dulu, baru status "wajib latihan" dipasang supaya jam kursi itu langsung terkunci di semua sesi.
+  // Hanya untuk pasangannya di hari yang sama (Ibadah Minggu 1 dan 2): sumber di hari lain tidak pernah berbagi sesi latihan.
+  const isPair = (await findPairEvent(u.tenantId, target))?.id === sourceEventId;
+  const rehearsals = isPair ? await mirrorSessionsFrom(u, targetEventId, sourceEventId) : { added: 0, skipped: [] as string[] };
+  let required = 0;
+  for (const n of isPair ? needRequired : []) {
+    try { await setSeatRequired(u, targetEventId, n.seatId, true); required++; }
+    catch (e) { if (e instanceof ApiError) rehearsals.skipped.push(`${n.label}: tidak diwajibkan latihan. ${e.message}`); else throw e; }
+  }
+  return { filled, skipped, notes: [...notes], rehearsals: { added: rehearsals.added, skipped: rehearsals.skipped, required }, event: await getEvent(u.tenantId, targetEventId) };
 }

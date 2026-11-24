@@ -90,7 +90,7 @@ export async function findPairEvent(tenantId: string, e: { id: string; templateI
   const day = localParts(e.startsAt).date;
   const same = await prisma.event.findMany({
     where: { tenantId, deletedAt: null, kind: "IBADAH", status: { not: "CANCELLED" }, id: { not: e.id }, templateId: { not: null }, startsAt: { gte: zonedToUtc(day, "00:00"), lte: zonedToUtc(day, "23:59") } },
-    include: { template: { select: { name: true } }, assignments: { select: { id: true, ministryId: true, slotNo: true, personId: true } } },
+    include: { template: { select: { name: true } }, assignments: { select: { id: true, ministryId: true, slotNo: true, personId: true } }, rehearsals: { where: { deletedAt: null }, select: { id: true } } },
     orderBy: { startsAt: "asc" },
   });
   return same.find((x) => x.template && isSundayPair(mine.name, x.template.name)) ?? null;
@@ -98,7 +98,7 @@ export async function findPairEvent(tenantId: string, e: { id: string; templateI
 /** Untuk tombol "Isi dari ..." dan keterangan di halaman acara. */
 async function pairOf(tenantId: string, e: EventFull) {
   const hit = await findPairEvent(tenantId, e);
-  return hit ? { id: hit.id, number: hit.number, title: hit.title, startsAt: hit.startsAt.toISOString(), filled: hit.assignments.filter((a) => a.personId).length, seats: hit.assignments.map((a) => ({ ministryId: a.ministryId, slotNo: a.slotNo, personId: a.personId })) } : null;
+  return hit ? { id: hit.id, number: hit.number, title: hit.title, startsAt: hit.startsAt.toISOString(), filled: hit.assignments.filter((a) => a.personId).length, sessions: hit.rehearsals.length, seats: hit.assignments.map((a) => ({ ministryId: a.ministryId, slotNo: a.slotNo, personId: a.personId })) } : null;
 }
 
 export const getEvent = async (tenantId: string, id: string) => {

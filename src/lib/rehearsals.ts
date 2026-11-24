@@ -242,6 +242,50 @@ export async function deleteRehearsal(u: AuthUser, eventId: string, rid: string)
   return listRehearsals(u.tenantId, eventId);
 }
 
+/**
+ * Samakan sesi latihan acara ini dengan acara sumber (pasangannya di hari yang sama): sesi sumber yang belum punya kembaran di sini
+ * dibuat dengan jam dan ruangan yang sama. Ruangan tidak dipesan lagi (sudah dipesan sesi sumber); jam peserta wajib di acara ini
+ * dikunci, dan yang sudah terkunci lewat kembarannya ditandai override seperti pada latihan kembar biasa.
+ * Sesi yang akan membuat peserta wajib bentrok dengan hal lain dilewati dan dilaporkan; sisanya tetap dibuat.
+ */
+export async function mirrorSessionsFrom(u: AuthUser, targetEventId: string, sourceEventId: string) {
+  const [source, mine] = await Promise.all([
+    prisma.rehearsalSession.findMany({ where: { eventId: sourceEventId, tenantId: u.tenantId, deletedAt: null }, orderBy: { seq: "asc" } }),
+    prisma.rehearsalSession.findMany({ where: { eventId: targetEventId, tenantId: u.tenantId, deletedAt: null } }),
+  ]);
+  const missing = source.filter((s) => !mine.some((m) => isTwinSlot(m, s)));
+  const out = { added: 0, skipped: [] as string[] };
+  if (!missing.length) return out;
+  const people = await requiredPeople(targetEventId);
+  const last = await prisma.rehearsalSession.aggregate({ where: { eventId: targetEventId }, _max: { seq: true } }); // termasuk yang sudah dihapus (unique eventId+seq)
+  let seq = last._max.seq ?? 0;
+  for (const s of missing) {
+    const conf = await personConflicts(u.tenantId, people.map((p) => p.personId), [{ startsAt: s.startsAt, endsAt: s.endsAt }], { currentEventId: targetEventId, excludeSource: { sourceType: "REHEARSAL", sourceId: s.id } });
+    if (conf.size) {
+      out.skipped.push(`Latihan ${fmtLocal(s.startsAt)} tidak dibuat: ${people.filter((p) => conf.has(p.personId)).map((p) => `${p.name} bentrok (${conf.get(p.personId)!.map((c) => c.label).join(", ")})`).join("; ")}.`);
+      continue;
+    }
+    const booked = new Set((await prisma.booking.findMany({ where: { tenantId: u.tenantId, resourceType: "PERSON", sourceType: "REHEARSAL", sourceId: s.id, deletedAt: null }, select: { resourceId: true } })).map((b) => b.resourceId));
+    seq += 1;
+    await translateOverlap(
+      () =>
+        prisma.$transaction(async (tx) => {
+          const t = await tx.rehearsalSession.create({ data: { tenantId: u.tenantId, eventId: targetEventId, seq, startsAt: s.startsAt, endsAt: s.endsAt, roomId: s.roomId, note: s.note } });
+          if (people.length) {
+            await tx.booking.createMany({
+              data: people.map((p) => ({
+                tenantId: u.tenantId, resourceType: "PERSON", resourceId: p.personId, startsAt: s.startsAt, endsAt: s.endsAt, sourceType: "REHEARSAL", sourceId: t.id, assignmentId: p.assignmentId, isOverride: p.dup || booked.has(p.personId),
+              })),
+            });
+          }
+        }),
+      "Latihan bentrok: salah satu peserta wajib baru saja terpakai. Muat ulang lalu coba lagi.",
+    );
+    out.added++;
+  }
+  return out;
+}
+
 /** Aktif/nonaktifkan "wajib latihan" untuk satu kursi. Mengaktifkan akan mengunci jam semua sesi latihan untuk orangnya. */
 export async function setSeatRequired(u: AuthUser, eventId: string, assignmentId: string, required: boolean, ov?: { reason: string }) {
   const ev = await loadEvent(u.tenantId, eventId);

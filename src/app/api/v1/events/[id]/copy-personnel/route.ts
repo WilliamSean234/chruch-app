@@ -14,6 +14,6 @@ export const POST = handle(async (req: Request, { params }: Ctx) => {
   const { id } = await params;
   const body = copyBody.parse(await req.json());
   const r = await copyPersonnel(u, id, body.sourceEventId);
-  await audit({ tenantId: u.tenantId, userId: u.userId, action: "assignment.copy", entity: "Event", entityId: id, payload: { sourceEventId: body.sourceEventId, filled: r.filled, skipped: r.skipped.length } });
+  await audit({ tenantId: u.tenantId, userId: u.userId, action: "assignment.copy", entity: "Event", entityId: id, payload: { sourceEventId: body.sourceEventId, filled: r.filled, sessions: r.rehearsals.added, skipped: r.skipped.length } });
   return NextResponse.json(r);
 });

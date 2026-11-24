@@ -22,7 +22,7 @@ type Detail = {
   id: string; number: string; title: string; status: string; attendanceMode: string; theme: string | null; padus: string | null; bandMode: "BAND" | "NO_BAND"; locked?: boolean; attendanceOpen?: boolean; attendance?: { mode: "COUNT" | "NAMES"; total: number; note: string | null; recordedAt: string | null } | null; startsAt: string; endsAt: string; durationMin: number;
   room: { id: string; name: string }; teams: { teamTypeId: string; name: string }[]; seats: Seat[];
   /** Ibadah pasangan di hari yang sama (Minggu 1 dan 2): personelnya biasanya sama. */
-  pair: { id: string; number: string; title: string; startsAt: string; filled: number; seats: { ministryId: string; slotNo: number; personId: string | null }[] } | null;
+  pair: { id: string; number: string; title: string; startsAt: string; filled: number; sessions: number; seats: { ministryId: string; slotNo: number; personId: string | null }[] } | null;
 };
 /** "2026-12-20", 3 → "2026-12-17" */
 const daysBefore = (ymdText: string, n: number) => {
@@ -178,17 +178,22 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
   async function copyFromPair() {
     if (!d?.pair) return;
     const from = d.pair;
-    if (!(await askConfirm(`Isi kursi yang masih kosong di acara ini dengan personel dari ${from.title}? Kursi yang sudah terisi tidak diubah, dan tiap kursi tetap bisa diubah satu per satu.`))) return;
+    if (!(await askConfirm(`Isi kursi yang masih kosong di acara ini dengan personel dari ${from.title}, dan tambahkan sesi latihan yang belum ada (jam dan ruangan sama)? Kursi yang sudah terisi tidak diubah, dan tiap kursi tetap bisa diubah satu per satu.`))) return;
     setBusy(true);
     const r = await callApi("POST", `/api/v1/events/${eventId}/copy-personnel`, { sourceEventId: from.id });
     setBusy(false);
     if (!r.ok) return setBanner({ kind: "error", title: "Gagal menyalin", message: errMsg(r.data) });
     const skipped = r.data.skipped as { label: string; person: string; reason: string }[];
     const notes = r.data.notes as string[];
-    const lines = [...skipped.map((x) => `${x.label} (${x.person}): ${x.reason}`), ...notes];
+    const reh = r.data.rehearsals as { added: number; skipped: string[]; required: number };
+    const lines = [...skipped.map((x) => `${x.label} (${x.person}): ${x.reason}`), ...notes, ...reh.skipped];
+    const parts = [
+      r.data.filled > 0 ? `${r.data.filled} kursi terisi` : "",
+      reh.added > 0 ? `${reh.added} sesi latihan ditambahkan` : "",
+    ].filter(Boolean);
     setBanner({
       kind: "info",
-      title: r.data.filled === 0 && skipped.length === 0 ? "Tidak ada kursi yang perlu diisi" : `${r.data.filled} kursi terisi dari ${from.title}${skipped.length ? `, ${skipped.length} dilewati` : ""}`,
+      title: parts.length === 0 && skipped.length === 0 && reh.skipped.length === 0 ? "Tidak ada yang perlu disalin" : `${parts.join(", ") || "Tidak ada yang disalin"} dari ${from.title}${skipped.length + reh.skipped.length ? `, ${skipped.length + reh.skipped.length} dilewati` : ""}`,
       message: lines.length ? lines.join(" ") : "Selesai. Kursi yang sudah terisi tidak diubah.",
     });
     await load();
@@ -447,7 +452,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
                 Hari ini juga ada <Link href={`/jadwal/${d.pair.id}`} className="font-extrabold text-[var(--primary-ink)] underline">{d.pair.title}</Link>
                 {d.pair.filled > 0 ? ` (${d.pair.filled} kursi terisi).` : " (belum ada personel)."} Saat mengubah kursi, tema, atau mode band di sini, Anda akan ditanya apakah perubahannya juga berlaku di sana.
               </span>
-              {d.pair.filled > 0 && (
+              {(d.pair.filled > 0 || d.pair.sessions > 0) && (
                 <button type="button" className={`${btnGhost} whitespace-nowrap`} disabled={busy} onClick={copyFromPair}>
                   <span className="max-md:hidden">Isi dari {d.pair.title}</span>
                   <span className="md:hidden">Isi dari {d.pair.title.replace(/^ibadah\s+/i, "")}</span>
