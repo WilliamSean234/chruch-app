@@ -36,7 +36,12 @@ export function toText(m: ExportModel): string {
     out.push("", `*${mo.name}*`);
     for (const r of mo.rows) {
       out.push(`${r.day} ${SHORT[mo.month - 1]}`);
-      if (m.pen && m.groups) {
+      if (m.multi && m.groups) {
+        for (const g of m.groups) {
+          const parts = g.keys.filter((k) => r.cells[k]).map((k) => `${m.columns.find((c) => c.key === k)!.label} ${oneLine(r.cells[k]!)}`);
+          if (parts.length) out.push(`- ${g.label}: ${parts.join(", ")}`);
+        }
+      } else if (m.pen && m.groups) {
         for (const g of m.groups) {
           if (g.keys.includes("@band")) {
             const parts = g.keys.filter((k) => k !== "@band" && r.cells[k]).map((k) => `${m.columns.find((c) => c.key === k)!.label} ${r.cells[k]}`);
@@ -90,7 +95,7 @@ async function drawPage(m: ExportModel, mos: Month[], page: number, pages: numbe
   try { await Promise.all([600, 700, 800].map((w) => document.fonts.load(`${w} 28px ${family}`))); await document.fonts.ready; } catch { /* huruf cadangan */ }
 
   const pen = !!(m.pen && m.groups);
-  const W = pen ? 2200 : 1600, PAD = 44, dateW = pen ? 100 : 130, rowH = 60, headH = pen ? 100 : 84, bandH = 54, gap = 30, titleH = 130, footH = 70;
+  const W = m.multi ? Math.max(2200, 44 * 2 + 100 + m.columns.length * 150) : pen ? 2200 : 1600, PAD = 44, dateW = pen ? 100 : 130, rowH = 60, headH = pen ? 100 : 84, bandH = 54, gap = 30, titleH = 130, footH = 70;
   const geo = geometry(m, W - PAD * 2 - dateW);
   const colX = (i: number) => PAD + dateW + geo.x[i]!;
   const noteH = m.hasDiff ? 34 : 0;
@@ -243,7 +248,8 @@ const w1 = (ch: string, bold: boolean) => (ch === " " ? 278 : /[ilIjt.,:;'|!]/.t
 const tw = (s: string, size: number, bold = false) => ([...s].reduce((n, ch) => n + w1(ch, bold), 0) * size) / 1000;
 
 export function buildPdf(m: ExportModel): Blob {
-  const PW = 842, PH = 595, M = 36;
+  const PH = 595, M = 36;
+  const PW = m.multi ? Math.max(842, M * 2 + 50 + m.columns.length * 58) : 842; // gabungan: halaman melebar mengikuti jumlah kolom
   const pages: string[] = [];
   for (const [pi, mo] of m.months.entries()) {
     const ops: string[] = [];

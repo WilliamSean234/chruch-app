@@ -21,6 +21,7 @@ import { FORMATS, MAX_SLOTS, MONTHS_ID, headerRow, matchName, normName, parseTea
 import { PENATALAYAN_FORMAT, PEN_BASES, PEN_DEFAULT_COUNTS, PEN_ATTR, PEN_PADUS_MAX, PEN_THEME_MAX, isPenText, parsePenSheet, penLayout, penSheet, sanitizePenCounts, withPenSlots } from "./penatalayan";
 import type { XSheet } from "./importer/xlsx";
 import { buildXlsx, colLetter, type XCell } from "./xlsxWrite";
+import { mergeModels } from "./scheduleMerge";
 
 const ALL_FORMATS: Record<string, TeamFormat> = { ...FORMATS, [PENATALAYAN_FORMAT.key]: PENATALAYAN_FORMAT };
 
@@ -446,6 +447,7 @@ export type ExportModel = {
   columns: { key: string; label: string }[];
   groups: { label: string; keys: string[]; single?: boolean }[] | null; // judul kelompok kolom (KU1, KU2; Penatalayan: Liturgos, Pemusik, …)
   pen?: boolean; // Penatalayan: header dua baris, kolom Band/No Band, Padus, Tema
+  multi?: boolean; // gabungan beberapa tim: kelompok kolom = tim (header dua baris seperti pen)
   months: { month: number; name: string; rows: { date: string; day: number; cells: Record<string, string>; differs: boolean }[] }[];
   hasDiff: boolean;
 };
@@ -573,6 +575,21 @@ export async function exportSchedule(u: AuthUser, formatKey: string, year: numbe
 }
 
 /** Kolom tambahan; untuk Penatalayan posisi yang dipertahankan di luar file (Pembicara) tidak ikut jadi kolom. */
+/**
+ * Jadwal beberapa tim dalam satu tabel melebar. `keys` kosong = semua tim yang boleh diatur pengguna ini.
+ * Tim yang bukan tanggung jawab pengguna ditolak (Admin Tim hanya bisa menggabung timnya sendiri).
+ */
+export async function exportCombined(u: AuthUser, keys: string[], year: number, months: number[]): Promise<ExportModel> {
+  const avail = (await availableFormats(u)).map((f) => f.key);
+  const want = keys.length ? [...new Set(keys)] : avail;
+  if (!want.length) throw badRequest("Belum ada tim yang bisa digabung.");
+  const bad = want.find((k) => !avail.includes(k));
+  if (bad) throw badRequest(`Tim "${bad}" tidak tersedia untuk Anda.`);
+  const ordered = avail.filter((k) => want.includes(k)); // urutan tetap, bukan urutan ketikan
+  const models = await Promise.all(ordered.map((k) => exportSchedule(u, k, year, months)));
+  return mergeModels(models);
+}
+
 async function penAwareExtras(tenantId: string, st: FormatState, format: TeamFormat, year: number) {
   const all = await scheduleExtras(tenantId, st, year);
   if (!format.pen) return all;

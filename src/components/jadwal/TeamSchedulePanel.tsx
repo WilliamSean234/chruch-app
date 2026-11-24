@@ -10,6 +10,7 @@ import { btnGhost, btnPrimary, card, errMsg, inputCls } from "@/components/jadwa
 import { normName } from "@/lib/teamFormats";
 import { buildPdf, renderPngs, toText } from "@/lib/scheduleExport";
 import type { ExportModel, PersonOpt, ExistingService } from "@/lib/teamSchedule";
+import { COMBINED_FORMAT } from "@/lib/scheduleMerge";
 
 const MONTHS = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 const SHORT = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
@@ -38,28 +39,34 @@ function download(blob: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 
+/** Pilihan "Gabungan": beberapa tim dalam satu tabel melebar (hanya untuk membagikan; mengunggah tetap per tim). */
+const COMBINED: FormatInfo = { key: COMBINED_FORMAT, label: "Gabungan", title: "JADWAL GABUNGAN", perService: false };
+
 export default function TeamSchedulePanel({ formats }: { formats: FormatInfo[] }) {
   const [tab, setTab] = useState<"upload" | "export">("upload");
   const [fmtKey, setFmtKey] = useState(formats[0]?.key ?? "ebm");
-  const fmt = formats.find((f) => f.key === fmtKey) ?? formats[0]!;
+  const choices = formats.length > 1 ? [...formats, COMBINED] : formats;
+  const fmt = choices.find((f) => f.key === fmtKey) ?? formats[0]!;
+  const combined = fmt.key === COMBINED_FORMAT;
+  const view = combined ? "export" : tab;
   return (
     <div className="flex flex-col gap-5">
-      {formats.length > 1 && (
+      {choices.length > 1 && (
         <div role="group" aria-label="Pilih tim" className="flex flex-wrap items-center gap-2">
           <span className="text-[13px] font-bold text-[var(--ink-2)]">Tim</span>
-          {formats.map((f) => (
+          {choices.map((f) => (
             <button key={f.key} type="button" aria-pressed={f.key === fmt.key} onClick={() => setFmtKey(f.key)}
               className={`h-11 rounded-xl border px-5 text-sm font-bold ${f.key === fmt.key ? "border-[var(--primary)] bg-[var(--primary-soft)] text-[var(--primary-ink)]" : "border-[var(--line)] bg-white text-[var(--ink-2)] hover:bg-[var(--bg)]"}`}>{f.label}</button>
           ))}
         </div>
       )}
-      <div role="tablist" className="flex gap-2">
+      {!combined && <div role="tablist" className="flex gap-2">
         {([["upload", "Unggah jadwal"], ["export", "Bagikan jadwal"]] as const).map(([k, l]) => (
           <button key={k} role="tab" aria-selected={tab === k} type="button" onClick={() => setTab(k)}
             className={`h-11 flex-1 rounded-xl px-5 text-sm font-bold md:flex-none ${tab === k ? "bg-[var(--primary)] text-white" : "border border-[var(--line)] bg-white text-[var(--primary-ink)] hover:bg-[var(--bg)]"}`}>{l}</button>
         ))}
-      </div>
-      {tab === "upload" ? <UploadTab key={fmt.key} fmt={fmt} goExport={() => setTab("export")} /> : <ExportTab key={fmt.key} fmt={fmt} />}
+      </div>}
+      {view === "upload" ? <UploadTab key={fmt.key} fmt={fmt} goExport={() => setTab("export")} /> : <ExportTab key={fmt.key} fmt={fmt} teams={formats} />}
     </div>
   );
 }
@@ -540,8 +547,11 @@ function PenHead({ model }: { model: ExportModel }) {
   );
 }
 
-function ExportTab({ fmt }: { fmt: FormatInfo }) {
+function ExportTab({ fmt, teams }: { fmt: FormatInfo; teams: FormatInfo[] }) {
   const FORMAT = fmt.key;
+  const combined = FORMAT === COMBINED_FORMAT;
+  const [picked, setPicked] = useState<Set<string>>(new Set(teams.map((t) => t.key))); // tim yang digabung (Gabungan)
+  const teamsParam = combined ? `&teams=${teams.filter((t) => picked.has(t.key)).map((t) => t.key).join(",")}` : "";
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [months, setMonths] = useState<Set<number>>(new Set([now.getMonth() + 1]));
@@ -552,20 +562,21 @@ function ExportTab({ fmt }: { fmt: FormatInfo }) {
   const monthRows = useOpenRows(); // HP: tanggal yang dibuka di pratinjau bagikan
 
   const monthsParam = [...months].sort((a, b) => a - b).join(",");
+  const pickTeam = (k: string) => { setModel(null); setPicked((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; }); };
   const toggle = (m: number) => { setModel(null); setMonths((s) => { const n = new Set(s); if (n.has(m)) n.delete(m); else n.add(m); return n; }); };
 
   async function load() {
-    if (!months.size) return;
+    if (!months.size || (combined && !picked.size)) return;
     setBusy("load"); setFail("");
     try {
-      const r = await fetch(`/api/v1/team-schedule/${FORMAT}/export?year=${year}&months=${monthsParam}`, { cache: "no-store" });
+      const r = await fetch(`/api/v1/team-schedule/${FORMAT}/export?year=${year}&months=${monthsParam}${teamsParam}`, { cache: "no-store" });
       const d = await r.json().catch(() => null);
       if (!r.ok) setFail(errMsg(d)); else setModel(d as ExportModel);
     } catch { setFail("Koneksi terputus. Coba lagi."); }
     setBusy("");
   }
 
-  const stem = () => `jadwal-${FORMAT}-${year}-${months.size === 12 ? "setahun" : monthsParam.replace(/,/g, "-")}`;
+  const stem = () => `jadwal-${combined ? ["gabungan", ...teams.filter((t) => picked.has(t.key)).map((t) => t.key)].join("-") : FORMAT}-${year}-${months.size === 12 ? "setahun" : monthsParam.replace(/,/g, "-")}`;
 
   async function images(mode: "share" | "download") {
     if (!model) return;
@@ -593,7 +604,20 @@ function ExportTab({ fmt }: { fmt: FormatInfo }) {
   return (
     <>
       <section className={card}>
-        <h2 className="text-lg font-extrabold">1. Pilih periode</h2>
+        <h2 className="text-lg font-extrabold">{combined ? "1. Pilih tim dan periode" : "1. Pilih periode"}</h2>
+        {combined && (
+          <div className="mt-3">
+            <div role="group" aria-label="Tim yang digabung" className="flex flex-wrap items-center gap-2">
+              <span className="text-[13px] font-bold text-[var(--ink-2)]">Tim yang digabung</span>
+              {teams.map((t) => (
+                <button key={t.key} type="button" aria-pressed={picked.has(t.key)} onClick={() => pickTeam(t.key)}
+                  className={`h-11 rounded-xl border px-4 text-sm font-bold ${picked.has(t.key) ? "border-[var(--primary)] bg-[var(--primary-soft)] text-[var(--primary-ink)]" : "border-[var(--line)] bg-white text-[var(--ink-2)] hover:bg-[var(--bg)]"}`}>{t.label}</button>
+              ))}
+              <button type="button" className={btnGhost} onClick={() => { setModel(null); setPicked(new Set(teams.map((t) => t.key))); }}>Semua tim</button>
+            </div>
+            <p className="mt-2 text-[13px] font-medium text-[var(--ink-2)]">Kolom tiap tim disusun berdampingan dalam satu tabel. Tabelnya lebar, jadi untuk dibaca di HP lebih enak lewat PDF atau Excel, atau pilih tim lebih sedikit.</p>
+          </div>
+        )}
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-[13px] font-bold text-[var(--ink-2)]">Tahun
             <select value={year} onChange={(e) => { setYear(Number(e.target.value)); setModel(null); }} className={`${inputCls} w-28`}>
@@ -610,7 +634,7 @@ function ExportTab({ fmt }: { fmt: FormatInfo }) {
           ))}
         </div>
         <div className="mt-3">
-          <button type="button" className={btnPrimary} disabled={!months.size || busy === "load"} onClick={() => { void load().then(detect); }}>{busy === "load" ? "Memuat…" : "Tampilkan jadwal"}</button>
+          <button type="button" className={btnPrimary} disabled={!months.size || (combined && !picked.size) || busy === "load"} onClick={() => { void load().then(detect); }}>{busy === "load" ? "Memuat…" : "Tampilkan jadwal"}</button>
         </div>
         {fail && <p role="alert" className="mt-3 rounded-xl bg-[#fdecec] px-3.5 py-2.5 text-sm font-semibold text-[#a12b2b]">{fail}</p>}
       </section>
@@ -624,7 +648,7 @@ function ExportTab({ fmt }: { fmt: FormatInfo }) {
             <button type="button" className={canShareFiles ? btnGhost : btnPrimary} disabled={busy === "img"} onClick={() => images("download")}>{busy === "img" && !canShareFiles ? "Membuat gambar…" : "Unduh gambar"}</button>
             <button type="button" className={btnGhost} onClick={pdf}>Unduh PDF</button>
             <button type="button" className={btnGhost} onClick={copyText}>Salin teks WhatsApp</button>
-            <a className={`${btnGhost} inline-flex items-center`} href={`/api/v1/team-schedule/${FORMAT}/export?year=${year}&months=${monthsParam}&as=xlsx`}>Unduh Excel</a>
+            <a className={`${btnGhost} inline-flex items-center`} href={`/api/v1/team-schedule/${FORMAT}/export?year=${year}&months=${monthsParam}${teamsParam}&as=xlsx`}>Unduh Excel</a>
           </div>
           {model.hasDiff && <p className="mt-3 text-[13px] font-semibold text-[#7A5200]">Ada tanggal yang petugas Ibadah I dan II-nya berbeda; ditulis "I / II" dan diberi warna.</p>}
           <div className="mt-4 flex flex-col gap-4">
@@ -639,7 +663,10 @@ function ExportTab({ fmt }: { fmt: FormatInfo }) {
                     return (
                       <CompactRow key={id} id={id} open={monthRows.open.has(id)} onToggle={monthRows.toggle} tone={r.differs ? "bg-[#FFF8E6]" : ""}
                         title={`Tanggal ${r.day}`} sub={names.length ? names.join(" · ") : "Belum ada petugas"}>
-                        {model.columns.map((c) => (
+                        {(model.multi && model.groups
+                          ? model.groups.flatMap((g) => g.keys.map((k) => ({ key: k, label: `${g.label} · ${model.columns.find((c) => c.key === k)?.label ?? ""}` })))
+                          : model.columns
+                        ).map((c) => (
                           <Detail key={c.key} label={c.label}><span className="whitespace-pre-line">{r.cells[c.key] || <span className="text-[#A0A4BC]">—</span>}</span></Detail>
                         ))}
                       </CompactRow>
