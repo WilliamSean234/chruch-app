@@ -3,7 +3,8 @@
 import { Children, isValidElement, useState, type ReactNode } from "react";
 import { inputCls } from "@/components/jadwal/api";
 import { stickyCard, stickyPage } from "@/components/ui/sticky";
-import { MONTHS, monthRange, ymd } from "@/lib/ui";
+import { MONTHS, monthRange } from "@/lib/ui";
+import { yearOptions } from "@/lib/yearOptions";
 
 /**
  * Baris filter seragam untuk semua daftar. Yang paling sering dipakai langsung terlihat (children);
@@ -93,14 +94,12 @@ export function FSelect({ label, value, onChange, options, allLabel = "Semua", c
 
 /**
  * Filter periode per bulan (pengganti "Dari – Sampai"): dua kotak pendek berdampingan, Bulan dan Tahun. Menghasilkan tanggal 1 sampai
- * tanggal terakhir bulan itu lewat `onRange`, jadi API yang memakai `from` dan `to` tidak berubah. Tahun: 3 tahun ke belakang sampai 2 tahun ke depan.
+ * tanggal terakhir bulan itu lewat `onRange`, jadi API yang memakai `from` dan `to` tidak berubah.
+ * Tahun: hanya tahun yang punya data (`years`, dari server), ditambah tahun yang sedang dipilih.
  */
-export function FMonth({ from, onRange }: { from: string; onRange: (from: string, to: string) => void }) {
-  const thisYear = Number(ymd(new Date()).slice(0, 4));
+export function FMonth({ from, onRange, years }: { from: string; onRange: (from: string, to: string) => void; years?: number[] }) {
   const y = Number(from.slice(0, 4)), m = Number(from.slice(5, 7));
-  const lo = Math.min(thisYear - 3, y), hi = Math.max(thisYear + 2, y);
-  const years: number[] = [];
-  for (let i = hi; i >= lo; i--) years.push(i);
+  const yearList = yearOptions(years, y);
   const set = (yy: number, mm: number) => { const r = monthRange(`${yy}-${String(mm).padStart(2, "0")}-01`); onRange(r.from, r.to); };
   return (
     <div className="flex gap-2 max-md:basis-full">
@@ -111,7 +110,7 @@ export function FMonth({ from, onRange }: { from: string; onRange: (from: string
       </label>
       <label className={`${lbl} max-md:min-w-0 max-md:flex-1`}>Tahun
         <select className={`${inputCls} w-28 max-md:w-full`} value={y} onChange={(e) => set(Number(e.target.value), m)}>
-          {years.map((n) => <option key={n} value={n}>{n}</option>)}
+          {yearList.map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
       </label>
     </div>

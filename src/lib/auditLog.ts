@@ -5,6 +5,7 @@ import { forbidden } from "./errors";
 import { can, type AuthUser } from "./rbac";
 import { creatorNames } from "./creators";
 import { addMinutes, DATE_RE, zonedToUtc } from "./time";
+import { auditYears } from "./years";
 import { pageOf, pagingQuery, resolvePaging } from "./paging";
 
 /**
@@ -82,10 +83,11 @@ export async function listAuditLogs(u: AuthUser, q: z.infer<typeof auditQuery>) 
     const matching = Object.entries(LABELS).filter(([k, v]) => v.toLowerCase().includes(needle) || k.includes(needle)).map(([k]) => k);
     where.AND = [{ OR: [{ action: { in: matching } }, { action: { contains: needle, mode: "insensitive" } }, { reason: { contains: q.search, mode: "insensitive" } }] }];
   }
-  const [total, rows, actors] = await Promise.all([
+  const [total, rows, actors, years] = await Promise.all([
     prisma.auditLog.count({ where }),
     prisma.auditLog.findMany({ where, orderBy: { createdAt: "desc" }, skip: pg.skip, take: pg.take }),
     prisma.auditLog.findMany({ where: { tenantId: u.tenantId, userId: { not: null } }, distinct: ["userId"], select: { userId: true }, take: 200 }),
+    auditYears(u.tenantId),
   ]);
   const names = await creatorNames([...rows.map((r) => r.userId), ...actors.map((a) => a.userId)]);
   const items = rows.map((r) => ({
@@ -93,5 +95,5 @@ export async function listAuditLogs(u: AuthUser, q: z.infer<typeof auditQuery>) 
     action: r.action, label: actionLabel(r.action), entity: r.entity, reason: r.reason, detail: detailOf(r.action, r.payload),
   }));
   const users = actors.map((a) => ({ id: a.userId as string, name: names.get(a.userId as string) ?? "Pengguna dihapus" })).sort((x, y) => x.name.localeCompare(y.name));
-  return { ...pageOf(items, total, pg), options: { categories: CATEGORIES.map((c) => ({ key: c.key, label: c.label })), users } };
+  return { ...pageOf(items, total, pg), options: { categories: CATEGORIES.map((c) => ({ key: c.key, label: c.label })), users, years } };
 }

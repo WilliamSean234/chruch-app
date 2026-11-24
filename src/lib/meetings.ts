@@ -11,6 +11,7 @@ import { creatorNames } from "./creators";
 import { canSeeMeetingSchedule, groupCaps, type GroupCaps } from "./groups";
 import { meetingMemberTitle, meetingPublicTitle } from "./meetingLabel";
 import { pageOf, pagingQuery, resolvePaging } from "./paging";
+import { eventYears } from "./years";
 import { describeFirst, expandDates, MAX_OCCURRENCES, PATTERNS, patternText, type Pattern } from "./recurrence";
 
 /**
@@ -284,15 +285,16 @@ export async function listMeetingsPaged(u: AuthUser, q: z.infer<typeof meetingLi
     ...(q.from || q.to ? { startsAt: { ...(q.from ? { gte: zonedToUtc(q.from, "00:00") } : {}), ...(q.to ? { lte: zonedToUtc(q.to, "23:59") } : {}) } } : {}),
     ...(and.length ? { AND: and } : {}),
   };
-  const [total, rows, groups, rooms] = await Promise.all([
+  const [total, rows, groups, rooms, years] = await Promise.all([
     prisma.event.count({ where }),
     prisma.event.findMany({ where, include: withGroup, orderBy: { startsAt: q.when === "next" ? "asc" : "desc" }, skip: pg.skip, take: pg.take }),
     prisma.meetingGroup.findMany({ where: { tenantId: u.tenantId, deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } }),
     prisma.room.findMany({ where: { tenantId: u.tenantId, deletedAt: null }, orderBy: [{ floor: { sort: "asc", nulls: "last" } }, { name: "asc" }], select: { id: true, name: true, floor: true } }),
+    eventYears(u.tenantId, "RAPAT"),
   ]);
   const mine = new Set(myIds);
   const items = rows.filter((e): e is ListRow => !!e.group).map((e) => listItem(e, mine.has(e.group.id), global, canManageAnyGroup(u)));
-  return { ...pageOf(items, total, pg), options: { groups, rooms } };
+  return { ...pageOf(items, total, pg), options: { groups, rooms, years } };
 }
 
 /** Kelompok yang boleh dipilih saat membuat rapat: kelompok yang jabatan Anda boleh menjadwalkan, atau semua (hanya Superadmin). */

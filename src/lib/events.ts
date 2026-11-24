@@ -10,6 +10,7 @@ import { creatorNames } from "./creators";
 import { assertNotLocked, assertTransition, isEditable, isLockedByAge } from "./eventStatusFlow";
 import { teamScope, type AuthUser } from "./rbac";
 import { pageOf, pagingQuery, resolvePaging } from "./paging";
+import { eventYears } from "./years";
 import { afterResponse } from "./notify";
 import { notifySeatChange } from "./eventNotify";
 
@@ -152,7 +153,7 @@ export async function listEvents(tenantId: string, q: z.infer<typeof eventListQu
     ...(q.from || q.to ? { startsAt: { ...(q.from ? { gte: zonedToUtc(q.from, "00:00") } : {}), ...(q.to ? { lte: zonedToUtc(q.to, "23:59") } : {}) } } : {}),
     ...(and.length ? { AND: and } : {}),
   };
-  const [total, rows, templates, rooms] = await Promise.all([
+  const [total, rows, templates, rooms, years] = await Promise.all([
     prisma.event.count({ where }),
     prisma.event.findMany({
       where,
@@ -166,6 +167,7 @@ export async function listEvents(tenantId: string, q: z.infer<typeof eventListQu
     }),
     prisma.eventTemplate.findMany({ where: { tenantId, deletedAt: null }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.room.findMany({ where: { tenantId, deletedAt: null }, orderBy: [{ floor: { sort: "asc", nulls: "last" } }, { name: "asc" }], select: { id: true, name: true, floor: true } }),
+    eventYears(tenantId, "IBADAH"),
   ]);
   const names = await creatorNames(rows.map((e) => e.createdById));
   const items = rows.map((e) => ({
@@ -176,7 +178,7 @@ export async function listEvents(tenantId: string, q: z.infer<typeof eventListQu
     seatsTotal: e.assignments.length, seatsFilled: e.assignments.filter((a) => a.personId).length,
     rehearsals: e.rehearsals.map((r) => ({ id: r.id, seq: r.seq, startsAt: r.startsAt.toISOString(), endsAt: r.endsAt.toISOString(), room: { id: r.room.id, name: r.room.name, floor: r.room.floor }, note: r.note })),
   }));
-  return { ...pageOf(items, total, pg), options: { templates, rooms } };
+  return { ...pageOf(items, total, pg), options: { templates, rooms, years } };
 }
 
 async function expandSeats(tenantId: string, seats: z.infer<typeof seatSpec>[]) {

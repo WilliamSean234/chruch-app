@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { FilterBar, FSearch, FSelect, listCard } from "@/components/ui/Filters";
 import Pager from "@/components/ui/Pager";
 import { useClientPaging } from "@/components/ui/usePagedList";
-import { hm, MONTHS, MONTHS_AHEAD, MONTHS_BACK, REHEARSAL_TONE, toneFor, TZ, ymd } from "@/lib/ui";
+import { hm, MONTHS, REHEARSAL_TONE, toneFor, TZ, ymd } from "@/lib/ui";
 
 export type ScheduleRow = {
   key: string; kind: "SERVICE" | "REHEARSAL"; eventId: string; title: string; startsAt: string; endsAt: string; room: string;
@@ -36,19 +36,14 @@ export default function MySchedule({ rows, note, nowIso }: { rows: ScheduleRow[]
   const [now] = useState(() => Date.parse(nowIso));
   const [q, setQ] = useState("");
   const [kind, setKind] = useState("");
-  const [month, setMonth] = useState(""); // "" = mendatang (semua bulan, hanya yang belum selesai); "YYYY-MM" = semua jadwal di bulan itu
+  // Bulan dan tahun dipisah. Keduanya kosong = mendatang (hanya yang belum selesai); selain itu semua jadwal pada bulan dan/atau tahun yang dipilih.
+  const [month, setMonth] = useState(""); // "01".."12"
+  const [year, setYear] = useState(""); // "YYYY"
   const [role, setRole] = useState("");
 
-  const months = useMemo(() => {
-    const cur = ymd(nowIso);
-    const y = Number(cur.slice(0, 4)), m = Number(cur.slice(5, 7)) - 1;
-    const out: { value: string; label: string }[] = [];
-    for (let i = -MONTHS_BACK; i <= MONTHS_AHEAD; i++) {
-      const d = new Date(Date.UTC(y, m + i, 1));
-      out.push({ value: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`, label: `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}${i === 0 ? " (bulan ini)" : ""}` });
-    }
-    return out;
-  }, [nowIso]);
+  const months = useMemo(() => MONTHS.map((n, i) => ({ value: String(i + 1).padStart(2, "0"), label: n })), []);
+  // Hanya tahun yang punya jadwal untuk orang ini.
+  const years = useMemo(() => [...new Set(rows.map((r) => ymd(r.startsAt).slice(0, 4)))].sort().reverse().map((v) => ({ value: v, label: v })), [rows]);
 
   const roles = useMemo(() => [...new Set(rows.map((r) => r.role))].sort().map((v) => ({ value: v, label: v })), [rows]);
 
@@ -59,21 +54,26 @@ export default function MySchedule({ rows, note, nowIso }: { rows: ScheduleRow[]
   const list = useMemo(() => {
     const needle = q.trim().toLowerCase();
     const out = rows.filter((r) => {
-      if (month === "" ? Date.parse(r.endsAt) < now : ymd(r.startsAt).slice(0, 7) !== month) return false;
+      if (!month && !year) { if (Date.parse(r.endsAt) < now) return false; }
+      else {
+        const d = ymd(r.startsAt);
+        if (year && d.slice(0, 4) !== year) return false;
+        if (month && d.slice(5, 7) !== month) return false;
+      }
       if (kind && r.kind !== kind) return false;
       if (role && r.role !== role) return false;
       if (needle && !`${r.title} ${r.role} ${r.room}`.toLowerCase().includes(needle)) return false;
       return true;
     });
     return out;
-  }, [rows, q, kind, month, role, now]);
+  }, [rows, q, kind, month, year, role, now]);
 
   const pg = useClientPaging(list);
   const moreCount = [kind, role].filter(Boolean).length;
-  const filtered = !!(q || month || moreCount);
-  const reset = () => { setQ(""); setKind(""); setMonth(""); setRole(""); };
-  const monthLabel = months.find((x) => x.value === month)?.label.replace(" (bulan ini)", "") ?? "";
-  const heading = month ? monthLabel.toUpperCase() : "MENDATANG";
+  const filtered = !!(q || month || year || moreCount);
+  const reset = () => { setQ(""); setKind(""); setMonth(""); setYear(""); setRole(""); };
+  const period = [month ? MONTHS[Number(month) - 1] : "", year].filter(Boolean).join(" ");
+  const heading = period ? period.toUpperCase() : "MENDATANG";
 
   if (note) {
     return <p className="rounded-2xl border border-[var(--line)] bg-white p-5 text-sm font-semibold text-[var(--ink-2)]">{note} Hubungi Penjadwal agar akunmu dihubungkan, lalu jadwal pelayananmu akan tampil di sini.</p>;
@@ -111,7 +111,8 @@ export default function MySchedule({ rows, note, nowIso }: { rows: ScheduleRow[]
           <FSelect label="Peran" value={role} onChange={setRole} options={roles} />
         </>}>
         <FSearch value={q} onChange={setQ} placeholder="Acara, peran, atau ruangan" />
-        <FSelect label="Bulan" value={month} onChange={setMonth} allLabel="Mendatang" options={months} />
+        <FSelect label="Bulan" value={month} onChange={setMonth} allLabel={year ? "Semua bulan" : "Mendatang"} options={months} width="w-36" />
+        <FSelect label="Tahun" value={year} onChange={setYear} allLabel="Semua tahun" options={years} width="w-28" />
       </FilterBar>
 
       <div className="flex items-center gap-2.5"><span className="text-xs font-extrabold tracking-[0.07em] text-[#8A6119]">{heading}</span><span className="h-px flex-1 bg-[#E8E4D6]" /></div>
@@ -119,7 +120,7 @@ export default function MySchedule({ rows, note, nowIso }: { rows: ScheduleRow[]
       <div className={listCard}>
         {pg.slice.length === 0 ? (
           <p className="px-5 py-10 text-center text-sm font-semibold text-[var(--ink-2)]">
-            {filtered ? (month && !q && !moreCount ? `Tidak ada jadwal untukmu di ${monthLabel}.` : "Tidak ada jadwal yang cocok dengan filter.") : rows.length === 0 ? "Belum ada jadwal pelayanan untukmu dalam 6 bulan ke depan." : "Tidak ada jadwal mendatang. Pilih bulan untuk melihat jadwal yang sudah lewat."}
+            {filtered ? ((month || year) && !q && !moreCount ? `Tidak ada jadwal untukmu di ${period}.` : "Tidak ada jadwal yang cocok dengan filter.") : rows.length === 0 ? "Belum ada jadwal pelayanan untukmu dalam 6 bulan ke depan." : "Tidak ada jadwal mendatang. Pilih bulan atau tahun untuk melihat jadwal yang sudah lewat."}
           </p>
         ) : (
           <ul className="m-0 list-none p-0">

@@ -7,7 +7,7 @@ import { useDebounced, usePagedList } from "@/components/ui/usePagedList";
 import { monthRange, ymd } from "@/lib/ui";
 
 type Row = { id: string; at: string; user: string; action: string; label: string; entity: string; reason: string | null; detail: string | null };
-type Options = { categories: { key: string; label: string }[]; users: { id: string; name: string }[] };
+type Options = { categories: { key: string; label: string }[]; users: { id: string; name: string }[]; years: number[] };
 
 const stamp = (iso: string) => new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
 const TONE: Record<string, { bg: string; fg: string }> = {
@@ -41,7 +41,7 @@ export default function AuditPanel() {
           <FSelect label="Pengguna" value={userId} onChange={setUserId} allLabel="Semua pengguna" options={opts?.users.map((x) => ({ value: x.id, label: x.name }))} />
         </>}>
         <FSearch value={q} onChange={setQ} placeholder="Jenis aktivitas atau alasan" />
-        <FMonth from={from} onRange={(f, t) => { setFrom(f); setTo(t); }} />
+        <FMonth from={from} years={opts?.years} onRange={(f, t) => { setFrom(f); setTo(t); }} />
         <FSelect label="Jenis" value={category} onChange={setCategory} allLabel="Semua jenis" options={opts?.categories.map((c) => ({ value: c.key, label: c.label }))} />
       </FilterBar>
 

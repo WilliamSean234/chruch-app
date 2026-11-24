@@ -14,7 +14,7 @@ type Row = {
   id: string; number: string; title: string; status: string; startsAt: string; endsAt: string; templateId: string | null; templateName: string | null;
   room: { id: string; name: string; floor: number | null }; seatsTotal: number; seatsFilled: number; createdBy: string | null; rehearsals: Rehearsal[];
 };
-type Options = { templates: { id: string; name: string }[]; rooms: { id: string; name: string; floor: number | null }[] };
+type Options = { templates: { id: string; name: string }[]; rooms: { id: string; name: string; floor: number | null }[]; years: number[] };
 
 const dot = (t: string) => t.replace(":", ".");
 
@@ -63,7 +63,7 @@ export default function EventList() {
           </>
         }>
         <FSearch value={q} onChange={setQ} placeholder="Judul atau nomor acara" />
-        <FMonth from={from} onRange={(f, t) => { setFrom(f); setTo(t); }} />
+        <FMonth from={from} years={opts?.years} onRange={(f, t) => { setFrom(f); setTo(t); }} />
         <FSelect label="Jenis ibadah" value={templateId} onChange={setTemplateId} allLabel="Semua ibadah">
           {opts?.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           <option value="NONE">Acara satu kali (tanpa template)</option>

@@ -12,7 +12,7 @@ type Item = {
   id: string; number: string; status: string; startsAt: string; endsAt: string; room: { id: string; name: string; floor: number | null }; group: { id: string; name: string };
   displayTitle: string; isMember: boolean;
 };
-type Options = { groups: { id: string; name: string }[]; rooms: { id: string; name: string; floor: number | null }[] };
+type Options = { groups: { id: string; name: string }[]; rooms: { id: string; name: string; floor: number | null }[]; years: number[] };
 const RAPAT = { bg: "#F8E6DD", fg: "#7A3A1E", dot: "#C0562D" };
 
 export default function MeetingList() {
@@ -52,7 +52,7 @@ export default function MeetingList() {
           </>
         }>
         <FSearch value={q} onChange={setQ} placeholder="Kelompok, topik, ruangan, atau nomor" />
-        <FMonth from={from} onRange={(f, t) => { setFrom(f); setTo(t); }} />
+        <FMonth from={from} years={opts?.years} onRange={(f, t) => { setFrom(f); setTo(t); }} />
         <FSelect label="Kelompok" value={groupId} onChange={setGroupId} allLabel="Semua kelompok" options={opts?.groups.map((g) => ({ value: g.id, label: g.name }))} />
         <FSelect label="Keanggotaan" value={mine} onChange={setMine} allLabel="Semua rapat" options={[{ value: "true", label: "Kelompok saya" }]} />
       </FilterBar>
