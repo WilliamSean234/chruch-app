@@ -1,4 +1,5 @@
 import { COLS, norm, OPTIONAL_COLS, RETIRED_SHEETS, SHEET_LIST, type Row, type SheetKey } from "./common";
+import { convertKuesioner, isKuesioner } from "./kuesioner";
 import { readXlsx } from "./xlsx";
 
 export type Parsed = {
@@ -7,11 +8,18 @@ export type Parsed = {
   headerErrors: Partial<Record<SheetKey, string[]>>;
   unknownSheets: string[];
   retiredSheets: string[]; // sheet lama (acara, rapat, ...) yang ada di file tetapi sudah tidak diimpor
+  source?: "kuesioner";
+  notes?: string[];
 };
 
 /** Baca file Excel menjadi baris-baris teks per sheet. Baris kosong dan baris "contoh" dilewati. */
 export function parseWorkbook(buf: Buffer): Parsed {
   const sheets = readXlsx(buf);
+  // jawaban kuesioner pendataan langsung diubah ke baris impor, tanpa file perantara
+  if (isKuesioner(sheets)) {
+    const c = convertKuesioner(sheets);
+    return { rows: c.rows, found: c.found, headerErrors: {}, unknownSheets: [], retiredSheets: [], source: "kuesioner", notes: c.notes };
+  }
 
   const rows = Object.fromEntries(SHEET_LIST.map((s) => [s.key, [] as Row[]])) as Record<SheetKey, Row[]>;
   const found = new Set<SheetKey>();

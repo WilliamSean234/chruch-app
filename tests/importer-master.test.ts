@@ -65,3 +65,34 @@ test("orang: nama panggilan disimpan, maksimal 40 huruf", () => {
   assert.equal(byName.has("Daniel Tan"), false);
   assert.match(rep.get("Orang").errors[0].message, /Nama panggilan/);
 });
+
+test("orang yang sudah ada: pelayanan baru tetap ditambahkan, yang sudah dimiliki dilewati", () => {
+  const { st, ctx, rep } = setup();
+  const M = st.M as unknown as { persons: Map<string, unknown>; ministries: Map<string, unknown[]> };
+  M.ministries.set("drum", [{ id: "m-drum", name: "Drum", isNew: false, teamId: "t1", rehearsal: true, deleted: false }]);
+  M.ministries.set("singer", [{ id: "m-singer", name: "Singer", isNew: false, teamId: "t1", rehearsal: true, deleted: false }]);
+  M.persons.set("budi", { id: "p1", name: "Budi", key: "budi", isNew: false, cgId: null, hasUser: false, ministryIds: new Set(["m-drum"]) });
+  const base = { title: "", gender: "L", position: "Jemaat", cg: "", community: "", birth: "", origin: "", originChurch: "", nickname: "" };
+  stageOrang(ctx, st, [
+    row(4, { ...base, name: "Budi", ministries: "Drum, Singer" }), // Drum sudah ada, Singer baru
+    row(5, { ...base, name: "Budi", ministries: "Drum" }), // tidak ada yang baru
+  ]);
+  const added = (st.W as unknown as { personMinistries: { personId: string; ministryId: string }[] }).personMinistries;
+  assert.deepEqual(added, [{ personId: "p1", ministryId: "m-singer" }]);
+  assert.equal(rep.get("Orang").created, 1);
+  assert.equal(rep.get("Orang").skipped, 1);
+});
+
+test("baris hanya-pelayanan (dari kuesioner): orang harus sudah ada, jangan membuat orang baru", () => {
+  const { st, ctx, rep } = setup();
+  const M = st.M as unknown as { persons: Map<string, unknown>; ministries: Map<string, unknown[]> };
+  M.ministries.set("drum", [{ id: "m-drum", name: "Drum", isNew: false, teamId: "t1", rehearsal: true, deleted: false }]);
+  M.persons.set("budi", { id: "p1", name: "Budi", key: "budi", isNew: false, cgId: null, hasUser: false, ministryIds: new Set() });
+  const only = { title: "", nickname: "", birth: "", gender: "", position: "", cg: "", community: "", origin: "", originChurch: "", addOnly: "1" };
+  stageOrang(ctx, st, [row(4, { ...only, name: "Budi", ministries: "Drum" }), row(5, { ...only, name: "Orang Asing", ministries: "Drum" })]);
+  const w = st.W as unknown as { personMinistries: unknown[] };
+  assert.equal(w.personMinistries.length, 1);
+  assert.equal(rep.get("Orang").created, 1);
+  assert.equal(rep.get("Orang").errors.length, 1);
+  assert.match(rep.get("Orang").errors[0].message, /belum ada di data Orang/);
+});

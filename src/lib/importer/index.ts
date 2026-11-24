@@ -18,7 +18,8 @@ import { syncTkiGroup } from "../tkiGroup";
 export async function runImport(u: AuthUser, file: Buffer, mode: "preview" | "apply"): Promise<ImportResult> {
   const rep = new Report();
   const ctx: Ctx = { u, apply: mode === "apply", rep };
-  const base = (extra: Partial<ImportResult>): ImportResult => ({ mode, ok: true, sheets: rep.list(), credentials: [], unknownSheets: [], retiredSheets: [], ...extra });
+  let meta: Partial<ImportResult> = {};
+  const base = (extra: Partial<ImportResult>): ImportResult => ({ mode, ok: true, sheets: rep.list(), credentials: [], unknownSheets: [], retiredSheets: [], ...meta, ...extra });
 
   let parsed;
   try {
@@ -27,6 +28,7 @@ export async function runImport(u: AuthUser, file: Buffer, mode: "preview" | "ap
     console.error("[impor] gagal membaca Excel:", e);
     return base({ ok: false, fatal: "File tidak bisa dibaca. Pastikan formatnya .xlsx (bukan .xls atau .csv) dan tidak rusak." });
   }
+  if (parsed.source) meta = { source: parsed.source, notes: parsed.notes };
   for (const key of parsed.found) rep.get(key).found = true;
   for (const [key, msgs] of Object.entries(parsed.headerErrors)) for (const m of msgs!) rep.err(key, 0, m);
   if (!parsed.found.size) return base({ ok: false, fatal: "Tidak ada sheet yang dikenali. Pakai template resmi dan jangan ganti nama sheet.", unknownSheets: parsed.unknownSheets, retiredSheets: parsed.retiredSheets });

@@ -24,6 +24,8 @@ export type ImportResult = {
   credentials: Credential[];
   unknownSheets: string[];
   retiredSheets: string[]; // sheet lama (acara, rapat, ...) yang diabaikan
+  source?: "kuesioner"; // file dikenali sebagai kuesioner pendataan dan diubah ke baris impor
+  notes?: string[]; // catatan dari pengubah kuesioner (yang tidak diimpor, perlu dicek manual)
 };
 
 /** Urutan proses = urutan sheet di template. */

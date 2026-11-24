@@ -60,7 +60,9 @@ Orang yang sudah melayani di bidang EBM otomatis masuk kelompok rapat **EBM** (d
 npm run db:sync-ebm
 ```
 
-Data awal bisa juga diisi lewat **Pengaturan → Impor Excel**: unduh template, isi sheet Orang, Akun, Acara, serta KelompokRapat, JabatanKelompok, AnggotaKelompok, dan Rapat. Unggahan boleh diulang karena data yang sudah ada dilewati.
+Data awal bisa juga diisi lewat **Pengaturan → Impor Excel**: unduh template, isi sheet Orang, Pelayanan, Akun, TemplateAcara, serta KelompokRapat, JabatanKelompok, dan AnggotaKelompok. Acara, penugasan, latihan, dan rapat dibuat lewat aplikasi, bukan Excel. Unggahan boleh diulang karena data yang sudah ada dilewati (pelayanan baru untuk orang yang sudah ada tetap ditambahkan).
+
+**Jawaban kuesioner** ("Formulir Pendataan Pelayanan Gereja") bisa diunggah langsung di menu yang sama, tanpa file perantara: aplikasi mengenalinya dari nama tab dan mengubahnya ke format impor. Unggah dulu file yang tab 1 (Orang)-nya terisi, baru file yang hanya mengisi tab lain. Catatan di layar pemeriksaan menyebut apa yang tidak ikut diimpor (No HP/Email di tab 1, pelayanan bertanda Hapus, orang tanpa email di tab 4).
 
 Jangan jalankan `db:seed:dummy`, `db:seed:groups`, atau `db:seed:meetings` di produksi. Setelah selesai, kembalikan `.env` ke database percobaan agar tidak salah sasaran.
 

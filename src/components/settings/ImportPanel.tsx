@@ -6,7 +6,7 @@ import { btnGhost, btnPrimary, card } from "@/components/jadwal/api";
 
 type SheetResult = { key: string; label: string; found: boolean; total: number; created: number; skipped: number; errors: { row: number; message: string }[]; notes: { row: number; message: string }[] };
 type Credential = { name: string; email: string; password: string; role: string };
-type Result = { mode: "preview" | "apply"; ok: boolean; fatal?: string; sheets: SheetResult[]; credentials: Credential[]; unknownSheets: string[]; retiredSheets?: string[] };
+type Result = { mode: "preview" | "apply"; ok: boolean; fatal?: string; sheets: SheetResult[]; credentials: Credential[]; unknownSheets: string[]; retiredSheets?: string[]; source?: "kuesioner"; notes?: string[] };
 
 export default function ImportPanel() {
   const [file, setFile] = useState<File | null>(null);
@@ -119,6 +119,17 @@ export default function ImportPanel() {
               </tbody>
             </table>
           </div>
+          {res.source === "kuesioner" && (
+            <div className="mt-3 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3.5 py-3">
+              <p className="text-sm font-bold">File ini dikenali sebagai kuesioner pendataan dan sudah diubah otomatis ke format impor.</p>
+              <p className="mt-1 text-xs font-medium text-[var(--ink-2)]">Nomor baris di bawah mengikuti nomor baris di tab kuesioner asalnya. Bila beberapa orang mengisi tab berbeda, unggah dulu file yang tab 1 (Orang)-nya terisi.</p>
+              {(res.notes?.length ?? 0) > 0 && (
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-xs font-medium text-[var(--ink-2)]">
+                  {res.notes!.map((n, i) => <li key={i}>{n}</li>)}
+                </ul>
+              )}
+            </div>
+          )}
           {(res.retiredSheets?.length ?? 0) > 0 && <p className="mt-2 text-xs font-medium text-[var(--ink-2)]">Sheet {res.retiredSheets!.join(", ")} diabaikan: acara, penugasan, latihan, dan rapat sekarang dibuat lewat aplikasi, bukan lewat Excel.</p>}
           {res.unknownSheets.length > 0 && <p className="mt-2 text-xs font-medium text-[var(--ink-2)]">Sheet tidak dikenal (diabaikan): {res.unknownSheets.join(", ")}.</p>}
 

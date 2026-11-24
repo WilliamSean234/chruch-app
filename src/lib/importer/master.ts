@@ -209,11 +209,36 @@ export function stageRuangan(ctx: Ctx, st: MasterState, rows: Row[]) {
   }
 }
 
+/** Tambahkan pelayanan ke orang yang sudah ada (hanya menambah, tidak mencabut). Dipakai juga oleh baris Orang yang namanya sudah terdaftar. */
+function addMinistries(ctx: Ctx, st: MasterState, p: PersonRec, mins: MinRec[], row: number): boolean {
+  const add = mins.filter((m) => !p.ministryIds.has(m.id));
+  if (!add.length) return false;
+  for (const m of add) { p.ministryIds.add(m.id); st.W.personMinistries.push({ personId: p.id, ministryId: m.id }); }
+  ctx.rep.note("Orang", row, `${p.name}: pelayanan ${add.map((x) => x.name).join(", ")} ditambahkan.`);
+  return true;
+}
+
+/** Baris "hanya pelayanan" (dari kuesioner: orang yang hanya muncul di tab anggota tim): orangnya harus sudah ada. */
+function stageMinistriesOnly(ctx: Ctx, st: MasterState, r: Row) {
+  const { rep } = ctx;
+  rep.seen("Orang");
+  const name = r.v.name.trim().replace(/\s+/g, " ");
+  const p = st.M.persons.get(nameKey(name));
+  if (!p) { rep.err("Orang", r.n, `"${name}" belum ada di data Orang. Isi dulu di tab 1 kuesioner (atau tambahkan di aplikasi), lalu unggah lagi.`); return; }
+  const errs: string[] = [];
+  const mins: MinRec[] = [];
+  for (const m of splitList(r.v.ministries)) { const f = findMinistry(st.M, m); if (f.rec) mins.push(f.rec); else errs.push(f.err!); }
+  if (errs.length) { rep.err("Orang", r.n, errs.join(" ")); return; }
+  if (addMinistries(ctx, st, p, mins, r.n)) rep.ok("Orang");
+  else rep.skip("Orang", r.n, `${p.name} sudah punya pelayanan itu.`);
+}
+
 export function stageOrang(ctx: Ctx, st: MasterState, rows: Row[]) {
   const { M, W } = st;
   const { rep, u } = ctx;
   const now = new Date();
   for (const r of rows) {
+    if (r.v.addOnly) { stageMinistriesOnly(ctx, st, r); continue; }
     rep.seen("Orang");
     const name = r.v.name.trim().replace(/\s+/g, " ");
     const errs: string[] = [];
@@ -247,6 +272,7 @@ export function stageOrang(ctx: Ctx, st: MasterState, rows: Row[]) {
     const dup = M.persons.get(key);
     if (dup && !errs.length) {
       if (dup.isNew) errs.push("Nama ini muncul dua kali di file (nama yang sama setelah gelar dibuang).");
+      else if (addMinistries(ctx, st, dup, mins, r.n)) { rep.ok("Orang"); continue; } // orang sudah ada: pelayanan baru tetap ditambahkan
       else { rep.skip("Orang", r.n, `${name} sudah ada di data.`); continue; }
     }
     if (errs.length) { rep.err("Orang", r.n, errs.join(" ")); continue; }
