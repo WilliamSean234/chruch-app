@@ -4,7 +4,8 @@ import Fab from "@/components/ui/Fab";
 import Link from "next/link";
 import { askConfirm } from "@/components/ui/Confirm";
 import { showToast } from "@/components/ui/Toast";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { stickyPage } from "@/components/ui/sticky";
 import Switch from "./Switch";
 import SeatPicker from "./SeatPicker";
 import { addToTime, btnGhost, btnPrimary, callApi, card, diffMin, errMsg, hmInput, inputCls } from "./api";
@@ -48,6 +49,8 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
   const [cancelOpen, setCancelOpen] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [saved, setSaved] = useState(false); // popup "berhasil disimpan"
+  const [tab, setTab] = useState("info"); // HP: "info" | "team:<id>" | "latihan" (desktop menampilkan semuanya)
+  const topRef = useRef<HTMLDivElement>(null);
   const [cancelReason, setCancelReason] = useState("");
   // form info
   const [f, setF] = useState({ title: "", date: "", start: "", end: "", roomId: "", mode: "COUNT", theme: "", padus: "" });
@@ -71,6 +74,13 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
     callApi("GET", "/api/v1/teams").then((r) => r.ok && setTeams(r.data.items));
     callApi("GET", "/api/v1/lookups/rooms").then((r) => r.ok && setRooms(r.data.items));
   }, []);
+
+  // HP: tab yang aktif ikut tergeser ke tengah baris tab, dan halaman kembali ke awal konten bila sudah tergulir jauh
+  useEffect(() => {
+    document.getElementById(`etab-${tab}`)?.scrollIntoView({ inline: "center", block: "nearest" });
+    const top = topRef.current;
+    if (top && top.getBoundingClientRect().top < 0) top.scrollIntoView({ block: "start" });
+  }, [tab]);
 
   const editable = !!d && d.status !== "CANCELLED" && !d.locked;
   const infoDirty = JSON.stringify(f) !== JSON.stringify(base);
@@ -215,7 +225,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
   const addTeam = async (teamTypeId: string) => {
     const name = teams.find((t) => t.id === teamTypeId)?.name ?? "tim";
     if (!(await askConfirm(`Tambahkan tim ${name} ke acara ini? Posisi bawaan tim ikut ditambahkan.`, { confirmLabel: "Tambahkan" }))) return;
-    if (await run(() => callApi("POST", `/api/v1/events/${eventId}/teams`, { teamTypeId }))) showToast(`Tim ${name} ditambahkan`);
+    if (await run(() => callApi("POST", `/api/v1/events/${eventId}/teams`, { teamTypeId }))) { showToast(`Tim ${name} ditambahkan`); setTab(`team:${teamTypeId}`); }
   };
   const removeTeam = async (teamTypeId: string, name: string) => { if (await askConfirm(`Hapus tim ${name} beserta semua posisinya dari acara ini?`)) void run(() => callApi("DELETE", `/api/v1/events/${eventId}/teams/${teamTypeId}`)); };
 
@@ -246,6 +256,21 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
   const st = STATUS_LABEL[d.status] ?? STATUS_LABEL.DRAFT;
   const dt = new Date(`${ymd(d.startsAt)}T00:00:00Z`);
   const timeLabel = `${hm(d.startsAt)}–${hm(d.endsAt)}`;
+
+  // Tab di HP: Info, satu tab per tim pelayanan, Latihan. Isi tab yang tidak aktif hanya disembunyikan (tidak dilepas), jadi isian yang belum disimpan tetap ada.
+  const teamKey = (id: string) => `team:${id}`;
+  const active = tab === "info" || tab === "latihan" || sections.some((t) => teamKey(t.teamTypeId) === tab) ? tab : "info";
+  const hid = (k: string) => (active === k ? "" : "max-md:hidden");
+  const bandTab = sections.find((t) => t.seats.some((x) => x.bandOnly)); // kartu Band/No Band ikut tab tim pemusik
+  const bandKey = bandTab ? teamKey(bandTab.teamTypeId) : "info";
+  const tabs = [
+    { key: "info", label: "Info", badge: infoDirty && perms.editEvent && editable ? "•" : "", state: "" },
+    ...sections.map((t) => {
+      const n = t.seats.length, ok = t.seats.filter((x) => x.person).length;
+      return { key: teamKey(t.teamTypeId), label: t.name.replace(/^tim\s+/i, ""), badge: `${ok}/${n}`, state: n > 0 && ok === n ? "ok" : "warn" };
+    }),
+    { key: "latihan", label: "Latihan", badge: String(reh?.sessions.length ?? 0), state: "" },
+  ];
 
   return (
     <div className="flex flex-col gap-5">
@@ -329,10 +354,37 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
         <div role="status" className="rounded-2xl border border-[#EAD9AE] bg-[#FFFBF0] px-4 py-3 text-sm font-semibold text-[#6F4304]">Ibadah ini sudah lewat 2 bulan, jadi hanya bisa dilihat dan tidak bisa diubah lagi.</div>
       )}
 
+      {/* HP: ringkasan terisi dan tab (Info, tiap tim, Latihan); di desktop semua bagian tampil bersamaan */}
+      <div ref={topRef} className="scroll-mt-2 md:hidden" aria-hidden="true" />
+      <div className="-mb-3 flex items-center gap-3 rounded-2xl border border-[var(--line)] bg-white px-4 py-3 md:hidden">
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <span className={`text-[13px] font-extrabold ${filled === total && total > 0 ? "text-[#1B6B34]" : "text-[#6F4304]"}`}>{filled === total && total > 0 ? "Semua posisi terisi" : `${total - filled} posisi belum terisi`}</span>
+          <div className="h-1.5 overflow-hidden rounded-full bg-[#ECEEF4]"><div className="h-full rounded-full bg-[var(--primary)]" style={{ width: `${total ? (filled / total) * 100 : 0}%` }} /></div>
+        </div>
+        <span className="flex-none text-sm font-extrabold tabular-nums">{filled}<span className="font-semibold text-[var(--ink-2)]"> / {total}</span></span>
+      </div>
+      {/* baris tab menempel di atas layar saat digulir; harus anak langsung dari kolom halaman supaya tetap menempel sepanjang halaman */}
+      <div className={`${stickyPage} -mb-2 md:hidden`}>
+        <div role="tablist" aria-label="Bagian jadwal" className="flex gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {tabs.map((t) => {
+            const on = active === t.key;
+            return (
+              <button key={t.key} id={`etab-${t.key}`} role="tab" type="button" aria-selected={on} onClick={() => setTab(t.key)}
+                className={`flex h-11 flex-none items-center gap-2 whitespace-nowrap rounded-xl border px-4 text-sm font-bold ${on ? "border-[var(--primary)] bg-[var(--primary)] text-white" : "border-[var(--line)] bg-white text-[var(--primary-ink)]"}`}>
+                {t.label}
+                {t.badge && (
+                  <span className={`rounded-full px-2 py-0.5 text-[11.5px] font-extrabold tabular-nums ${on ? "bg-white/25 text-white" : t.state === "ok" ? "bg-[#E3F3E7] text-[#1B6B34]" : t.state === "warn" ? "bg-[#FBEFD6] text-[#6F4304]" : "bg-[var(--bg)] text-[var(--ink-2)]"}`}>{t.badge}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-start gap-5">
         {/* Kiri */}
-        <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-5">
-          <section className={card}>
+        <div className={`flex min-w-0 flex-[999_1_560px] flex-col gap-5 ${active === "latihan" ? "max-md:hidden" : ""}`}>
+          <section className={`${card} ${hid("info")}`}>
             <SectionTitle>Informasi acara</SectionTitle>
             <div className="mt-4 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
               <label className="flex flex-col gap-1.5 text-[13px] font-bold sm:col-span-2 lg:col-span-3">Judul
@@ -372,7 +424,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
           </section>
 
           {(d.attendance || (d.status === "PUBLISHED" && perms.editEvent)) && (
-            <section className={card}>
+            <section className={`${card} ${hid("info")}`}>
               <div className="flex flex-wrap items-center gap-3">
                 <SectionTitle>Kehadiran</SectionTitle>
                 <span className="flex-1" />
@@ -390,7 +442,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
           )}
 
           {d.pair && editable && perms.assign && (
-            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#D0D3E8] bg-[#FAFAFF] px-5 py-3.5">
+            <div className={`flex flex-wrap items-center gap-3 rounded-2xl border border-[#D0D3E8] bg-[#FAFAFF] px-5 py-3.5 ${hid("info")}`}>
               <span className="min-w-0 flex-1 text-sm font-semibold text-[#3A3F58]">
                 Hari ini juga ada <Link href={`/jadwal/${d.pair.id}`} className="font-extrabold text-[var(--primary-ink)] underline">{d.pair.title}</Link>
                 {d.pair.filled > 0 ? ` (${d.pair.filled} kursi terisi).` : " (belum ada personel)."} Saat mengubah kursi, tema, atau mode band di sini, Anda akan ditanya apakah perubahannya juga berlaku di sana.
@@ -405,7 +457,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
           )}
 
           {(d.bandMode === "NO_BAND" || d.seats.some((x) => x.bandOnly)) && (
-            <section className={card}>
+            <section className={`${card} ${hid(bandKey)}`}>
               <div className="flex flex-wrap items-center gap-3">
                 <SectionTitle>Band atau No Band</SectionTitle>
                 <span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-bold ${d.bandMode === "NO_BAND" ? "bg-[var(--gold-soft)] text-[#6F4304]" : "bg-[var(--primary-soft)] text-[var(--primary-ink)]"}`}>{d.bandMode === "NO_BAND" ? "No Band" : "Band"}</span>
@@ -432,7 +484,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
             const teamMin = teams.find((x) => x.id === t.teamTypeId)?.ministries ?? [];
             const mayEditTeam = editable && perms.assign && (perms.scope === null || perms.scope.includes(t.teamTypeId));
             return (
-              <section key={t.teamTypeId} className={card}>
+              <section key={t.teamTypeId} className={`${card} ${hid(teamKey(t.teamTypeId))}`}>
                 <div className="flex flex-wrap items-center gap-3">
                   <SectionTitle>{t.name}</SectionTitle>
                   <span className="whitespace-nowrap rounded-full bg-[var(--bg)] px-2.5 py-0.5 text-xs font-bold text-[var(--ink-2)]">{t.seats.filter((s) => s.person).length}/{t.seats.length}</span>
@@ -496,7 +548,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
           })}
 
           {perms.editEvent && editable && unusedTeams.length > 0 && (
-            <div className="flex flex-wrap items-center gap-3 rounded-[20px] border border-dashed border-[#B9BDDA] p-4">
+            <div className={`flex flex-wrap items-center gap-3 rounded-[20px] border border-dashed border-[#B9BDDA] p-4 ${hid("info")}`}>
               <span className="text-sm font-bold text-[var(--ink-2)]">Tambah tim untuk acara ini · mis. bagi roti &amp; anggur</span>
               <select aria-label="Pilih tim" className="h-10 rounded-xl border border-[var(--line)] bg-white px-3 text-sm font-semibold" defaultValue="" onChange={(e) => { if (e.target.value) { void addTeam(e.target.value); e.target.value = ""; } }}>
                 <option value="">Pilih tim…</option>
@@ -507,8 +559,8 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
         </div>
 
         {/* Kanan */}
-        <aside className="lg:sticky lg:top-[calc(var(--header-h)+16px)] lg:max-h-[calc(100vh-var(--header-h)-32px)] lg:self-start lg:overflow-y-auto flex min-w-[300px] max-md:min-w-0 max-w-[400px] flex-[1_1_320px] flex-col gap-5">
-          <section className={card}>
+        <aside className={`lg:sticky lg:top-[calc(var(--header-h)+16px)] lg:max-h-[calc(100vh-var(--header-h)-32px)] lg:self-start lg:overflow-y-auto flex min-w-[300px] max-md:min-w-0 max-w-[400px] flex-[1_1_320px] flex-col gap-5 ${hid("latihan")}`}>
+          <section className={`${card} max-md:hidden`}>
             <SectionTitle>Cek jadwal</SectionTitle>
             <div className={`mt-4 flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-sm font-bold ${filled === total && total > 0 ? "bg-[#E3F3E7] text-[#1B6B34]" : "bg-[#FBEFD6] text-[#6F4304]"}`}>
               {filled === total && total > 0 ? "Semua posisi terisi, tidak ada bentrok" : `${total - filled} posisi belum terisi`}
