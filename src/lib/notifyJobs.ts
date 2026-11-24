@@ -4,7 +4,7 @@ import { localParts, zonedToUtc } from "./time";
 import { can, teamScope, type AuthUser } from "./rbac";
 import { listViolations } from "./eventViolations";
 import { dayShort, hm, MONTHS } from "./ui";
-import { addDaysYmd, attendanceStage, diffDaysYmd, digestSummary, limitedList, monthBounds, shortHash } from "./notifyText";
+import { addDaysYmd, attendanceStage, diffDaysYmd, digestSummary, limitedList, logCutoff, monthBounds, shortHash } from "./notifyText";
 import type { NotifKind } from "./notificationKinds";
 import { birthdayMessage, birthdaysOn } from "./birthdays";
 
@@ -226,6 +226,19 @@ export async function monthlyDigest(tenantId: string, now = new Date()) {
     if (r.sent.length) out.sent++; else out.skipped++;
   });
   return out;
+}
+
+/**
+ * Bersihkan catatan notifikasi lama supaya penyimpanan database tidak naik tanpa batas (satu baris per penerima per pesan).
+ * Hanya jenis yang kuncinya terikat tanggal (satu pesan per hari atau bulan): setelah lewat, kunci itu tidak pernah dicek lagi.
+ * Dibiarkan: pemberitahuan dan pembatalan yang terikat acara, serta "Penanda pengingat" (mencegah pengumuman ulang untuk hal yang masih berlaku).
+ */
+const DATE_BOUND_KINDS: NotifKind[] = ["ULANG_TAHUN", "PELAYAN_H1", "KELOMPOK_H1", "PELAYAN_BULANAN", "PENJADWAL_KEHADIRAN", "PENJADWAL_ATURAN"];
+export async function pruneNotificationLog(tenantId: string, now = new Date()) {
+  const r = await prisma.notificationLog.deleteMany({
+    where: { tenantId, kind: { in: DATE_BOUND_KINDS }, createdAt: { lt: logCutoff(now) }, NOT: { title: "Penanda pengingat" } },
+  });
+  return { dihapus: r.count };
 }
 
 /** Jalankan satu pekerjaan dengan aman: kegagalan satu pekerjaan tidak menghentikan yang lain. */

@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { remindAttendance, remindNewViolations, remindTomorrowMeetings, remindTomorrowStaff, safely } from "@/lib/notifyJobs";
+import { pruneNotificationLog, remindAttendance, remindNewViolations, remindTomorrowMeetings, remindTomorrowStaff, safely } from "@/lib/notifyJobs";
 import { cronGuard } from "../auth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-/** Cron harian (sekitar 17.00 WIB): pengingat H-1, kehadiran belum diisi, dan pelanggaran aturan baru. */
+/** Cron harian (sekitar 17.00 WIB): pengingat H-1, kehadiran belum diisi, dan pelanggaran aturan baru; lalu membersihkan catatan notifikasi lama. */
 export async function GET(req: Request) {
   const denied = cronGuard(req);
   if (denied) return denied;
@@ -18,6 +18,7 @@ export async function GET(req: Request) {
       rapatH1: await safely("rapatH1", () => remindTomorrowMeetings(t.id)),
       kehadiran: await safely("kehadiran", () => remindAttendance(t.id)),
       aturan: await safely("aturan", () => remindNewViolations(t.id)),
+      bersihLog: await safely("bersihLog", () => pruneNotificationLog(t.id)),
     };
   }
   return NextResponse.json({ ok: true, hasil: out });

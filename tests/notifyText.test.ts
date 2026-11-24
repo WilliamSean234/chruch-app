@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addDaysYmd, attendanceStage, diffDaysYmd, digestSummary, limitedList, monthBounds, shortHash } from "../src/lib/notifyText";
+import { addDaysYmd, attendanceStage, diffDaysYmd, digestSummary, limitedList, logCutoff, monthBounds, NOTIF_LOG_KEEP_DAYS, shortHash } from "../src/lib/notifyText";
 
 test("addDaysYmd dan diffDaysYmd melewati akhir bulan dan tahun", () => {
   assert.equal(addDaysYmd("2026-11-30", 1), "2026-12-01");
@@ -35,4 +35,11 @@ test("attendanceStage: sekali di awal, sekali lagi setelah 3 hari", () => {
   assert.equal(attendanceStage(3, { first: true, second: false }), 2);
   assert.equal(attendanceStage(3, { first: false, second: false }), 2);
   assert.equal(attendanceStage(5, { first: true, second: true }), null);
+});
+
+test("logCutoff: catatan notifikasi disimpan 90 hari", () => {
+  const now = new Date("2026-11-24T10:00:00Z");
+  assert.equal(NOTIF_LOG_KEEP_DAYS, 90);
+  assert.equal(logCutoff(now).toISOString(), "2026-08-26T10:00:00.000Z");
+  assert.equal(logCutoff(now, 7).toISOString(), "2026-11-17T10:00:00.000Z");
 });

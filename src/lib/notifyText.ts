@@ -8,6 +8,12 @@ export const addDaysYmd = (ymd: string, n: number) => {
 /** Selisih hari a - b. */
 export const diffDaysYmd = (a: string, b: string) => Math.round((Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000);
 
+/** Berapa hari catatan notifikasi yang terikat tanggal disimpan sebelum dibersihkan. */
+export const NOTIF_LOG_KEEP_DAYS = 90;
+
+/** Batas waktu: catatan yang dibuat sebelum ini boleh dihapus. */
+export const logCutoff = (now: Date, days = NOTIF_LOG_KEEP_DAYS) => new Date(now.getTime() - days * 86_400_000);
+
 /** Gabungkan beberapa butir dengan "; " dan ringkas sisanya: "a; b; c; +2 lainnya". */
 export function limitedList(items: string[], max: number): string {
   if (items.length <= max) return items.join("; ");
