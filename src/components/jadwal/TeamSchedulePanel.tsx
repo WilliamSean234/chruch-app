@@ -61,6 +61,11 @@ export default function TeamSchedulePanel({ formats }: { formats: FormatInfo[] }
           ))}
         </div>
       )}
+      {!combined && !mayUpload && (
+        <p role="note" className="m-0 rounded-[10px] bg-[#f1f2fd] px-3.5 py-2.5 text-[13px] font-semibold leading-relaxed text-[var(--primary-ink)]">
+          Jadwal {fmt.label} hanya bisa diunggah oleh Admin Tim {fmt.label} atau Superadmin. Anda bisa melihat dan membagikannya.
+        </p>
+      )}
       {!combined && mayUpload && <div role="tablist" className="flex gap-2">
         {([["upload", "Unggah jadwal"], ["export", "Bagikan jadwal"]] as const).map(([k, l]) => (
           <button key={k} role="tab" aria-selected={tab === k} type="button" onClick={() => setTab(k)}

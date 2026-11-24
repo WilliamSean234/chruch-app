@@ -11,7 +11,7 @@ export default async function JadwalTimPage() {
   const formats = await availableFormats(u);
   if (!formats.length) redirect("/jadwal");
   return (
-    <AppShell active="jadwal" title="Jadwal tim" subtitle="Unggah jadwal setahun, lalu bagikan ke grup" back={{ href: "/jadwal", label: "Jadwal acara" }}>
+    <AppShell active="jadwal" title="Jadwal tim" subtitle="Unggah dan bagikan jadwal setahun per tim" back={{ href: "/jadwal", label: "Jadwal acara" }}>
       <TeamSchedulePanel formats={formats} />
     </AppShell>
   );
