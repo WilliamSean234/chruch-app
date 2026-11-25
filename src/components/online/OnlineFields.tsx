@@ -42,9 +42,9 @@ export default function OnlineFields({ value, onChange, kind, disabled, hint, no
               <div className="grid gap-2.5 sm:grid-cols-2">
                 <PersonFilter label="" placeholder="Cari dari daftar orang…" value={null} onChange={(p) => set({ speaker: p, speakerName: "" })} />
                 <input className={inputCls} maxLength={120} placeholder="atau ketik nama pembicara luar" value={value.speakerName} disabled={disabled} onChange={(e) => set({ speakerName: e.target.value })} />
-              </div>}
+              </div>
             )}
-          </div>
+          </div>}
           {kind === "IBADAH" && (
             <fieldset className="flex flex-col gap-2 sm:col-span-2">
               <legend className="mb-1 text-[13px] font-bold">Siapa yang melihat tautan</legend>
