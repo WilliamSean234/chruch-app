@@ -35,11 +35,12 @@ export const onlineFields = {
   speakerPersonId: z.string().uuid().nullish(),
   speakerName: z.string().trim().max(120).nullish(),
   onlineCommunityIds: z.array(z.string().uuid()).max(30).optional(),
+  onlineReminder: z.boolean().optional(), // pengingat H-1; bawaan menyala
 };
-export type OnlineInput = { online?: boolean; onlineUrl?: string | null; speakerPersonId?: string | null; speakerName?: string | null; onlineCommunityIds?: string[] };
+export type OnlineInput = { online?: boolean; onlineUrl?: string | null; speakerPersonId?: string | null; speakerName?: string | null; onlineCommunityIds?: string[]; onlineReminder?: boolean };
 
-export type OnlineValues = { isOnline: boolean; onlineUrl: string | null; speakerPersonId: string | null; speakerName: string | null; onlineCommunityIds: string[] };
-export const NOT_ONLINE: OnlineValues = { isOnline: false, onlineUrl: null, speakerPersonId: null, speakerName: null, onlineCommunityIds: [] };
+export type OnlineValues = { isOnline: boolean; onlineUrl: string | null; speakerPersonId: string | null; speakerName: string | null; onlineCommunityIds: string[]; onlineReminder: boolean };
+export const NOT_ONLINE: OnlineValues = { isOnline: false, onlineUrl: null, speakerPersonId: null, speakerName: null, onlineCommunityIds: [], onlineReminder: true };
 
 /**
  * Periksa isian online dan ubah ke nilai yang siap disimpan (tautan dan nama pembicara luar disegel dengan id acara).
@@ -63,7 +64,7 @@ export async function prepareOnline(tenantId: string, eventId: string, b: Online
     communityIds = [...new Set(b.onlineCommunityIds)];
     if ((await prisma.community.count({ where: { id: { in: communityIds }, tenantId, deletedAt: null } })) !== communityIds.length) throw badRequest("Ada komunitas yang tidak valid.");
   }
-  return { isOnline: true, onlineUrl: sealOnlineUrl(eventId, url), speakerPersonId, speakerName: sealSpeaker(eventId, speakerName), onlineCommunityIds: communityIds };
+  return { isOnline: true, onlineUrl: sealOnlineUrl(eventId, url), speakerPersonId, speakerName: sealSpeaker(eventId, speakerName), onlineCommunityIds: communityIds, onlineReminder: b.onlineReminder ?? true };
 }
 
 /** Pembukaan yang tidak melempar galat: tautan yang tidak terbuka (kunci beda) tampil kosong, bukan merusak halaman. */
@@ -71,9 +72,9 @@ const tryOpen = (f: () => string | null): string | null => { try { return f(); }
 
 export type OnlineView =
   | { isOnline: false }
-  | { isOnline: true; url: string | null; canSeeLink: boolean; speaker: { personId: string | null; name: string } | null; communities: { id: string; name: string }[]; visibleTo: "ALL" | "COMMUNITIES" };
+  | { isOnline: true; url: string | null; canSeeLink: boolean; speaker: { personId: string | null; name: string } | null; communities: { id: string; name: string }[]; visibleTo: "ALL" | "COMMUNITIES"; reminder: boolean };
 
-type OnlineRow = { id: string; isOnline: boolean; onlineUrl: string | null; speakerPersonId: string | null; speakerName: string | null; onlineCommunityIds: string[] };
+type OnlineRow = { id: string; isOnline: boolean; onlineUrl: string | null; speakerPersonId: string | null; speakerName: string | null; onlineCommunityIds: string[]; onlineReminder: boolean };
 
 /**
  * Rincian online satu ibadah untuk `viewer`. Tautan hanya terisi bila viewer berhak (canSeeOnlineLink); tanpa viewer tautan selalu kosong.
@@ -94,6 +95,7 @@ export async function onlineView(tenantId: string, viewer: AuthUser | undefined,
     speaker: person ? { personId: person.id, name: person.name } : typed ? { personId: null, name: typed } : null,
     communities,
     visibleTo: e.onlineCommunityIds.length ? "COMMUNITIES" : "ALL",
+    reminder: e.onlineReminder,
   };
 }
 

@@ -280,7 +280,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
       const n = t.seats.length, ok = t.seats.filter((x) => x.person).length;
       return { key: teamKey(t.teamTypeId), label: t.name.replace(/^tim\s+/i, ""), badge: `${ok}/${n}`, state: n > 0 && ok === n ? "ok" : "warn" };
     }),
-    { key: "latihan", label: "Latihan", badge: String(reh?.sessions.length ?? 0), state: "" },
+    ...(d?.isOnline ? [] : [{ key: "latihan", label: "Latihan", badge: String(reh?.sessions.length ?? 0), state: "" }]), // acara online tanpa latihan
   ];
 
   return (
@@ -428,9 +428,11 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
               <label className="flex flex-col gap-1.5 text-[13px] font-bold sm:col-span-2 lg:col-span-3">Tema ibadah <span className="font-medium text-[var(--ink-2)]">(opsional)</span>
                 <textarea rows={2} maxLength={600} className={`${inputCls} h-auto min-h-[44px] py-2.5`} value={f.theme} disabled={!perms.editEvent || !editable} onChange={(e) => setF({ ...f, theme: e.target.value })} placeholder="mis. Hidup dalam terang kasih Kristus" />
               </label>
+              {!f.onl.online && (
               <label className="flex flex-col gap-1.5 text-[13px] font-bold sm:col-span-2 lg:col-span-3">Padus <span className="font-medium text-[var(--ink-2)]">(opsional, catatan saja)</span>
                 <input maxLength={200} className={inputCls} value={f.padus} disabled={!perms.editEvent || !editable} onChange={(e) => setF({ ...f, padus: e.target.value })} placeholder="mis. Padus Rayon 3 membawakan 2 lagu" />
               </label>
+              )}
             </div>
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
               <span className="text-xs font-semibold text-[var(--ink-2)]">Waktu dan ruangan bisa diubah untuk acara ini saja. Orang yang sudah dijadwalkan ikut pindah jam, dan ditolak bila bentrok.</span>
@@ -504,7 +506,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
                   <SectionTitle>{t.name}</SectionTitle>
                   <span className="whitespace-nowrap rounded-full bg-[var(--bg)] px-2.5 py-0.5 text-xs font-bold text-[var(--ink-2)]">{t.seats.filter((s) => s.person).length}/{t.seats.length}</span>
                   <span className="flex-1" />
-                  {perms.rehearsal && mayEditTeam && t.seats.length > 0 && (
+                  {perms.rehearsal && !d?.isOnline && mayEditTeam && t.seats.length > 0 && (
                     <label className="flex items-center gap-2.5 text-[12.5px] font-bold text-[var(--ink-2)]">Wajib latihan
                       <Switch checked={allReq} disabled={busy} onChange={(v) => void bulkRequired(t.teamTypeId, v, t.name)} label={`Wajib latihan semua posisi ${t.name}`} />
                     </label>
@@ -537,7 +539,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
                             <button onClick={() => void assignSeat(s, null)} className="rounded-lg px-2.5 py-1 text-xs font-bold text-[var(--ink-2)] hover:bg-[var(--bg)]">Kosongkan</button>
                           </div>
                         )}
-                        {perms.rehearsal && seatEditable(s) && (
+                        {perms.rehearsal && !d?.isOnline && seatEditable(s) && (
                           <label className="flex items-center gap-2 text-xs font-bold text-[var(--ink-2)] max-md:order-5">Wajib latihan
                             <Switch checked={s.rehearsalRequired} disabled={busy} onChange={(v) => void setRequired(s.id, v).then((ok) => ok && showToast(v ? `Wajib latihan ${s.label}` : `Tidak wajib latihan ${s.label}`))} label={`Wajib latihan ${s.label}`} />
                           </label>
@@ -585,6 +587,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
             <p className="mt-3 text-xs font-medium text-[var(--ink-2)]">Orang dan ruangan yang sudah terpakai pada jam yang beririsan tidak bisa dipilih lagi.</p>
           </section>
 
+          {!d?.isOnline && (
           <section className={card}>
             <div className="flex items-center gap-3"><SectionTitle>Jadwal latihan</SectionTitle><span className="flex-1" /><span className="whitespace-nowrap rounded-full bg-[var(--bg)] px-2.5 py-0.5 text-xs font-bold text-[var(--ink-2)]">{reh?.sessions.length ?? 0} kali</span></div>
             <div className="mt-3 flex flex-col gap-2.5">
@@ -636,6 +639,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
               <div className="flex justify-between"><span className="text-[var(--ink-2)]">Peserta tidak wajib</span><span>{opsional} orang</span></div>
             </div>
           </section>
+          )}
         </aside>
       </div>
       {saved && <SavedDialog onStay={() => setSaved(false)} />}

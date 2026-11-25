@@ -369,6 +369,7 @@ model Event { // header; nomor EV-YYYYMM-0001
   onlineUrl      String? // tautan meeting online (terenkripsi)
   speakerPersonId String? // pembicara yang dipilih dari daftar Orang
   speakerName    String? // pembicara luar yang diketik (terenkripsi); dipakai bila speakerPersonId kosong
+  onlineReminder Boolean           @default(true) // acara online: pengingat sehari sebelumnya (petugas, pembicara, dan penerima tautan atau anggota kelompok)
   onlineCommunityIds String[]      @default([]) // ibadah online: tautan hanya untuk komunitas ini; kosong = semua orang. Rapat: selalu hanya anggota kelompok
   group         MeetingGroup?      @relation(fields: [groupId], references: [id])
   seriesId      String? // rapat yang dibuat dari satu pengulangan

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { pruneNotificationLog, remindAttendance, remindNewViolations, remindTomorrowMeetings, remindTomorrowStaff, safely } from "@/lib/notifyJobs";
+import { pruneNotificationLog, remindAttendance, remindNewViolations, remindTomorrowMeetings, remindTomorrowOnline, remindTomorrowStaff, safely } from "@/lib/notifyJobs";
 import { pruneTransientData } from "@/lib/housekeeping";
 import { cronGuard } from "../auth";
 
@@ -16,6 +16,7 @@ export async function GET(req: Request) {
   for (const t of tenants) {
     out[t.id] = {
       pelayanH1: await safely("pelayanH1", () => remindTomorrowStaff(t.id)),
+      onlineH1: await safely("onlineH1", () => remindTomorrowOnline(t.id)),
       rapatH1: await safely("rapatH1", () => remindTomorrowMeetings(t.id)),
       kehadiran: await safely("kehadiran", () => remindAttendance(t.id)),
       aturan: await safely("aturan", () => remindNewViolations(t.id)),

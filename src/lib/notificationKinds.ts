@@ -9,6 +9,7 @@ export const NOTIF_KINDS = [
   { kind: "PELAYAN_BULANAN", audience: "PELAYAN", label: "Ringkasan jadwal tiap awal bulan", hint: "Tanggal 1: semua acara, posisi, latihan, dan rapat Anda bulan itu. Tidak dikirim bila tidak ada." },
   { kind: "PENJADWAL_KEHADIRAN", audience: "PENJADWAL", label: "Kehadiran belum diisi", hint: "Sekali setelah acara selesai, dan sekali lagi paling lama 3 hari kemudian." },
   { kind: "PENJADWAL_ATURAN", audience: "PENJADWAL", label: "Pelanggaran aturan baru", hint: "Hanya bila ada pelanggaran baru, maksimal sekali sehari." },
+  { kind: "ONLINE_H1", audience: "SEMUA", label: "Pengingat ibadah online", hint: "Sore sebelum ibadah online yang tautannya untuk Anda (semua orang atau komunitas Anda). Penjadwal bisa mematikannya per acara. Tidak berisi tautan; buka di aplikasi." },
   { kind: "KELOMPOK_H1", audience: "KELOMPOK", label: "Pengingat rapat kelompok", hint: "Sehari sebelum rapat atau acara kelompok Anda." },
 ] as const;
 

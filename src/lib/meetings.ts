@@ -220,7 +220,7 @@ async function onlineMeetingView(e: MeetingRow) {
   const person = e.speakerPersonId ? await prisma.person.findFirst({ where: { id: e.speakerPersonId, tenantId: e.tenantId }, select: { id: true, name: true } }) : null;
   const typed = e.speakerName ? open(() => openSpeaker(e.id, e.speakerName)) : null;
   return {
-    isOnline: true as const, canSeeLink: true,
+    isOnline: true as const, canSeeLink: true, reminder: e.onlineReminder,
     url: open(() => openOnlineUrl(e.id, e.onlineUrl)),
     theme: e.theme ? open(() => openTheme(e.id, e.theme)) : null,
     speaker: person ? { personId: person.id, name: person.name } : typed ? { personId: null, name: typed } : null,
@@ -433,7 +433,7 @@ export async function updateMeeting(u: AuthUser, id: string, b: z.infer<typeof m
   const wasEnd = localParts(cur.endsAt);
   const { startsAt, endsAt } = range(b.date ?? was.date, b.startTime ?? was.time, b.endTime ?? wasEnd.time);
   const willBeOnline = b.online ?? cur.isOnline;
-  const touchesOnline = b.online !== undefined || b.onlineUrl !== undefined || b.speakerPersonId !== undefined || b.speakerName !== undefined || b.theme !== undefined;
+  const touchesOnline = b.online !== undefined || b.onlineUrl !== undefined || b.speakerPersonId !== undefined || b.speakerName !== undefined || b.theme !== undefined || b.onlineReminder !== undefined;
   if (willBeOnline && touchesOnline && !a.caps.isMember) throw forbidden("Tautan, tema, dan pembicara rapat online hanya bisa diisi oleh anggota kelompok.");
   if (!willBeOnline && cur.isOnline && !b.roomId) throw badRequest("Rapat tidak lagi online: pilih ruangannya.");
   const roomId = willBeOnline ? await ensureOnlineRoom(prisma, u.tenantId) : (b.roomId ?? cur.roomId);
@@ -449,6 +449,7 @@ export async function updateMeeting(u: AuthUser, id: string, b: z.infer<typeof m
         onlineUrl: b.onlineUrl !== undefined ? b.onlineUrl : cur.onlineUrl ? openOnlineUrl(id, cur.onlineUrl) : null,
         speakerPersonId: keepSpeaker ? cur.speakerPersonId : b.speakerPersonId ?? null,
         speakerName: keepSpeaker ? (cur.speakerName ? openSpeaker(id, cur.speakerName) : null) : b.speakerName ?? null,
+        onlineReminder: b.onlineReminder ?? cur.onlineReminder,
       }, "RAPAT")
     : b.online === false ? NOT_ONLINE : undefined;
   const themeData = !willBeOnline ? (cur.isOnline ? null : undefined) : b.theme !== undefined ? sealTheme(id, b.theme) : undefined;
@@ -463,7 +464,7 @@ export async function updateMeeting(u: AuthUser, id: string, b: z.infer<typeof m
     }),
   "Ruangan sudah dipakai pada jam itu. Pilih ruangan atau jam lain.");
   // tautan, tema, dan nama pembicara tidak pernah dicatat di log; hanya bahwa rapat jadi online / berubah
-  await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.update", entity: "Event", entityId: id, payload: { ...b, title: undefined, titleChanged: b.title !== undefined, onlineUrl: undefined, speakerName: undefined, speakerPersonId: undefined, theme: undefined, themeChanged: b.theme !== undefined, onlineLinkChanged: b.onlineUrl !== undefined, speakerChanged: b.speakerPersonId !== undefined || b.speakerName !== undefined } }); // isi judul tidak dicatat di log
+  await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.update", entity: "Event", entityId: id, payload: { ...b, title: undefined, titleChanged: b.title !== undefined, onlineUrl: undefined, speakerName: undefined, speakerPersonId: undefined, theme: undefined, themeChanged: b.theme !== undefined, onlineLinkChanged: b.onlineUrl !== undefined, onlineReminder: undefined, reminderChanged: b.onlineReminder !== undefined, speakerChanged: b.speakerPersonId !== undefined || b.speakerName !== undefined } }); // isi judul tidak dicatat di log
   return getMeeting(u, id);
 }
 

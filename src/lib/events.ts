@@ -188,7 +188,7 @@ export async function listEvents(tenantId: string, q: z.infer<typeof eventListQu
   return { ...pageOf(items, total, pg), options: { templates, rooms, years } };
 }
 
-async function expandSeats(tenantId: string, seats: z.infer<typeof seatSpec>[]) {
+async function expandSeats(tenantId: string, seats: z.infer<typeof seatSpec>[], online = false) {
   const ids = seats.map((s) => s.ministryId);
   if (new Set(ids).size !== ids.length) throw badRequest("Satu posisi cukup satu baris; pakai count untuk jumlah kursi.");
   const ms = await prisma.ministry.findMany({ where: { id: { in: ids }, tenantId, deletedAt: null } });
@@ -196,7 +196,7 @@ async function expandSeats(tenantId: string, seats: z.infer<typeof seatSpec>[]) 
   const byId = new Map(ms.map((m) => [m.id, m]));
   return seats.flatMap((s) => {
     const m = byId.get(s.ministryId)!;
-    return Array.from({ length: s.count }, (_, i) => ({ ministryId: m.id, teamTypeId: m.teamTypeId, slotNo: i + 1, rehearsalRequired: s.rehearsalRequired ?? m.rehearsalRequiredDefault }));
+    return Array.from({ length: s.count }, (_, i) => ({ ministryId: m.id, teamTypeId: m.teamTypeId, slotNo: i + 1, rehearsalRequired: online ? false : s.rehearsalRequired ?? m.rehearsalRequiredDefault })); // acara online tanpa latihan
   });
 }
 
@@ -212,7 +212,7 @@ export async function createEvent(u: AuthUser, b: z.infer<typeof eventCreateBody
     await assertRoomUsable(u.tenantId, roomId);
     await assertRoomFree(u.tenantId, roomId, startsAt, endsAt);
   }
-  const seats = await expandSeats(u.tenantId, b.seats);
+  const seats = await expandSeats(u.tenantId, b.seats, online);
   const teamIds = [...new Set([...b.teamTypeIds, ...seats.map((s) => s.teamTypeId)])];
   if (teamIds.length && (await prisma.teamType.count({ where: { id: { in: teamIds }, tenantId: u.tenantId, deletedAt: null } })) !== teamIds.length) throw badRequest("Ada tim yang tidak valid.");
 
@@ -224,7 +224,7 @@ export async function createEvent(u: AuthUser, b: z.infer<typeof eventCreateBody
       const e = await tx.event.create({
         data: {
           id, ...(onl ?? {}),
-          tenantId: u.tenantId, number, title: b.title, startsAt, endsAt, roomId, status: "DRAFT", attendanceMode: b.attendanceMode, theme: b.theme, padus: b.padus, createdById: u.userId,
+          tenantId: u.tenantId, number, title: b.title, startsAt, endsAt, roomId, status: "DRAFT", attendanceMode: b.attendanceMode, theme: b.theme, padus: online ? null : b.padus, createdById: u.userId,
           teams: { create: teamIds.map((teamTypeId) => ({ teamTypeId })) },
           assignments: { create: seats.map((s, i) => ({ tenantId: u.tenantId, ...s, sortOrder: i })) },
         },
@@ -251,7 +251,7 @@ export async function updateEvent(u: AuthUser, id: string, b: z.infer<typeof eve
   const timeChanged = startsAt.getTime() !== cur.startsAt.getTime() || endsAt.getTime() !== cur.endsAt.getTime();
   const roomChanged = roomId !== cur.roomId;
   // online baru, atau tautan/pembicara/penerima diubah: isian divalidasi dan disegel. Acara yang sudah online dan hanya diubah jamnya tidak perlu mengirim ulang.
-  const onl = willBeOnline && (b.online || b.onlineUrl !== undefined || b.speakerPersonId !== undefined || b.speakerName !== undefined || b.onlineCommunityIds !== undefined)
+  const onl = willBeOnline && (b.online || b.onlineUrl !== undefined || b.speakerPersonId !== undefined || b.speakerName !== undefined || b.onlineCommunityIds !== undefined || b.onlineReminder !== undefined)
     ? await prepareOnline(u.tenantId, id, {
         online: true,
         onlineUrl: b.onlineUrl !== undefined ? b.onlineUrl : cur.onlineUrl ? openOnlineUrl(id, cur.onlineUrl) : null,
@@ -259,6 +259,7 @@ export async function updateEvent(u: AuthUser, id: string, b: z.infer<typeof eve
           ? { speakerPersonId: b.speakerPersonId ?? null, speakerName: b.speakerName ?? null }
           : { speakerPersonId: cur.speakerPersonId, speakerName: cur.speakerName ? openSpeaker(id, cur.speakerName) : null }),
         onlineCommunityIds: b.onlineCommunityIds ?? cur.onlineCommunityIds,
+        onlineReminder: b.onlineReminder ?? cur.onlineReminder,
       }, "IBADAH")
     : b.online === false ? NOT_ONLINE : undefined;
 
@@ -266,13 +267,16 @@ export async function updateEvent(u: AuthUser, id: string, b: z.infer<typeof eve
     const [names, summary] = await Promise.all([prisma.eventAttendance.count({ where: { eventId: id } }), prisma.eventAttendanceSummary.count({ where: { eventId: id } })]);
     if (names + summary > 0) throw conflict("Mode kehadiran tidak bisa diganti karena data kehadiran sudah ada.");
   }
+  // acara online tanpa sesi latihan: hapus dulu sesi latihan yang sudah ada sebelum menjadikannya online
+  if (willBeOnline && !cur.isOnline && (await prisma.rehearsalSession.count({ where: { eventId: id, deletedAt: null } })) > 0) throw conflict("Acara ini punya sesi latihan. Online tidak memakai latihan: hapus sesi latihannya dulu.");
   if (roomChanged && !willBeOnline) await assertRoomUsable(u.tenantId, roomId);
   if ((timeChanged || roomChanged) && !willBeOnline) await assertRoomFree(u.tenantId, roomId, startsAt, endsAt, id);
 
   await translateOverlap(
     () =>
       prisma.$transaction(async (tx) => {
-        await tx.event.update({ where: { id }, data: { title: b.title, attendanceMode: b.attendanceMode, theme: b.theme, padus: b.padus, startsAt, endsAt, roomId, ...(onl ?? {}) } });
+        await tx.event.update({ where: { id }, data: { title: b.title, attendanceMode: b.attendanceMode, theme: b.theme, padus: willBeOnline ? null : b.padus, startsAt, endsAt, roomId, ...(onl ?? {}) } });
+        if (willBeOnline && !cur.isOnline) await tx.eventAssignment.updateMany({ where: { eventId: id, rehearsalRequired: true }, data: { rehearsalRequired: false } });
         if (timeChanged || roomChanged) {
           await releaseBookings(tx, { sourceType: "EVENT", sourceId: id, resourceType: "ROOM" });
           if (!willBeOnline) await bookRoom(tx, { tenantId: u.tenantId, roomId, startsAt, endsAt, sourceType: "EVENT", sourceId: id });
@@ -335,7 +339,7 @@ export async function setBandMode(u: AuthUser, id: string, mode: "BAND" | "NO_BA
           if (!(await tx.eventTeam.count({ where: { eventId: id, teamTypeId: t } }))) await tx.eventTeam.create({ data: { eventId: id, teamTypeId: t } });
         }
         await tx.eventAssignment.createMany({
-          data: missing.map((sl) => ({ tenantId: u.tenantId, eventId: id, teamTypeId: sl.ministry.teamTypeId, ministryId: sl.ministryId, slotNo: sl.slotNo, sortOrder: o++, rehearsalRequired: sl.rehearsalRequired })),
+          data: missing.map((sl) => ({ tenantId: u.tenantId, eventId: id, teamTypeId: sl.ministry.teamTypeId, ministryId: sl.ministryId, slotNo: sl.slotNo, sortOrder: o++, rehearsalRequired: e.isOnline ? false : sl.rehearsalRequired })),
         });
       }
       await tx.event.update({ where: { id }, data: { bandMode: "BAND" } });
@@ -380,7 +384,7 @@ export async function addSeats(u: AuthUser, eventId: string, b: z.infer<typeof s
     if (!(await tx.eventTeam.count({ where: { eventId, teamTypeId: m.teamTypeId } }))) await tx.eventTeam.create({ data: { eventId, teamTypeId: m.teamTypeId } });
     await tx.eventAssignment.createMany({
       data: Array.from({ length: b.count }, (_, i) => ({
-        tenantId: u.tenantId, eventId, teamTypeId: m.teamTypeId, ministryId: m.id, slotNo: start + i, sortOrder: o + i, rehearsalRequired: b.rehearsalRequired ?? m.rehearsalRequiredDefault,
+        tenantId: u.tenantId, eventId, teamTypeId: m.teamTypeId, ministryId: m.id, slotNo: start + i, sortOrder: o + i, rehearsalRequired: ev.isOnline ? false : b.rehearsalRequired ?? m.rehearsalRequiredDefault,
       })),
     });
   });

@@ -66,6 +66,17 @@ export default function OnlineFields({ value, onChange, kind, disabled, hint }: 
               <span className="pl-7 text-xs font-medium text-[var(--ink-2)]">Petugas, pembicara, dan penjadwal acara ini selalu bisa melihat tautan.</span>
             </fieldset>
           )}
+          <label className="flex items-start gap-3 rounded-xl border border-[var(--line)] bg-white px-3.5 py-3 sm:col-span-2">
+            <input type="checkbox" className="mt-0.5 size-5 flex-none" checked={value.reminder} disabled={disabled} onChange={(e) => set({ reminder: e.target.checked })} />
+            <span className="flex flex-col gap-0.5 text-sm">
+              <span className="font-bold">Kirim pengingat sehari sebelumnya</span>
+              <span className="text-[13px] font-medium text-[var(--ink-2)]">
+                {kind === "RAPAT" ? "Sore sebelum rapat, ke anggota kelompok yang diundang."
+                  : value.audience === "COMMUNITIES" ? "Sore sebelum acara, ke petugas, pembicara, dan anggota komunitas yang dipilih."
+                    : "Sore sebelum acara, ke petugas, pembicara, dan semua orang yang punya akun."}
+              </span>
+            </span>
+          </label>
           {hint && <p className="m-0 text-xs font-medium text-[var(--ink-2)] sm:col-span-2">{hint}</p>}
         </div>
       )}

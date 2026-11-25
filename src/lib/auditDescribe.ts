@@ -275,7 +275,7 @@ export function describe(r: AuditRowIn, refs: Refs): { target: string | null; ho
     case "meeting.create": how = [p.online === true ? "Online" : null, `${num(p.invited) ?? 0} anggota diundang`, num(p.guests) ? `${p.guests} tamu` : null].filter(Boolean).join(" · "); break;
     case "meeting.series.create": how = [str(p.pattern) ? PATTERN[p.pattern as string] ?? (p.pattern as string) : null, num(p.created) !== null ? `${p.created} rapat dibuat` : null, num(p.skipped) ? `${p.skipped} tanggal dilewati` : null].filter(Boolean).join(" · "); break;
     case "meeting.update": {
-      const labels: [string, string][] = [["titleChanged", "judul"], ["date", "tanggal"], ["startTime", "jam mulai"], ["endTime", "jam selesai"], ["roomId", "ruangan"], ["showTopic", "tampil topik"], ["showAttendees", "tampil peserta"], ["online", "status online"], ["onlineLinkChanged", "tautan online"], ["speakerChanged", "pembicara"], ["themeChanged", "tema"]];
+      const labels: [string, string][] = [["titleChanged", "judul"], ["date", "tanggal"], ["startTime", "jam mulai"], ["endTime", "jam selesai"], ["roomId", "ruangan"], ["showTopic", "tampil topik"], ["showAttendees", "tampil peserta"], ["online", "status online"], ["onlineLinkChanged", "tautan online"], ["speakerChanged", "pembicara"], ["themeChanged", "tema"], ["reminderChanged", "pengingat online"]];
       const ch = labels.filter(([k]) => (/Changed$/.test(k) ? p[k] === true : p[k] !== undefined && p[k] !== null)).map(([, l]) => l);
       const room = name(refs.names.rooms, p.roomId);
       how = ch.length ? `Mengubah ${list(ch)}${room ? ` · ruangan ${room}` : ""}` : null;

@@ -4,7 +4,7 @@
 export type OnlineDto = {
   isOnline: boolean; url: string | null; canSeeLink?: boolean;
   speaker: { personId: string | null; name: string } | null;
-  communities?: { id: string; name: string }[]; visibleTo?: string; theme?: string | null;
+  communities?: { id: string; name: string }[]; visibleTo?: string; theme?: string | null; reminder?: boolean;
 };
 
 export default function OnlineInfo({ online, showTheme }: { online: OnlineDto | null | undefined; showTheme?: boolean }) {

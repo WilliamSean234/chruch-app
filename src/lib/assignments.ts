@@ -325,7 +325,7 @@ export async function copyPersonnel(u: AuthUser, targetEventId: string, sourceEv
   }
   // Sesi latihan dibuat dulu, baru status "wajib latihan" dipasang supaya jam kursi itu langsung terkunci di semua sesi.
   // Hanya untuk pasangannya di hari yang sama (Ibadah Minggu 1 dan 2): sumber di hari lain tidak pernah berbagi sesi latihan.
-  const isPair = (await findPairEvent(u.tenantId, target))?.id === sourceEventId;
+  const isPair = !target.isOnline && (await findPairEvent(u.tenantId, target))?.id === sourceEventId; // acara online tanpa latihan
   const rehearsals = isPair ? await mirrorSessionsFrom(u, targetEventId, sourceEventId) : { added: 0, skipped: [] as string[] };
   let required = 0;
   for (const n of isPair ? needRequired : []) {

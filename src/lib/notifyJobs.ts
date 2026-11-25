@@ -45,7 +45,7 @@ export async function remindTomorrowStaff(tenantId: string, now = new Date()) {
   const [events, rehearsals] = await Promise.all([
     prisma.event.findMany({
       where: { tenantId, deletedAt: null, kind: "IBADAH", status: "PUBLISHED", startsAt: range },
-      select: { title: true, startsAt: true, assignments: { where: { personId: { not: null } }, select: { personId: true, ministry: { select: { name: true } } } } },
+      select: { title: true, startsAt: true, isOnline: true, onlineReminder: true, assignments: { where: { personId: { not: null } }, select: { personId: true, ministry: { select: { name: true } } } } },
     }),
     prisma.rehearsalSession.findMany({
       where: { tenantId, deletedAt: null, startsAt: range, event: { deletedAt: null, kind: "IBADAH", status: "PUBLISHED" } },
@@ -54,9 +54,10 @@ export async function remindTomorrowStaff(tenantId: string, now = new Date()) {
   ]);
   const by = new Map<string, Lines[]>();
   for (const e of events) {
+    if (e.isOnline && !e.onlineReminder) continue; // pengingat acara online dimatikan penjadwal
     const mine = new Map<string, string[]>();
     for (const a of e.assignments) mine.set(a.personId!, [...(mine.get(a.personId!) ?? []), a.ministry.name]);
-    for (const [pid, pos] of mine) push(by, pid, { at: e.startsAt, text: `${hm(e.startsAt)} ${e.title} (${[...new Set(pos)].join(", ")})` });
+    for (const [pid, pos] of mine) push(by, pid, { at: e.startsAt, text: `${hm(e.startsAt)} ${e.title}${e.isOnline ? " · Online" : ""} (${[...new Set(pos)].join(", ")})` });
   }
   const seen = new Set<string>(); // latihan kembar (Ibadah Minggu 1 dan 2) di jam yang sama dihitung satu
   for (const r of rehearsals) {
@@ -76,11 +77,66 @@ export async function remindTomorrowMeetings(tenantId: string, now = new Date())
   const range = dayRange(tomorrow);
   const meetings = await prisma.event.findMany({
     where: { tenantId, deletedAt: null, kind: "RAPAT", status: "PUBLISHED", startsAt: range },
-    select: { startsAt: true, group: { select: { name: true } }, room: { select: { name: true } }, participants: { where: { personId: { not: null }, status: { in: ["INVITED", "PRESENT"] } }, select: { personId: true } } },
+    select: { startsAt: true, isOnline: true, onlineReminder: true, group: { select: { name: true } }, room: { select: { name: true } }, participants: { where: { personId: { not: null }, status: { in: ["INVITED", "PRESENT"] } }, select: { personId: true } } },
   });
   const by = new Map<string, Lines[]>();
-  for (const m of meetings) for (const p of m.participants) push(by, p.personId!, { at: m.startsAt, text: `${hm(m.startsAt)} ${m.group ? `Rapat ${m.group.name}` : "Rapat"} · ${m.room.name}` });
+  for (const m of meetings.filter((x) => !(x.isOnline && !x.onlineReminder))) for (const p of m.participants) push(by, p.personId!, { at: m.startsAt, text: `${hm(m.startsAt)} ${m.group ? `Rapat ${m.group.name}` : "Rapat"} · ${m.room.name}` });
   return sendPerPerson(tenantId, "KELOMPOK_H1", by, (lines) => ({ title: "Besok ada rapat", body: `${dayShort(range.gte)}: ${limitedList(lines.map((l) => l.text), 3)}.`, url: "/rapat" }), `h1:kelompok:${tomorrow}`);
+}
+
+// ───────── Pengingat H-1 ibadah online untuk penerima tautan ─────────
+/**
+ * Ibadah online besok yang pengingatnya menyala. Penerima: pembicara, dan penerima tautan (semua orang yang punya akun, atau anggota komunitas yang dipilih).
+ * Petugas acara itu tidak ikut di sini karena sudah mendapat pengingat tugas (PELAYAN_H1, bertanda Online). Rapat online diingatkan lewat pengingat rapat kelompok.
+ * Pesan tidak memuat tautan: tautan dibuka di aplikasi, tempat hak lihatnya dicek.
+ */
+export async function remindTomorrowOnline(tenantId: string, now = new Date()) {
+  const tomorrow = addDaysYmd(localParts(now).date, 1);
+  const events = await prisma.event.findMany({
+    where: { tenantId, deletedAt: null, kind: "IBADAH", status: "PUBLISHED", isOnline: true, onlineReminder: true, startsAt: dayRange(tomorrow) },
+    select: { title: true, startsAt: true, speakerPersonId: true, onlineCommunityIds: true, assignments: { where: { personId: { not: null } }, select: { personId: true } } },
+    orderBy: { startsAt: "asc" },
+  });
+  const out = { events: events.length, recipients: 0, sent: 0 };
+  if (!events.length) return out;
+
+  const everyone = events.some((e) => e.onlineCommunityIds.length === 0);
+  const allUsers = everyone ? await prisma.user.findMany({ where: { tenantId, isActive: true, deletedAt: null }, select: { id: true, personId: true } }) : [];
+  const commIds = [...new Set(events.flatMap((e) => e.onlineCommunityIds))];
+  const commRows = commIds.length ? await prisma.personCommunity.findMany({ where: { communityId: { in: commIds }, person: { tenantId, deletedAt: null } }, select: { personId: true, communityId: true } }) : [];
+  const personUser = await userIdsForPersons(tenantId, [...new Set([...commRows.map((r) => r.personId), ...events.flatMap((e) => (e.speakerPersonId ? [e.speakerPersonId] : []))])]);
+
+  const lines = new Map<string, Lines[]>(); // userId → baris
+  const add = (userId: string | undefined, line: Lines) => { if (userId) lines.set(userId, [...(lines.get(userId) ?? []), line]); };
+  for (const e of events) {
+    const line = { at: e.startsAt, text: `${hm(e.startsAt)} ${e.title}` };
+    const staff = new Set(e.assignments.map((a) => a.personId!));
+    const got = new Set<string>(); // satu orang satu baris per acara
+    const give = (userId: string | undefined, personId: string | null) => {
+      if (!userId || got.has(userId) || (personId && staff.has(personId))) return;
+      got.add(userId); add(userId, line);
+    };
+    if (e.speakerPersonId) give(personUser.get(e.speakerPersonId), null); // pembicara selalu diingatkan, juga bila ia petugas (kecil kemungkinannya)
+    if (e.onlineCommunityIds.length === 0) for (const u of allUsers) give(u.id, u.personId);
+    else for (const r of commRows) if (e.onlineCommunityIds.includes(r.communityId)) give(personUser.get(r.personId), r.personId);
+  }
+  out.recipients = lines.size;
+
+  // orang dengan isi pesan yang sama dikirim sekaligus
+  const groups = new Map<string, { ids: string[]; lines: Lines[] }>();
+  for (const [userId, ls] of lines) {
+    const key = sorted([...ls]).map((l) => l.text).join("|");
+    const g = groups.get(key) ?? { ids: [], lines: sorted([...ls]) };
+    g.ids.push(userId); groups.set(key, g);
+  }
+  for (const g of groups.values()) {
+    const r = await notifyUsers(tenantId, g.ids, {
+      kind: "ONLINE_H1", dedupeKey: `h1:online:${tomorrow}`,
+      title: "Besok ada ibadah online", body: `${dayShort(dayRange(tomorrow).gte)}: ${limitedList(g.lines.map((l) => l.text), 3)}. Buka aplikasi untuk tautannya.`, url: "/",
+    });
+    out.sent += r.sent.length;
+  }
+  return out;
 }
 
 // ───────── Penjadwal ─────────
@@ -233,7 +289,7 @@ export async function monthlyDigest(tenantId: string, now = new Date()) {
  * Hanya jenis yang kuncinya terikat tanggal (satu pesan per hari atau bulan): setelah lewat, kunci itu tidak pernah dicek lagi.
  * Dibiarkan: pemberitahuan dan pembatalan yang terikat acara, serta "Penanda pengingat" (mencegah pengumuman ulang untuk hal yang masih berlaku).
  */
-const DATE_BOUND_KINDS: NotifKind[] = ["ULANG_TAHUN", "PELAYAN_H1", "KELOMPOK_H1", "PELAYAN_BULANAN", "PENJADWAL_KEHADIRAN", "PENJADWAL_ATURAN"];
+const DATE_BOUND_KINDS: NotifKind[] = ["ULANG_TAHUN", "PELAYAN_H1", "ONLINE_H1", "KELOMPOK_H1", "PELAYAN_BULANAN", "PENJADWAL_KEHADIRAN", "PENJADWAL_ATURAN"];
 export async function pruneNotificationLog(tenantId: string, now = new Date()) {
   const r = await prisma.notificationLog.deleteMany({
     where: { tenantId, kind: { in: DATE_BOUND_KINDS }, createdAt: { lt: logCutoff(now) }, NOT: { title: "Penanda pengingat" } },

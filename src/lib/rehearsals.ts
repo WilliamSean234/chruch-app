@@ -28,6 +28,7 @@ async function loadEvent(tenantId: string, eventId: string) {
   const e = await prisma.event.findFirst({ where: { id: eventId, tenantId, deletedAt: null, kind: "IBADAH" } });
   if (!e) throw notFound("Acara");
   if (!isEditable(e.status)) throw conflict("Acara yang sudah dibatalkan tidak bisa diubah.");
+  if (e.isOnline) throw conflict("Acara online tidak memakai sesi latihan.");
   assertNotLocked(e.startsAt);
   return e;
 }
