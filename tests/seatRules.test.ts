@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ebmOutsideWarning, isSundayPair, judgePair, seatKind, teamKind } from "../src/lib/seatRules";
+import { ebmOutsideWarning, isSundayPair, judgePair, needsEbmGroupPrompt, seatKind, teamKind } from "../src/lib/seatRules";
 
 const seat = (teamName: string, ministryName: string) => ({ teamName, ministryName });
 const PIC = seat("Pimpinan ibadah", "PIC");
@@ -113,4 +113,11 @@ test("setelah digabung: EBM tetap tidak boleh merangkap pemusik, PIC tetap boleh
   assert.equal(judgePair(USHER, keys, "Budi").kind, "CONFLICT");
   // pemusik merangkap posisi lain di Penatalayan: bentrok biasa
   assert.equal(judgePair(keys, seat(PEN, "PIC"), "Budi").kind, "CONFLICT");
+});
+
+test("konfirmasi masuk kelompok EBM hanya untuk orang yang pertama kali melayani di EBM dan belum anggota", () => {
+  assert.equal(needsEbmGroupPrompt({ addsEbm: true, hasEbmNow: false, activeMember: false }), true);
+  assert.equal(needsEbmGroupPrompt({ addsEbm: true, hasEbmNow: true, activeMember: false }), false); // sudah punya pelayanan EBM
+  assert.equal(needsEbmGroupPrompt({ addsEbm: true, hasEbmNow: false, activeMember: true }), false); // sudah anggota kelompok
+  assert.equal(needsEbmGroupPrompt({ addsEbm: false, hasEbmNow: false, activeMember: false }), false); // yang ditambah bukan pelayanan EBM
 });

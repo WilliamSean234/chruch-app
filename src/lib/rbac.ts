@@ -51,7 +51,7 @@ export function requireTeamAccess(u: AuthUser, teamTypeId: string): void {
 
 /**
  * Boleh menambah dan mengubah data orang (identitas jemaat): izin person.manage, hanya Superadmin dan Admin Jemaat.
- * Penjadwal dan Admin Tim tidak; mereka hanya mengatur pelayanan orang yang sudah terdaftar (lihat changePersonMinistries).
+ * Penjadwal dan Admin Tim tidak; mereka hanya mengatur pelayanan orang yang sudah terdaftar (lihat changePersonMinistries); Admin Tim EBM juga boleh mencabut pelayanan EBM.
  */
 export function canManagePeople(u: AuthUser): boolean {
   return can(u, "person.manage");

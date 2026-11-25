@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { audit } from "./audit";
-import { teamKind } from "./seatRules";
+import { needsEbmGroupPrompt, teamKind } from "./seatRules";
 
 type Db = Prisma.TransactionClient;
 
@@ -57,4 +57,21 @@ export async function syncEbmGroup(db: Db, tenantId: string, opts: { only?: stri
     }
   }
   return { added, rejoined };
+}
+
+/**
+ * Apakah penambahan pelayanan ini perlu konfirmasi "masukkan juga ke kelompok EBM?" (orang yang pertama kali diberi pelayanan EBM
+ * dan belum anggota aktif kelompok EBM). Dipakai tambah pelayanan manual; impor dan jadwal tim tetap otomatis.
+ */
+export async function ebmGroupPromptFor(db: Db, tenantId: string, personId: string, addMinistryIds: string[]) {
+  if (!addMinistryIds.length) return false;
+  const rows = await db.ministry.findMany({ where: { id: { in: addMinistryIds }, tenantId }, select: { teamType: { select: { name: true } } } });
+  const addsEbm = rows.some((r) => teamKind(r.teamType.name) === "EBM");
+  if (!addsEbm) return false;
+  const have = await db.personMinistry.findMany({ where: { personId, ministry: { deletedAt: null } }, select: { ministry: { select: { teamType: { select: { name: true } } } } } });
+  const hasEbmNow = have.some((h) => teamKind(h.ministry.teamType.name) === "EBM");
+  const groups = await db.meetingGroup.findMany({ where: { tenantId, deletedAt: null }, select: { id: true, name: true } });
+  const ebm = groups.find((g) => EBM_GROUP.test(g.name.trim()));
+  const activeMember = !!ebm && !!(await db.groupMember.findFirst({ where: { groupId: ebm.id, personId, leftAt: null }, select: { id: true } }));
+  return needsEbmGroupPrompt({ addsEbm, hasEbmNow, activeMember });
 }

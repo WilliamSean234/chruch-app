@@ -14,6 +14,8 @@ import Pager from "@/components/ui/Pager";
 import { CompactList, CompactRow, Detail, useOpenRows } from "@/components/ui/CompactList";
 import { useDebounced, usePagedList } from "@/components/ui/usePagedList";
 import { initials, ROLE_LABEL } from "@/lib/ui";
+import { teamKind } from "@/lib/seatRules";
+import { patchMinistries } from "./ministryApi";
 
 export const NEW_PERSON_EVENT = "people:new";
 const PICKLISTS: Record<Exclude<LookupKind, "rooms">, { title: string; singular: string; hint: string }> = {
@@ -318,7 +320,7 @@ function PersonDetail({ person: p, bare, canAccount, teams, cgs, scope, canManag
     setAdding(false);
     if (!ok) return;
     setBusy(true); setError("");
-    const r = await callApi("PATCH", `/api/v1/persons/${p.id}/ministries`, kind === "add" ? { add: [ministryId] } : { remove: [ministryId] });
+    const r = await patchMinistries(p.id, name, kind === "add" ? { add: [ministryId] } : { remove: [ministryId] });
     setBusy(false);
     if (r.ok) { showToast(kind === "add" ? `${label} ditambahkan ke ${name}` : `${label} dicabut dari ${name}`); onChanged(); }
     else { setError(errMsg(r.data)); showToast("Perubahan gagal disimpan", "error"); }
@@ -372,10 +374,9 @@ function PersonDetail({ person: p, bare, canAccount, teams, cgs, scope, canManag
           {p.ministries.map((m) => (
             <span key={m.id} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[var(--primary-soft)] pl-4 pr-2 text-[13px] font-bold text-[var(--primary-ink)]" title={m.teamName}>
               {m.name.replace(/ \(WL\)$/, "")}
-              {scope === null && ( // Admin Tim hanya menambah pelayanan, tidak mencabut
+              {(scope === null || (teamKind(m.teamName) === "EBM" && scope.includes(m.teamTypeId))) ? ( // Admin Tim hanya boleh mencabut pelayanan EBM di timnya (Admin Tim EBM)
                 <button type="button" disabled={busy} onClick={() => void changeMinistry("remove", m.id, m.name.replace(/ \(WL\)$/, ""))} aria-label={`Cabut ${m.name}`} className="grid size-5 place-items-center rounded-full text-xs hover:bg-white/70">✕</button>
-              )}
-              {scope !== null && <span className="pr-2" />}
+              ) : <span className="pr-2" />}
             </span>
           ))}
           {!adding ? (

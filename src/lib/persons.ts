@@ -5,7 +5,8 @@ import { ApiError, badRequest, conflict, forbidden, notFound } from "./errors";
 import { ageFrom, nameKey } from "./names";
 import { can, requirePermission, requireTeamAccess, teamScope, type AuthUser } from "./rbac";
 import { membershipsOf } from "./groups";
-import { syncEbmGroup } from "./ebmGroup";
+import { ebmGroupPromptFor, syncEbmGroup } from "./ebmGroup";
+import { teamKind } from "./seatRules";
 import { pageOf, resolvePaging, type PagingInput } from "./paging";
 
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Format tanggal YYYY-MM-DD");
@@ -236,6 +237,7 @@ export const ministryChangeBody = z
   .object({
     add: z.array(z.string().uuid()).max(50).default([]),
     remove: z.array(z.string().uuid()).max(50).default([]),
+    ebmGroup: z.enum(["join", "skip"]).optional(), // jawaban "masukkan juga ke kelompok EBM?" untuk orang yang baru pertama kali melayani di EBM
   })
   .superRefine((v, ctx) => {
     if (v.add.length === 0 && v.remove.length === 0) ctx.addIssue({ code: "custom", path: ["add"], message: "Tidak ada pelayanan yang diubah." });
@@ -246,24 +248,33 @@ export type MinistryChange = z.infer<typeof ministryChangeBody>;
 /**
  * Tambah atau cabut pelayanan satu orang tanpa menyentuh data lain. Dipakai chip pelayanan (✕ dan "+ pelayanan"):
  * hanya selisihnya yang dikirim, jadi tidak menimpa perubahan orang lain pada nama atau data lainnya.
- * Admin Tim hanya boleh mengubah pelayanan di timnya sendiri, tetapi boleh menambahkannya ke siapa pun.
+ * Admin Tim hanya boleh mengubah pelayanan di timnya sendiri, tetapi boleh menambahkannya ke siapa pun. Mencabut hanya boleh
+ * untuk Admin Tim EBM, dan hanya pelayanan di tim EBM.
+ * Orang yang pertama kali diberi pelayanan EBM: server menjawab 409 EBM_GROUP_CONFIRM sampai pemanggil mengirim `ebmGroup`
+ * ("join" = masukkan ke kelompok EBM, "skip" = jangan). Tidak ada yang tersimpan pada jawaban 409 itu.
  */
 export async function changePersonMinistries(u: AuthUser, id: string, b: MinistryChange) {
   const cur = await prisma.person.findFirst({ where: { id, tenantId: u.tenantId, deletedAt: null }, select: { id: true, name: true } });
   if (!cur) throw notFound("Orang");
   const add = [...new Set(b.add)];
   const remove = [...new Set(b.remove)];
-  // Admin Tim hanya menambahkan orang yang sudah terdaftar ke pelayanan di timnya; mencabut dan mengubah data orang bukan haknya.
-  if (remove.length && teamScope(u) !== null) throw forbidden("Admin Tim hanya bisa menambahkan pelayanan. Pencabutan dilakukan Penjadwal atau Superadmin.");
   const all = [...add, ...remove];
   const found = await prisma.ministry.count({ where: { id: { in: all }, tenantId: u.tenantId, deletedAt: null } });
   if (found !== all.length) throw badRequest("Ada posisi pelayanan yang tidak valid.");
   await checkMinistryScope(u, u.tenantId, all);
+  // Admin Tim menambahkan orang yang sudah terdaftar ke pelayanan di timnya; mencabut hanya untuk pelayanan EBM (oleh Admin Tim EBM).
+  if (remove.length && teamScope(u) !== null) {
+    const rows = await prisma.ministry.findMany({ where: { id: { in: remove }, tenantId: u.tenantId }, select: { teamType: { select: { name: true } } } });
+    if (rows.some((r) => teamKind(r.teamType.name) !== "EBM")) throw forbidden("Admin Tim hanya bisa mencabut pelayanan di tim EBM. Pencabutan lainnya dilakukan Penjadwal atau Superadmin.");
+  }
+  if (!b.ebmGroup && (await ebmGroupPromptFor(prisma, u.tenantId, id, add))) {
+    throw new ApiError(409, "EBM_GROUP_CONFIRM", `${cur.name} baru pertama kali diberi pelayanan EBM. Masukkan juga ke kelompok EBM?`, { personName: cur.name });
+  }
 
   const p = await prisma.$transaction(async (tx) => {
     if (remove.length) await tx.personMinistry.deleteMany({ where: { personId: id, ministryId: { in: remove } } });
     if (add.length) await tx.personMinistry.createMany({ data: add.map((ministryId) => ({ personId: id, ministryId })), skipDuplicates: true });
-    if (add.length) await syncEbmGroup(tx, u.tenantId, { only: [id], rejoin: true, userId: u.userId }); // yang melayani di EBM otomatis masuk kelompok EBM
+    if (add.length && b.ebmGroup === "join") await syncEbmGroup(tx, u.tenantId, { only: [id], rejoin: true, userId: u.userId }); // atas persetujuan: masuk kelompok EBM
     return tx.person.findFirstOrThrow({ where: { id }, include });
   });
   return toDto(p);

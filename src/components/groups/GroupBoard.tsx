@@ -5,6 +5,7 @@ import { askConfirm } from "@/components/ui/Confirm";
 import { showToast } from "@/components/ui/Toast";
 import Modal, { confirmDiscard, Field } from "@/components/master/Modal";
 import NewPersonInline from "@/components/master/NewPersonInline";
+import { patchMinistries } from "@/components/master/ministryApi";
 import { btnGhost, btnPrimary, callApi, errMsg, inputCls } from "@/components/jadwal/api";
 import { FilterBar, FSearch, FSelect } from "@/components/ui/Filters";
 import Pager from "@/components/ui/Pager";
@@ -326,7 +327,7 @@ function EbmPanel({ member, ebm, onChanged, flush }: { member: Member; ebm: EbmI
       : await askConfirm(`Tambah pelayanan ${label} untuk ${fullName(member)}?`, { confirmLabel: "Tambah" });
     if (!ok) return;
     setBusy(true);
-    const r = await callApi("PATCH", `/api/v1/persons/${member.personId}/ministries`, kind === "add" ? { add: [ministryId], remove: [] } : { add: [], remove: [ministryId] });
+    const r = await patchMinistries(member.personId, fullName(member), kind === "add" ? { add: [ministryId], remove: [] } : { add: [], remove: [ministryId] });
     setBusy(false);
     if (!r.ok) { showToast(errMsg(r.data), "error"); return; }
     showToast(kind === "add" ? `Pelayanan ${label} ditambahkan` : `Pelayanan ${label} dicabut`);

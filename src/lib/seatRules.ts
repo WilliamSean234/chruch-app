@@ -30,6 +30,12 @@ export const seatKind = (teamName: string, ministryName: string): TeamKind => {
   return k === "PIMPINAN" && !isLeaderMinistry(ministryName) ? "PEMUSIK" : k;
 };
 
+/**
+ * Perlu bertanya "masukkan juga ke kelompok EBM?" bila orang ini baru pertama kali diberi pelayanan EBM:
+ * pelayanan yang ditambahkan ada yang di tim EBM, ia belum punya pelayanan EBM mana pun, dan belum anggota aktif kelompok EBM.
+ */
+export const needsEbmGroupPrompt = (x: { addsEbm: boolean; hasEbmNow: boolean; activeMember: boolean }) => x.addsEbm && !x.hasEbmNow && !x.activeMember;
+
 export const isPic = (ministryName: string) => /^pic$/i.test(ministryName.trim());
 
 export type SeatRef = { teamName: string; ministryName: string };
