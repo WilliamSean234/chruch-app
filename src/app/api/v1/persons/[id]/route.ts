@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { forbidden, handle } from "@/lib/errors";
 import { requireUser } from "@/lib/session";
-import { can, isSuperadmin, requirePermission } from "@/lib/rbac";
+import { can, isSuperadmin, requireManagePeople, requirePermission } from "@/lib/rbac";
 import { deletePerson, getPerson, personBody, updatePerson } from "@/lib/persons";
 import { audit } from "@/lib/audit";
 
@@ -18,6 +18,7 @@ export const GET = handle(async (req: Request, { params }: Ctx) => {
 export const PUT = handle(async (req: Request, { params }: Ctx) => {
   const u = await requireUser(req);
   requirePermission(u, "person.write");
+  requireManagePeople(u); // Admin Tim tidak boleh mengubah data orang
   const { id } = await params;
   const p = await updatePerson(u, id, personBody.parse(await req.json()));
   await audit({ tenantId: u.tenantId, userId: u.userId, action: "person.update", entity: "Person", entityId: id });

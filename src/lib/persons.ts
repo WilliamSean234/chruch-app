@@ -1,9 +1,9 @@
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "./prisma";
-import { ApiError, badRequest, conflict, notFound } from "./errors";
+import { ApiError, badRequest, conflict, forbidden, notFound } from "./errors";
 import { ageFrom, nameKey } from "./names";
-import { can, requirePermission, requirePersonInScope, requireTeamAccess, teamScope, type AuthUser } from "./rbac";
+import { can, requirePermission, requireTeamAccess, teamScope, type AuthUser } from "./rbac";
 import { membershipsOf } from "./groups";
 import { syncEbmGroup } from "./ebmGroup";
 import { pageOf, resolvePaging, type PagingInput } from "./paging";
@@ -165,8 +165,6 @@ export async function createPerson(u: AuthUser, b: PersonInput) {
   const key = nameKey(b.name);
   await checkDuplicate(u.tenantId, key, b);
   await checkMinistryScope(u, u.tenantId, b.ministryIds);
-  // Orang baru buatan Admin Tim wajib punya pelayanan di timnya, supaya tetap ada yang berhak mengubah datanya.
-  if (teamScope(u) !== null && new Set(b.ministryIds).size === 0) throw badRequest("Orang baru harus punya minimal satu pelayanan di tim Anda.");
   const p = await prisma.$transaction(async (tx) => {
     const created = await tx.person.create({
     data: {
@@ -197,7 +195,6 @@ export async function createPerson(u: AuthUser, b: PersonInput) {
 export async function updatePerson(u: AuthUser, id: string, b: PersonInput) {
   const cur = await prisma.person.findFirst({ where: { id, tenantId: u.tenantId, deletedAt: null }, include: { ministries: { include: { ministry: { select: { teamTypeId: true } } } } } });
   if (!cur) throw notFound("Orang");
-  requirePersonInScope(u, cur.ministries.map((m) => m.ministry.teamTypeId));
   await checkRefs(u.tenantId, b);
   const key = nameKey(b.name);
   if (key !== cur.nameKey) await checkDuplicate(u.tenantId, key, b, id);
@@ -256,6 +253,8 @@ export async function changePersonMinistries(u: AuthUser, id: string, b: Ministr
   if (!cur) throw notFound("Orang");
   const add = [...new Set(b.add)];
   const remove = [...new Set(b.remove)];
+  // Admin Tim hanya menambahkan orang yang sudah terdaftar ke pelayanan di timnya; mencabut dan mengubah data orang bukan haknya.
+  if (remove.length && teamScope(u) !== null) throw forbidden("Admin Tim hanya bisa menambahkan pelayanan. Pencabutan dilakukan Penjadwal atau Superadmin.");
   const all = [...add, ...remove];
   const found = await prisma.ministry.count({ where: { id: { in: all }, tenantId: u.tenantId, deletedAt: null } });
   if (found !== all.length) throw badRequest("Ada posisi pelayanan yang tidak valid.");

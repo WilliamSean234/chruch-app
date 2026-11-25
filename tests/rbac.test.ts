@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { can, isSuperadmin, requirePermission, requirePersonInScope, teamScope, type AuthUser } from "../src/lib/rbac";
+import { can, canManagePeople, isSuperadmin, requireManagePeople, requirePermission, requirePersonInScope, teamScope, type AuthUser } from "../src/lib/rbac";
 
 const user = (roles: AuthUser["roles"], permissions: string[] = []): AuthUser => ({ userId: "u", tenantId: "t", personId: null, roles, permissions });
 const role = (code: string, teamTypeId: string | null = null, isSuperadmin = false) => ({ code, isSuperadmin, teamTypeId });
@@ -54,4 +54,16 @@ test("Pengawas hanya membaca log: tanpa izin ubah dan tanpa cakupan tim", () => 
   assert.equal(can(u, "event.write"), false);
   assert.deepEqual(teamScope(u), []); // tidak boleh mengatur tim mana pun
   assert.equal(can(user([role("PELAYAN")], ["calendar.read"]), "audit.read"), false);
+});
+
+test("hanya Superadmin dan Penjadwal yang boleh menambah atau mengubah data orang; Admin Tim tidak", () => {
+  assert.equal(canManagePeople(user([role("SUPERADMIN", null, true)])), true);
+  assert.equal(canManagePeople(user([role("PENJADWAL")], ["person.write"])), true);
+  const adminTim = user([role("ADMIN_TIM", "tim-ebm")], ["person.write"]);
+  assert.equal(canManagePeople(adminTim), false);
+  assert.throws(() => requireManagePeople(adminTim), /Admin Tim/);
+  assert.equal(canManagePeople(user([role("PELAYAN")])), false);
+  assert.equal(canManagePeople(user([role("PETUGAS_ABSEN")], ["attendance.write"])), false);
+  // punya dua peran: bila salah satunya Penjadwal, cakupannya tidak dibatasi
+  assert.equal(canManagePeople(user([role("ADMIN_TIM", "tim-ebm"), role("PENJADWAL")], ["person.write"])), true);
 });

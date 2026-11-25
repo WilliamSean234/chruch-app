@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handle } from "@/lib/errors";
 import { requireUser } from "@/lib/session";
-import { can, requirePermission } from "@/lib/rbac";
+import { can, requireManagePeople, requirePermission } from "@/lib/rbac";
 import { createPerson, listPersons, personBody } from "@/lib/persons";
 import { audit } from "@/lib/audit";
 import { pagingQuery } from "@/lib/paging";
@@ -36,6 +36,7 @@ export const GET = handle(async (req: Request) => {
 export const POST = handle(async (req: Request) => {
   const u = await requireUser(req);
   requirePermission(u, "person.write");
+  requireManagePeople(u); // Admin Tim tidak boleh membuat orang baru
   const p = await createPerson(u, personBody.parse(await req.json()));
   await audit({ tenantId: u.tenantId, userId: u.userId, action: "person.create", entity: "Person", entityId: p.id, payload: { name: p.name } });
   return NextResponse.json(p, { status: 201 });

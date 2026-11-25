@@ -47,7 +47,7 @@ function RoleChips({ account }: { account: PersonDto["account"] }) {
 }
 const isPlainPosition = (name: string) => name.trim().toLowerCase() === "jemaat";
 
-export default function PeopleView({ scope, canAccount, canMaster, isSuper, canGroups }: { scope: string[] | null; canAccount: boolean; canMaster: boolean; isSuper: boolean; canGroups: boolean }) {
+export default function PeopleView({ scope, canAccount, canMaster, isSuper, canGroups, canManagePeople }: { scope: string[] | null; canAccount: boolean; canMaster: boolean; isSuper: boolean; canGroups: boolean; canManagePeople: boolean }) {
   const [lookups, setLookups] = useState<Lookups | null>(null);
   const [q, setQ] = useState("");
   const [ministryId, setMinistryId] = useState("");
@@ -262,7 +262,7 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
         {/* Detail */}
         {selected && lookups && (
           <div className="contents max-md:hidden">
-            <PersonDetail key={selected.id} canAccount={canAccount} person={selected} teams={lookups.teams} cgs={lookups.cgs} scope={scope} onEdit={() => setForm({ person: selected })} onChanged={() => void reload()} />
+            <PersonDetail key={selected.id} canAccount={canAccount} person={selected} teams={lookups.teams} cgs={lookups.cgs} scope={scope} canManagePeople={canManagePeople} onEdit={() => setForm({ person: selected })} onChanged={() => void reload()} />
           </div>
         )}
       </div>
@@ -280,7 +280,7 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
         const sp = items.find((x) => x.id === sheetId)!;
         return (
           <Modal title={fullName(sp)} onClose={() => setSheetId(null)} footer={<button type="button" className={btnPrimary} onClick={() => setSheetId(null)}>Tutup</button>}>
-            <PersonDetail bare canAccount={canAccount} person={sp} teams={lookups.teams} cgs={lookups.cgs} scope={scope} onEdit={() => { setSheetId(null); setForm({ person: sp }); }} onChanged={() => void reload()} />
+            <PersonDetail bare canAccount={canAccount} person={sp} teams={lookups.teams} cgs={lookups.cgs} scope={scope} canManagePeople={canManagePeople} onEdit={() => { setSheetId(null); setForm({ person: sp }); }} onChanged={() => void reload()} />
           </Modal>
         );
       })()}
@@ -299,12 +299,11 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
 }
 
 /** Kartu ringkasan di kanan: data orang yang dipilih, plus tambah/cabut pelayanan dengan cepat. */
-function PersonDetail({ person: p, bare, canAccount, teams, cgs, scope, onEdit, onChanged }: { bare?: boolean; person: PersonDto; canAccount: boolean; teams: Team[]; cgs: CgOpt[]; scope: string[] | null; onEdit: () => void; onChanged: () => void }) {
+function PersonDetail({ person: p, bare, canAccount, teams, cgs, scope, canManagePeople, onEdit, onChanged }: { bare?: boolean; person: PersonDto; canAccount: boolean; teams: Team[]; cgs: CgOpt[]; scope: string[] | null; canManagePeople: boolean; onEdit: () => void; onChanged: () => void }) {
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const open = (teamId: string) => scope === null || scope.includes(teamId);
-  const canEditIdentity = scope === null || p.ministries.some((m) => scope.includes(m.teamTypeId)); // Admin Tim: hanya orang yang melayani di timnya
   const have = new Set(p.ministries.map((m) => m.id));
   const who = fullName;
   const myLeaders = cgs.find((c) => c.id === p.cgGroup?.id)?.leaders ?? [];
@@ -373,10 +372,10 @@ function PersonDetail({ person: p, bare, canAccount, teams, cgs, scope, onEdit, 
           {p.ministries.map((m) => (
             <span key={m.id} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[var(--primary-soft)] pl-4 pr-2 text-[13px] font-bold text-[var(--primary-ink)]" title={m.teamName}>
               {m.name.replace(/ \(WL\)$/, "")}
-              {open(m.teamTypeId) && (
+              {canManagePeople && open(m.teamTypeId) && ( // Admin Tim hanya menambah pelayanan, tidak mencabut
                 <button type="button" disabled={busy} onClick={() => void changeMinistry("remove", m.id, m.name.replace(/ \(WL\)$/, ""))} aria-label={`Cabut ${m.name}`} className="grid size-5 place-items-center rounded-full text-xs hover:bg-white/70">✕</button>
               )}
-              {!open(m.teamTypeId) && <span className="pr-2" />}
+              {!(canManagePeople && open(m.teamTypeId)) && <span className="pr-2" />}
             </span>
           ))}
           {!adding ? (
@@ -395,9 +394,9 @@ function PersonDetail({ person: p, bare, canAccount, teams, cgs, scope, onEdit, 
         {error && <p className="text-sm font-semibold text-[#9B1C1C]" role="alert">{error}</p>}
         <p className="text-xs font-medium leading-relaxed text-[var(--ink-2)]">Nama pembicara luar disimpan di sini agar penulisannya tidak berubah atau dobel saat diundang lagi.</p>
       </div>
-      {canEditIdentity
+      {canManagePeople
         ? <button type="button" className={btnGhost} onClick={onEdit}>Ubah data lengkap</button>
-        : <p className="text-xs font-medium leading-relaxed text-[var(--ink-2)]">Data lengkap orang ini hanya bisa diubah oleh Penjadwal atau Admin Tim dari tim tempat ia melayani.</p>}
+        : <p className="text-xs font-medium leading-relaxed text-[var(--ink-2)]">Anda bisa menambahkan pelayanan di tim Anda ke orang ini. Data orangnya hanya bisa diubah oleh Penjadwal atau Superadmin.</p>}
     </aside>
   );
 }
