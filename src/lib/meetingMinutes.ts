@@ -5,6 +5,7 @@ import { badRequest, conflict, forbidden, notFound } from "./errors";
 import type { AuthUser } from "./rbac";
 import { creatorNames } from "./creators";
 import { accessTo, loadMeeting } from "./meetings";
+import { decryptText, encryptText, ensureEncrypted } from "./fieldCrypto";
 
 /**
  * Notulen rapat. Aturan:
@@ -20,6 +21,16 @@ export const finalizeBody = z.object({ content: minutesBody.optional() });
 export const reviseBody = z.object({ reason: z.string().trim().max(300).optional() });
 
 type Content = z.infer<typeof minutesBody>;
+
+// Isi notulen tersimpan terenkripsi (lihat fieldCrypto.ts); terikat ke rapat (eventId) dan nama kolom.
+const scope = (eventId: string) => `minutes:${eventId}`;
+const sealContent = (eventId: string, c: Content): Content => ({
+  agenda: encryptText(c.agenda, scope(eventId), "agenda"),
+  discussion: encryptText(c.discussion, scope(eventId), "discussion"),
+  decisions: encryptText(c.decisions, scope(eventId), "decisions"),
+});
+const openText = (eventId: string, v: string, field: string) => decryptText(v, scope(eventId), field);
+const openOpt = (eventId: string, v: string | null, field: string) => (v ? decryptText(v, scope(eventId), field) : v);
 const isEmpty = (c: Content) => !`${c.agenda}${c.discussion}${c.decisions}`.trim();
 
 async function memberAccess(u: AuthUser, id: string) {
@@ -36,7 +47,13 @@ async function memberAccess(u: AuthUser, id: string) {
 
 export async function getMinutes(u: AuthUser, id: string) {
   const { e, canWrite, canFinalize } = await memberAccess(u, id);
-  const m = await prisma.meetingMinutes.findUnique({ where: { eventId: id }, include: { revisions: { orderBy: { version: "desc" } } } });
+  const raw = await prisma.meetingMinutes.findUnique({ where: { eventId: id }, include: { revisions: { orderBy: { version: "desc" } } } });
+  const m = raw && {
+    ...raw,
+    agenda: openText(id, raw.agenda, "agenda"), discussion: openText(id, raw.discussion, "discussion"), decisions: openText(id, raw.decisions, "decisions"),
+    reviseReason: openOpt(id, raw.reviseReason, "reason"),
+    revisions: raw.revisions.map((r) => ({ ...r, agenda: openText(id, r.agenda, "agenda"), discussion: openText(id, r.discussion, "discussion"), decisions: openText(id, r.decisions, "decisions"), reason: openOpt(id, r.reason, "reason") })),
+  };
   const names = await creatorNames([m?.draftById, m?.updatedById, m?.finalizedById, ...(m?.revisions ?? []).flatMap((r) => [r.authorId, r.finalizedById])]);
   const nm = (x: string | null | undefined) => (x ? names.get(x) ?? null : null);
 
@@ -84,9 +101,9 @@ async function saveContent(u: AuthUser, eventId: string, c: Content) {
   const cur = await prisma.meetingMinutes.findUnique({ where: { eventId } });
   if (cur && cur.status === "FINAL") throw conflict("Notulen sudah Final. Buat revisi untuk mengubahnya.");
   if (!cur) {
-    await prisma.meetingMinutes.create({ data: { eventId, ...c, draftById: u.userId, updatedById: u.userId } });
+    await prisma.meetingMinutes.create({ data: { eventId, ...sealContent(eventId, c), draftById: u.userId, updatedById: u.userId } });
   } else {
-    await prisma.meetingMinutes.update({ where: { eventId }, data: { ...c, updatedById: u.userId } });
+    await prisma.meetingMinutes.update({ where: { eventId }, data: { ...sealContent(eventId, c), updatedById: u.userId } });
   }
   return !cur;
 }
@@ -106,11 +123,11 @@ export async function finalizeMinutes(u: AuthUser, id: string, content?: Content
   const m = await prisma.meetingMinutes.findUnique({ where: { eventId: id } });
   if (!m) throw badRequest("Notulen belum ditulis.");
   if (m.status === "FINAL") throw conflict("Notulen ini sudah Final.");
-  if (isEmpty(m)) throw badRequest("Isi notulen masih kosong. Tulis agenda, pembahasan, atau keputusan dulu.");
+  if (isEmpty({ agenda: openText(id, m.agenda, "agenda"), discussion: openText(id, m.discussion, "discussion"), decisions: openText(id, m.decisions, "decisions") })) throw badRequest("Isi notulen masih kosong. Tulis agenda, pembahasan, atau keputusan dulu.");
   const now = new Date();
   await prisma.$transaction([
     prisma.meetingMinutesRevision.create({
-      data: { minutesId: m.id, version: m.version, agenda: m.agenda, discussion: m.discussion, decisions: m.decisions, reason: m.reviseReason, authorId: m.draftById, draftAt: m.draftAt, finalizedById: u.userId, finalizedAt: now },
+      data: { minutesId: m.id, version: m.version, agenda: ensureEncrypted(m.agenda, scope(id), "agenda"), discussion: ensureEncrypted(m.discussion, scope(id), "discussion"), decisions: ensureEncrypted(m.decisions, scope(id), "decisions"), reason: m.reviseReason ? ensureEncrypted(m.reviseReason, scope(id), "reason") : null, authorId: m.draftById, draftAt: m.draftAt, finalizedById: u.userId, finalizedAt: now },
     }),
     prisma.meetingMinutes.update({ where: { id: m.id }, data: { status: "FINAL", finalizedAt: now, finalizedById: u.userId, updatedById: u.userId } }),
   ]);
@@ -126,7 +143,7 @@ export async function reviseMinutes(u: AuthUser, id: string, reason?: string) {
   if (m.status !== "FINAL") throw conflict("Notulen masih draf, langsung ubah saja.");
   await prisma.meetingMinutes.update({
     where: { id: m.id },
-    data: { status: "DRAFT", version: m.version + 1, reviseReason: reason || null, draftById: u.userId, draftAt: new Date(), updatedById: u.userId },
+    data: { status: "DRAFT", version: m.version + 1, reviseReason: reason ? encryptText(reason, scope(id), "reason") : null, draftById: u.userId, draftAt: new Date(), updatedById: u.userId },
   });
   await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.minutes.revise", entity: "Event", entityId: id, reason: reason || null, payload: { version: m.version + 1 } });
   return getMinutes(u, id);
