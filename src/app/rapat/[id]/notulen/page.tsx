@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import AppShell, { currentUser } from "@/components/AppShell";
 import MeetingMinutes from "@/components/meetings/MeetingMinutes";
@@ -21,7 +22,26 @@ export default async function NotulenPage({ params }: Props) {
   // isi notulen baru dibaca (dan didekripsi) setelah kata sandi dimasukkan ulang
   const until = await unlockExpiry(u);
   if (until === null) return <AppShell {...shell}><NotulenGate backHref={`/rapat/${id}`} /></AppShell>;
-  const minutes = await getMinutes(u, id).catch(notFoundTo);
+  let minutes: Awaited<ReturnType<typeof getMinutes>>;
+  try {
+    minutes = await getMinutes(u, id);
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) notFound();
+    // galat yang dikenal (mis. kunci enkripsi di server) ditampilkan apa adanya, bukan halaman "server error" yang kosong
+    if (e instanceof ApiError) {
+      console.error("[notulen] gagal membuka isi notulen:", e.code, e.message);
+      return (
+        <AppShell {...shell}>
+          <div role="alert" className="mx-auto flex w-full max-w-[560px] flex-col gap-3 rounded-[20px] border border-[#F3C9C9] bg-[#FFF5F5] p-6">
+            <h2 className="m-0 text-lg font-extrabold text-[#9B1C1C]">Notulen belum bisa dibuka</h2>
+            <p className="m-0 text-[13.5px] font-medium leading-relaxed text-[var(--ink-2)]">{e.message}</p>
+            <Link href={`/rapat/${id}`} className="self-start text-[13px] font-bold text-[var(--primary-ink)] hover:underline">← Kembali ke rapat</Link>
+          </div>
+        </AppShell>
+      );
+    }
+    throw e;
+  }
   return (
     <AppShell {...shell}>
       <NotulenLockBar until={until} />
