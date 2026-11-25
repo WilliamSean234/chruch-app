@@ -7,6 +7,10 @@ import { assertRoomUsable, bookRoom, roomConflict, translateOverlap } from "./bo
 import { nextDocNumber } from "./docNumber";
 import type { AuthUser } from "./rbac";
 import { isSundayPair } from "./seatRules";
+import { randomUUID } from "node:crypto";
+import { ensureOnlineRoom } from "./online";
+import { cleanOnlineUrl } from "./onlineRules";
+import { openTemplateUrl, sealOnlineUrl, sealTemplateUrl } from "./meetingCrypto";
 
 export const templateBody = z
   .object({
@@ -16,7 +20,12 @@ export const templateBody = z
     ordinal: z.number().int().min(1).max(5).nullish(), // 5 = yang terakhir
     startTime: z.string().regex(TIME_RE, "Format jam HH:MM"),
     durationMin: z.number().int().min(15).max(720).default(120),
-    roomId: z.string().uuid(),
+    roomId: z.string().uuid().optional(), // wajib kecuali template online
+    // template online: tanpa ruangan; pembicara dan tema diisi per acara karena berganti-ganti
+    online: z.boolean().default(false),
+    onlineUrl: z.string().trim().max(500).nullish(),
+    onlineCommunityIds: z.array(z.string().uuid()).max(30).default([]),
+    onlineReminder: z.boolean().default(true),
     attendanceModeDefault: z.enum(["COUNT", "NAMES"]).default("COUNT"),
     attendanceCommunityId: z.string().uuid().nullish(),
     slots: z
@@ -24,6 +33,7 @@ export const templateBody = z
       .default([]),
   })
   .superRefine((v, ctx) => {
+    if (!v.online && !v.roomId) ctx.addIssue({ code: "custom", path: ["roomId"], message: "Pilih ruangan." });
     if (v.recurrence === "MONTHLY_NTH" && !v.ordinal) ctx.addIssue({ code: "custom", path: ["ordinal"], message: "Isi minggu ke berapa (1–4, atau 5 = terakhir)." });
     const ids = v.slots.map((s) => s.ministryId);
     if (new Set(ids).size !== ids.length) ctx.addIssue({ code: "custom", path: ["slots"], message: "Satu posisi cukup satu baris; pakai count untuk jumlah kursi." });
@@ -37,6 +47,8 @@ const include = {
 } satisfies Prisma.EventTemplateInclude;
 type TemplateFull = Prisma.EventTemplateGetPayload<{ include: typeof include }>;
 
+const safeUrl = (id: string, v: string | null) => { try { return openTemplateUrl(id, v); } catch { return null; } };
+
 const toDto = (t: TemplateFull) => {
   const byMinistry = new Map<string, { ministryId: string; ministryName: string; teamTypeId: string; teamName: string; count: number; rehearsalRequired: boolean }>();
   for (const s of t.slots) {
@@ -47,6 +59,8 @@ const toDto = (t: TemplateFull) => {
   return {
     id: t.id, name: t.name, weekday: t.weekday, recurrence: t.recurrence, ordinal: t.ordinal, startTime: t.startTime, durationMin: t.durationMin,
     room: { id: t.room.id, name: t.room.name },
+    isOnline: t.isOnline,
+    online: t.isOnline ? { url: safeUrl(t.id, t.onlineUrl), communityIds: t.onlineCommunityIds, reminder: t.onlineReminder } : null,
     attendanceModeDefault: t.attendanceModeDefault,
     attendanceCommunity: t.attendanceCommunity ? { id: t.attendanceCommunity.id, name: t.attendanceCommunity.name } : null,
     slots: [...byMinistry.values()],
@@ -58,12 +72,24 @@ async function resolveSlots(tenantId: string, b: TemplateInput) {
   if (ministries.length !== b.slots.length) throw badRequest("Ada posisi pelayanan yang tidak valid.");
   const byId = new Map(ministries.map((m) => [m.id, m]));
   return b.slots.flatMap((s) =>
-    Array.from({ length: s.count }, (_, i) => ({ ministryId: s.ministryId, slotNo: i + 1, rehearsalRequired: s.rehearsalRequired ?? byId.get(s.ministryId)!.rehearsalRequiredDefault })),
+    Array.from({ length: s.count }, (_, i) => ({ ministryId: s.ministryId, slotNo: i + 1, rehearsalRequired: b.online ? false : s.rehearsalRequired ?? byId.get(s.ministryId)!.rehearsalRequiredDefault })), // acara online tanpa latihan
   );
 }
 
+/** Isian online yang siap disimpan (roomId ruangan maya, tautan disegel ke id template); bukan online = nilai kosong. */
+async function onlineData(tenantId: string, templateId: string, b: TemplateInput, existingUrl: string | null) {
+  if (!b.online) return { roomId: b.roomId!, isOnline: false, onlineUrl: null, onlineCommunityIds: [] as string[], onlineReminder: true };
+  let url: string;
+  if (b.onlineUrl) url = cleanOnlineUrl(b.onlineUrl);
+  else if (existingUrl) url = openTemplateUrl(templateId, existingUrl)!;
+  else url = cleanOnlineUrl(null); // melempar "Isi tautan"
+  const ids = [...new Set(b.onlineCommunityIds)];
+  if (ids.length && (await prisma.community.count({ where: { id: { in: ids }, tenantId, deletedAt: null } })) !== ids.length) throw badRequest("Ada komunitas yang tidak valid.");
+  return { roomId: await ensureOnlineRoom(prisma, tenantId), isOnline: true, onlineUrl: sealTemplateUrl(templateId, url), onlineCommunityIds: ids, onlineReminder: b.onlineReminder };
+}
+
 async function checkRefs(tenantId: string, b: TemplateInput) {
-  await assertRoomUsable(tenantId, b.roomId);
+  if (!b.online) await assertRoomUsable(tenantId, b.roomId!);
   if (b.attendanceCommunityId && !(await prisma.community.count({ where: { id: b.attendanceCommunityId, tenantId, deletedAt: null } }))) throw badRequest("Komunitas tidak valid.");
 }
 
@@ -81,16 +107,18 @@ export async function createTemplate(tenantId: string, b: TemplateInput) {
   const slots = await resolveSlots(tenantId, b);
   const old = await prisma.eventTemplate.findFirst({ where: { tenantId, name: b.name } });
   if (old && !old.deletedAt) throw conflict(`Template "${b.name}" sudah ada.`);
+  const templateId = old?.id ?? randomUUID(); // id dibuat dulu: tautan online disegel dengan id template
   const data = {
     name: b.name, weekday: b.weekday, recurrence: b.recurrence, ordinal: b.recurrence === "MONTHLY_NTH" ? b.ordinal! : null,
-    startTime: b.startTime, durationMin: b.durationMin, roomId: b.roomId, attendanceModeDefault: b.attendanceModeDefault, attendanceCommunityId: b.attendanceCommunityId ?? null,
+    startTime: b.startTime, durationMin: b.durationMin, attendanceModeDefault: b.attendanceModeDefault, attendanceCommunityId: b.attendanceCommunityId ?? null,
+    ...(await onlineData(tenantId, templateId, b, null)),
   };
   const row = await prisma.$transaction(async (tx) => {
     if (old) {
       await tx.eventTemplateSlot.deleteMany({ where: { templateId: old.id } });
       return tx.eventTemplate.update({ where: { id: old.id }, data: { ...data, deletedAt: null, slots: { create: slots } }, include });
     }
-    return tx.eventTemplate.create({ data: { tenantId, ...data, slots: { create: slots } }, include });
+    return tx.eventTemplate.create({ data: { id: templateId, tenantId, ...data, slots: { create: slots } }, include });
   });
   return toDto(row);
 }
@@ -103,13 +131,16 @@ export async function updateTemplate(tenantId: string, id: string, b: TemplateIn
   const slots = await resolveSlots(tenantId, b);
   const dup = await prisma.eventTemplate.findFirst({ where: { tenantId, name: b.name, id: { not: id } } });
   if (dup) throw conflict(`Nama template "${b.name}" sudah dipakai.`);
+  if (!b.online && cur.isOnline && !b.roomId) throw badRequest("Template tidak lagi online: pilih ruangannya.");
+  const onl = await onlineData(tenantId, id, b, cur.onlineUrl); // tautan lama dipertahankan bila tidak diisi ulang
   const row = await prisma.$transaction(async (tx) => {
     await tx.eventTemplateSlot.deleteMany({ where: { templateId: id } });
     return tx.eventTemplate.update({
       where: { id },
       data: {
         name: b.name, weekday: b.weekday, recurrence: b.recurrence, ordinal: b.recurrence === "MONTHLY_NTH" ? b.ordinal! : null,
-        startTime: b.startTime, durationMin: b.durationMin, roomId: b.roomId, attendanceModeDefault: b.attendanceModeDefault, attendanceCommunityId: b.attendanceCommunityId ?? null,
+        startTime: b.startTime, durationMin: b.durationMin, attendanceModeDefault: b.attendanceModeDefault, attendanceCommunityId: b.attendanceCommunityId ?? null,
+        ...onl,
         slots: { create: slots },
       },
       include,
@@ -158,13 +189,21 @@ export async function createOnDate(u: AuthUser, t: TplWithSlots, iso: string): P
     return { skipped: { date: iso, reason: dup.status === "CANCELLED" ? `Acara dari template ini sudah ada tetapi dibatalkan (${dup.number}). Buka acaranya di Jadwal acara lalu pilih "Aktifkan kembali".` : "Acara dari template ini sudah ada." } };
   }
   try {
-    const busy = await roomConflict(u.tenantId, t.roomId, startsAt, endsAt);
-    if (busy) throw conflict(`Ruangan sudah dipakai: ${busy.join("; ")}.`);
+    if (!t.isOnline) {
+      const busy = await roomConflict(u.tenantId, t.roomId, startsAt, endsAt);
+      if (busy) throw conflict(`Ruangan sudah dipakai: ${busy.join("; ")}.`);
+    }
     const number = await nextDocNumber(u.tenantId, "EV", startsAt);
+    // acara online: tautan template disegel ulang dengan id acara yang baru
+    const eventId = randomUUID();
+    const online = t.isOnline && t.onlineUrl
+      ? { isOnline: true, onlineUrl: sealOnlineUrl(eventId, openTemplateUrl(t.id, t.onlineUrl)), onlineCommunityIds: t.onlineCommunityIds, onlineReminder: t.onlineReminder }
+      : {};
     const ev = await translateOverlap(() =>
       prisma.$transaction(async (tx) => {
         const e = await tx.event.create({
           data: {
+            id: eventId, ...online,
             tenantId: u.tenantId, number, templateId: t.id, title: t.name, startsAt, endsAt, roomId: t.roomId, status: "DRAFT",
             attendanceMode: t.attendanceModeDefault, createdById: u.userId,
             teams: { create: teamIds.map((teamTypeId) => ({ teamTypeId })) },
@@ -173,7 +212,7 @@ export async function createOnDate(u: AuthUser, t: TplWithSlots, iso: string): P
             },
           },
         });
-        await bookRoom(tx, { tenantId: u.tenantId, roomId: t.roomId, startsAt, endsAt, sourceType: "EVENT", sourceId: e.id });
+        if (!t.isOnline) await bookRoom(tx, { tenantId: u.tenantId, roomId: t.roomId, startsAt, endsAt, sourceType: "EVENT", sourceId: e.id });
         return e;
       }),
     );
@@ -192,7 +231,7 @@ export async function createOnDate(u: AuthUser, t: TplWithSlots, iso: string): P
 export async function generateFromTemplate(u: AuthUser, templateId: string, range: z.infer<typeof generateBody>) {
   const t = await prisma.eventTemplate.findFirst({ where: { id: templateId, tenantId: u.tenantId, deletedAt: null }, include: { slots: { include: { ministry: true } } } });
   if (!t) throw notFound("Template");
-  await assertRoomUsable(u.tenantId, t.roomId);
+  if (!t.isOnline) await assertRoomUsable(u.tenantId, t.roomId);
 
   const created: Created[] = [];
   const skipped: Skipped[] = [];
@@ -213,7 +252,7 @@ export async function generateFromTemplate(u: AuthUser, templateId: string, rang
     const all = await prisma.eventTemplate.findMany({ where: { tenantId: u.tenantId, deletedAt: null }, include: { slots: { include: { ministry: true } } } });
     const other = all.find((o) => o.id !== t.id && isSundayPair(t.name, o.name));
     if (other) {
-      await assertRoomUsable(u.tenantId, other.roomId);
+      if (!other.isOnline) await assertRoomUsable(u.tenantId, other.roomId);
       pair = { template: other.name, created: [], skipped: [] };
       for (const iso of dates) {
         const r = await createOnDate(u, other, iso);

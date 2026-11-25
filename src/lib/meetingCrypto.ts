@@ -30,6 +30,10 @@ export const openSpeaker = (eventId: string, v: string | null) => (v ? decryptTe
 export const sealTheme = (eventId: string, v: string | null | undefined) => (v ? encryptText(v, sc(eventId), "theme") : null);
 export const openTheme = (eventId: string, v: string | null) => (v ? decryptText(v, sc(eventId), "theme") : v);
 
+/** Tautan online pada template (belum punya acara): terikat ke id template, lalu disegel ulang ke id acara saat acara dibuat. */
+export const sealTemplateUrl = (templateId: string, v: string) => encryptText(v, `template:${templateId}`, "onlineUrl");
+export const openTemplateUrl = (templateId: string, v: string | null) => (v ? decryptText(v, `template:${templateId}`, "onlineUrl") : v);
+
 /** Pengganti isi yang gagal dibuka di daftar dan kalender (kunci salah atau data rusak), supaya satu rapat bermasalah tidak merusak seluruh halaman. */
 export const UNREADABLE = "🔒 isi tidak bisa dibuka";
 const safe = (f: () => string): string => { try { return f(); } catch { return UNREADABLE; } };

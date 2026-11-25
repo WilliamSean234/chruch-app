@@ -310,6 +310,11 @@ model EventTemplate {
   roomId                String
   attendanceModeDefault String              @default("COUNT") // COUNT | NAMES
   attendanceCommunityId String? // filter daftar nama kehadiran (mis. Pemuda)
+  // Template online: tanpa ruangan fisik (roomId menunjuk ruangan maya Online). Tautan terenkripsi dengan lingkup template, lalu disegel ulang per acara saat dibuat.
+  isOnline              Boolean             @default(false)
+  onlineUrl             String?
+  onlineCommunityIds    String[]            @default([]) // kosong = tautan untuk semua orang
+  onlineReminder        Boolean             @default(true)
   deletedAt             DateTime?
   room                  Room                @relation(fields: [roomId], references: [id])
   attendanceCommunity   Community?          @relation(fields: [attendanceCommunityId], references: [id])

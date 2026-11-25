@@ -5,7 +5,7 @@ import PersonFilter from "@/components/PersonFilter";
 import { inputCls } from "@/components/jadwal/api";
 import { type OnlineValue } from "@/lib/onlineForm";
 
-export default function OnlineFields({ value, onChange, kind, disabled, hint }: { value: OnlineValue; onChange: (v: OnlineValue) => void; kind: "IBADAH" | "RAPAT"; disabled?: boolean; hint?: string }) {
+export default function OnlineFields({ value, onChange, kind, disabled, hint, noSpeaker }: { value: OnlineValue; onChange: (v: OnlineValue) => void; kind: "IBADAH" | "RAPAT"; disabled?: boolean; hint?: string; noSpeaker?: boolean }) {
   const [communities, setCommunities] = useState<{ id: string; name: string }[]>([]);
   const set = (p: Partial<OnlineValue>) => onChange({ ...value, ...p });
   useEffect(() => {
@@ -35,14 +35,14 @@ export default function OnlineFields({ value, onChange, kind, disabled, hint }: 
               <textarea rows={2} maxLength={600} className={`${inputCls} h-auto min-h-[44px] py-2.5`} value={value.theme} disabled={disabled} onChange={(e) => set({ theme: e.target.value })} />
             </label>
           )}
-          <div className={`${lbl} sm:col-span-2`}>Pembicara <span className="font-medium text-[var(--ink-2)]">(opsional)</span>
+          {!noSpeaker && <div className={`${lbl} sm:col-span-2`}>Pembicara <span className="font-medium text-[var(--ink-2)]">(opsional)</span>
             {value.speaker ? (
               <PersonFilter label="" value={value.speaker} onChange={(p) => set({ speaker: p })} />
             ) : (
               <div className="grid gap-2.5 sm:grid-cols-2">
                 <PersonFilter label="" placeholder="Cari dari daftar orang…" value={null} onChange={(p) => set({ speaker: p, speakerName: "" })} />
                 <input className={inputCls} maxLength={120} placeholder="atau ketik nama pembicara luar" value={value.speakerName} disabled={disabled} onChange={(e) => set({ speakerName: e.target.value })} />
-              </div>
+              </div>}
             )}
           </div>
           {kind === "IBADAH" && (

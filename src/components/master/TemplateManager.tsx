@@ -1,5 +1,7 @@
 "use client";
 
+import OnlineFields from "@/components/online/OnlineFields";
+import { emptyOnline, onlineProblem, type OnlineValue } from "@/lib/onlineForm";
 import Fab from "@/components/ui/Fab";
 import Link from "next/link";
 import { askConfirm } from "@/components/ui/Confirm";
@@ -13,7 +15,7 @@ type Team = { id: string; name: string; ministries: TeamMin[] };
 type Slot = { ministryId: string; ministryName: string; teamTypeId: string; teamName: string; count: number; rehearsalRequired: boolean };
 type Tpl = {
   id: string; name: string; weekday: number; recurrence: "WEEKLY" | "MONTHLY_NTH"; ordinal: number | null; startTime: string; durationMin: number;
-  room: Opt; attendanceModeDefault: "COUNT" | "NAMES"; attendanceCommunity: Opt | null; slots: Slot[];
+  room: Opt; isOnline?: boolean; online?: { url: string | null; communityIds: string[]; reminder: boolean } | null; attendanceModeDefault: "COUNT" | "NAMES"; attendanceCommunity: Opt | null; slots: Slot[];
 };
 type Room = Opt & { isActive: boolean; floor?: number | null };
 type SlotState = Record<string, { count: number; rehearsal: boolean }>;
@@ -143,7 +145,11 @@ function Editor({ tpl, pal, teams, rooms, comms, onDirty, onSaved, onDeleted, on
   const [pat, setPat] = useState(tpl ? patKey(tpl) : "W:0");
   const [start, setStart] = useState(tpl?.startTime ?? "07:00");
   const [hours, setHours] = useState(String((tpl?.durationMin ?? 120) / 60));
-  const [roomId, setRoomId] = useState(tpl?.room.id ?? rooms.find((r) => r.isActive)?.id ?? "");
+  const [roomId, setRoomId] = useState(tpl?.isOnline ? rooms.find((r) => r.isActive)?.id ?? "" : tpl?.room.id ?? rooms.find((r) => r.isActive)?.id ?? "");
+  // template online: tanpa ruangan; pembicara dan tema diisi per acara karena berganti-ganti
+  const [onl, setOnl] = useState<OnlineValue>(tpl?.isOnline
+    ? { ...emptyOnline, online: true, url: tpl.online?.url ?? "", audience: tpl.online?.communityIds.length ? "COMMUNITIES" : "ALL", communityIds: tpl.online?.communityIds ?? [], reminder: tpl.online?.reminder ?? true }
+    : emptyOnline);
   const [att, setAtt] = useState(tpl ? (tpl.attendanceModeDefault === "NAMES" ? `NAMES:${tpl.attendanceCommunity?.id ?? ""}` : "COUNT") : "COUNT");
   const [slots, setSlots] = useState<SlotState>(Object.fromEntries((tpl?.slots ?? []).map((s) => [s.ministryId, { count: s.count, rehearsal: s.rehearsalRequired }])));
   const [extra, setExtra] = useState<string[]>([]); // tim yang baru ditambahkan dan belum punya posisi
@@ -152,7 +158,7 @@ function Editor({ tpl, pal, teams, rooms, comms, onDirty, onSaved, onDeleted, on
   const [error, setError] = useState("");
 
   const minutes = Math.min(720, Math.max(15, Math.round((Number(hours) || 0) * 60)));
-  const snap = () => JSON.stringify({ name: name.trim(), pat, start, minutes, roomId, att, slots: Object.entries(slots).sort(([a], [b]) => a.localeCompare(b)) });
+  const snap = () => JSON.stringify({ name: name.trim(), pat, start, minutes, roomId, onl, att, slots: Object.entries(slots).sort(([a], [b]) => a.localeCompare(b)) });
   const initial = useRef(snap());
   const isDirty = isNew || snap() !== initial.current;
   useEffect(() => { onDirty(isDirty); }); // eslint-disable-line react-hooks/exhaustive-deps
@@ -177,10 +183,13 @@ function Editor({ tpl, pal, teams, rooms, comms, onDirty, onSaved, onDeleted, on
 
   async function save() {
     if (!name.trim()) return setError("Nama acara wajib diisi.");
-    if (!roomId) return setError("Pilih ruangan.");
+    if (!onl.online && !roomId) return setError("Pilih ruangan.");
+    const problem = onlineProblem(onl, "IBADAH");
+    if (problem) return setError(problem);
     const [mode, commId] = att.split(":");
     const body = {
-      name: name.trim(), ...parsePat(pat), startTime: start, durationMin: minutes, roomId,
+      name: name.trim(), ...parsePat(pat), startTime: start, durationMin: minutes, ...(onl.online ? {} : { roomId }),
+      online: onl.online, ...(onl.online ? { onlineUrl: onl.url.trim(), onlineCommunityIds: onl.audience === "COMMUNITIES" ? onl.communityIds : [], onlineReminder: onl.reminder } : {}),
       attendanceModeDefault: mode === "NAMES" ? "NAMES" : "COUNT", attendanceCommunityId: mode === "NAMES" && commId ? commId : null,
       slots: Object.entries(slots).map(([ministryId, s]) => ({ ministryId, count: s.count, rehearsalRequired: s.rehearsal })),
     };
@@ -219,11 +228,13 @@ function Editor({ tpl, pal, teams, rooms, comms, onDirty, onSaved, onDeleted, on
           <label className="flex flex-col gap-1.5 text-[12.5px] font-bold text-[#565B76]">Durasi (jam)
             <input type="number" min={0.25} max={12} step={0.25} className={fld} value={hours} onChange={(e) => setHours(e.target.value)} />
           </label>
-          <label className="flex flex-col gap-1.5 text-[12.5px] font-bold text-[#565B76]">Ruangan
-            <select className={fld} value={roomId} onChange={(e) => setRoomId(e.target.value)}>
-              {rooms.filter((r) => r.isActive || r.id === roomId).map((r) => <option key={r.id} value={r.id}>{r.name}{r.floor != null ? ` · Lantai ${r.floor}` : ""}{r.isActive ? "" : " (nonaktif)"}</option>)}
-            </select>
-          </label>
+          {!onl.online && (
+            <label className="flex flex-col gap-1.5 text-[12.5px] font-bold text-[#565B76]">Ruangan
+              <select className={fld} value={roomId} onChange={(e) => setRoomId(e.target.value)}>
+                {rooms.filter((r) => r.isActive || r.id === roomId).map((r) => <option key={r.id} value={r.id}>{r.name}{r.floor != null ? ` · Lantai ${r.floor}` : ""}{r.isActive ? "" : " (nonaktif)"}</option>)}
+              </select>
+            </label>
+          )}
           <label className="flex flex-col gap-1.5 text-[12.5px] font-bold text-[#565B76]">Kehadiran default
             <select className={fld} value={att} onChange={(e) => setAtt(e.target.value)}>
               <option value="COUNT">Jumlah saja</option>
@@ -232,12 +243,13 @@ function Editor({ tpl, pal, teams, rooms, comms, onDirty, onSaved, onDeleted, on
             </select>
           </label>
         </div>
+        <OnlineFields kind="IBADAH" noSpeaker value={onl} onChange={setOnl} hint="Berlaku untuk acara yang dibuat dari template ini; acara yang sudah ada tidak berubah. Pembicara dan tema diisi di tiap acara. Acara online tanpa ruangan dan tanpa latihan." />
         <span className="text-[13px] font-semibold text-[#565B76]">Selesai otomatis: <span className="font-extrabold text-[#171A2C]">{dot(endTime(start || "00:00", minutes))}</span></span>
       </div>
 
       {/* Tim & posisi bawaan */}
       <div className={card}>
-        <SectionTitle right={<span className="flex items-center gap-[7px] text-[12.5px] font-semibold text-[#565B76]"><span className="size-2 rounded-full bg-[#C28E2C]" />wajib latihan</span>}>Tim &amp; posisi bawaan</SectionTitle>
+        <SectionTitle right={onl.online ? undefined : <span className="flex items-center gap-[7px] text-[12.5px] font-semibold text-[#565B76]"><span className="size-2 rounded-full bg-[#C28E2C]" />wajib latihan</span>}>Tim &amp; posisi bawaan</SectionTitle>
         {shownTeams.length === 0 && <p className="text-sm font-medium text-[#565B76]">Belum ada posisi. Tambahkan tim bawaan di bawah.</p>}
         {shownTeams.map((t) => (
           <div key={t.id} className="flex flex-wrap items-start gap-x-3.5 gap-y-2.5">
@@ -245,7 +257,7 @@ function Editor({ tpl, pal, teams, rooms, comms, onDirty, onSaved, onDeleted, on
             <div className="flex min-w-[260px] flex-[1_1_300px] flex-wrap gap-2">
               {t.ministries.filter((m) => slots[m.id]).flatMap((m) =>
                 Array.from({ length: slots[m.id].count }, (_, i) => (
-                  <PosChip key={`${m.id}-${i}`} label={slots[m.id].count > 1 ? `${m.name} ${i + 1}` : m.name} req={slots[m.id].rehearsal} onToggle={() => toggleRehearsal(m)} onRemove={() => bump(m, -1)} />
+                  <PosChip key={`${m.id}-${i}`} label={slots[m.id].count > 1 ? `${m.name} ${i + 1}` : m.name} req={!onl.online && slots[m.id].rehearsal} onToggle={() => { if (!onl.online) toggleRehearsal(m); }} onRemove={() => bump(m, -1)} />
                 )),
               )}
               <AddPosition team={t} slots={slots} onAdd={(m) => bump(m, 1)} />
