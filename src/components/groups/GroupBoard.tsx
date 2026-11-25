@@ -18,7 +18,7 @@ type GroupRow = { id: string; name: string; quorumMin: number | null; memberCoun
 type Position = { id: string; name: string; seats: number | null; filled: number; canSchedule: boolean; canWriteMinutes: boolean; canFinalize: boolean; canManageMembers: boolean };
 type Member = { id: string; personId: string; name: string; title: string | null; positionIds: string[]; ebmMinistryIds?: string[] };
 type EbmInfo = { canEdit: boolean; ministries: { id: string; name: string }[] };
-type Detail = { id: string; name: string; quorumMin: number | null; ebm: EbmInfo | null; canAdmin: boolean; canManageMembers: boolean; hasAdminTim: boolean; positions: Position[]; members: Member[] };
+type Detail = { id: string; name: string; quorumMin: number | null; ebm: EbmInfo | null; canAdmin: boolean; canPositions: boolean; canManageMembers: boolean; hasAdminTim: boolean; positions: Position[]; members: Member[] };
 type PersonHit = { id: string; name: string; title: string | null };
 
 const CAPS: { key: "canSchedule" | "canWriteMinutes" | "canFinalize" | "canManageMembers"; head: string; label: string; hint: string }[] = [
@@ -51,7 +51,7 @@ async function confirmFirstAdminTim(detail: Detail, positionIds: string[], who: 
   if (!detail.canAdmin || detail.hasAdminTim) return true;
   const at = detail.positions.find((p) => isAdminTim(p.name));
   if (!at || !positionIds.includes(at.id)) return true;
-  return askConfirm(`Jadikan ${who} Admin Tim ${detail.name}? Sesudah ini anggota kelompok hanya bisa diatur Admin Tim. Anda tidak bisa lagi menambah, mengeluarkan, atau mengubah jabatan anggota kelompok ini.`, { confirmLabel: "Ya, jadikan" });
+  return askConfirm(`Jadikan ${who} Admin Tim ${detail.name}? Sesudah ini anggota dan jabatan kelompok hanya bisa diatur Admin Tim. Anda tidak bisa lagi menambah, mengeluarkan, atau mengubah jabatan anggota, dan tidak bisa mengubah jabatan kelompok ini.`, { confirmLabel: "Ya, jadikan" });
 }
 
 export default function GroupBoard({ isSuperadmin, canAddPerson }: { isSuperadmin: boolean; canAddPerson: boolean }) {
@@ -103,7 +103,7 @@ export default function GroupBoard({ isSuperadmin, canAddPerson }: { isSuperadmi
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2A2F8F" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="flex-none"><rect x="5" y="11" width="14" height="9" rx="2.5" /><path d="M8 11V8a4 4 0 018 0v3" /></svg>
         <span className="text-[13.5px] font-semibold leading-relaxed text-[var(--primary-ink)]">
           {isSuperadmin
-            ? <>Isi rapat (notulen dan tautan dokumen) hanya terbaca oleh anggota kelompok. Anda melihat halaman ini sebagai <b>Superadmin</b>: bisa mengatur kelompok dan jabatan, serta memasukkan <b>Admin Tim</b> pertama di tiap kelompok. Sesudah itu anggota kelompok diurus Admin Tim, dan Anda tidak bisa membaca notulen. Setiap perubahan tercatat di Log aktivitas.</>
+            ? <>Isi rapat (notulen dan tautan dokumen) hanya terbaca oleh anggota kelompok. Anda melihat halaman ini sebagai <b>Superadmin</b>: bisa mengatur kelompok, serta menyiapkan jabatan dan memasukkan <b>Admin Tim</b> pertama di tiap kelompok. Sesudah itu anggota dan jabatan kelompok diurus Admin Tim, dan Anda tidak bisa membaca notulen. Setiap perubahan tercatat di Log aktivitas.</>
             : <>Isi rapat (notulen dan tautan dokumen) hanya terbaca oleh anggota kelompok. Di sini Anda hanya melihat kelompok yang Anda ikuti.</>}
         </span>
       </div>
@@ -196,7 +196,7 @@ export default function GroupBoard({ isSuperadmin, canAddPerson }: { isSuperadmi
                               : granted.map((c) => <span key={c.key} className="whitespace-nowrap rounded-full bg-[#e3f3e7] px-2.5 py-[3px] text-xs font-bold text-[#1b6b34]">{c.label.replace(/^(Menjadwalkan|Menulis|Memfinalkan|Mengelola)/, (m) => ({ Menjadwalkan: "Jadwalkan", Menulis: "Tulis", Memfinalkan: "Finalkan", Mengelola: "Kelola" } as Record<string, string>)[m])}</span>)}
                           </span>
                         </div>
-                        {detail.canAdmin && (isAdminTim(p.name) ? <span className="flex-none text-xs font-bold text-[var(--ink-2)]">Wajib</span> : <button type="button" onClick={() => setModal({ t: "position", pos: p })} className="h-8 flex-none rounded-lg border border-[var(--line)] bg-white px-3 text-xs font-semibold text-[var(--ink-2)] active:bg-[var(--bg)]">Ubah</button>)}
+                        {detail.canPositions && (isAdminTim(p.name) ? <span className="flex-none text-xs font-bold text-[var(--ink-2)]">Wajib</span> : <button type="button" onClick={() => setModal({ t: "position", pos: p })} className="h-8 flex-none rounded-lg border border-[var(--line)] bg-white px-3 text-xs font-semibold text-[var(--ink-2)] active:bg-[var(--bg)]">Ubah</button>)}
                       </li>
                     );
                   })}
@@ -213,13 +213,13 @@ export default function GroupBoard({ isSuperadmin, canAddPerson }: { isSuperadmi
                         {CAPS.map((c) => (
                           <span key={c.key} className={`min-w-11 justify-self-start rounded-full px-3 py-[3px] text-center text-[12.5px] font-bold ${p[c.key] ? "bg-[#e3f3e7] text-[#1b6b34]" : "bg-[var(--bg)] text-[var(--ink-2)]"}`}>{p[c.key] ? "Ya" : "–"}</span>
                         ))}
-                        {detail.canAdmin ? (isAdminTim(p.name) ? <span className="text-center text-xs font-bold text-[var(--ink-2)]">Wajib</span> : <button type="button" onClick={() => setModal({ t: "position", pos: p })} className="h-8 rounded-lg border border-[var(--line)] bg-white text-xs font-semibold text-[var(--ink-2)] hover:bg-[var(--bg)]">Ubah</button>) : <span />}
+                        {detail.canPositions ? (isAdminTim(p.name) ? <span className="text-center text-xs font-bold text-[var(--ink-2)]">Wajib</span> : <button type="button" onClick={() => setModal({ t: "position", pos: p })} className="h-8 rounded-lg border border-[var(--line)] bg-white text-xs font-semibold text-[var(--ink-2)] hover:bg-[var(--bg)]">Ubah</button>) : <span />}
                       </div>
                     ))}
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                  {detail.canAdmin && <button type="button" onClick={() => setModal({ t: "position", pos: null })} className="h-9 rounded-full border-[1.5px] border-dashed border-[#9aa0d6] bg-[#f6f7fe] px-3.5 text-[13px] font-bold text-[var(--primary-ink)] hover:bg-[#eceefd]">+ jabatan</button>}
+                  {detail.canPositions && <button type="button" onClick={() => setModal({ t: "position", pos: null })} className="h-9 rounded-full border-[1.5px] border-dashed border-[#9aa0d6] bg-[#f6f7fe] px-3.5 text-[13px] font-bold text-[var(--primary-ink)] hover:bg-[#eceefd]">+ jabatan</button>}
                   <span className="text-[12.5px] font-medium text-[var(--ink-2)]">Orang yang merangkap jabatan mendapat gabungan haknya.</span>
                 </div>
               </div>
@@ -233,8 +233,8 @@ export default function GroupBoard({ isSuperadmin, canAddPerson }: { isSuperadmi
                 {detail.canAdmin && (
                   <span className="rounded-xl bg-[#f1f2fd] px-3.5 py-2.5 text-[12.5px] font-semibold leading-relaxed text-[var(--primary-ink)]">
                     {detail.hasAdminTim
-                      ? "Anggota kelompok ini diurus Admin Tim. Anda tidak lagi bisa menambah, mengeluarkan, atau mengubah jabatan anggotanya."
-                      : "Kelompok ini belum punya Admin Tim. Masukkan satu anggota dengan jabatan Admin Tim; sesudah itu anggota kelompok diurus Admin Tim dan Anda tidak bisa lagi mengubahnya."}
+                      ? "Anggota dan jabatan kelompok ini diurus Admin Tim. Anda tidak lagi bisa menambah, mengeluarkan, mengubah jabatan anggota, atau menambah dan mengubah jabatan kelompok. Hak Anda kembali bila Admin Tim kosong."
+                      : "Kelompok ini belum punya Admin Tim. Siapkan jabatan yang dibutuhkan, lalu masukkan satu anggota dengan jabatan Admin Tim; sesudah itu anggota dan jabatan kelompok diurus Admin Tim dan Anda tidak bisa lagi mengubahnya."}
                   </span>
                 )}
                 <span className="text-[12.5px] font-medium leading-relaxed text-[var(--ink-2)]">Anggota yang keluar tidak lagi bisa membuka notulen, tetapi riwayat keanggotaannya tetap tersimpan.</span>

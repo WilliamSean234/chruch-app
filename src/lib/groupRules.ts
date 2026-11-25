@@ -19,3 +19,12 @@ export function canEditGroupMembers(o: { isManagerMember: boolean; isSuperadmin:
   if (o.isManagerMember) return true;
   return o.isSuperadmin && !o.groupHasAdminTim;
 }
+
+/**
+ * Siapa boleh membuat, mengubah, dan menghapus jabatan di satu kelompok. Pemegang jabatan Admin Tim kelompok itu; Superadmin hanya
+ * selama kelompok belum punya Admin Tim (ia menyiapkan jabatan sebelum menyerahkan kelompok ke Admin Tim).
+ */
+export function canManageGroupPositions(o: { isAdminTimMember: boolean; isSuperadmin: boolean; groupHasAdminTim: boolean }): boolean {
+  if (o.isAdminTimMember) return true;
+  return o.isSuperadmin && !o.groupHasAdminTim;
+}
