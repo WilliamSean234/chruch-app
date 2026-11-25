@@ -7,7 +7,7 @@ import { creatorNames } from "./creators";
 import { addMinutes, DATE_RE, localParts, zonedToUtc } from "./time";
 import { auditYears } from "./years";
 import { buildEventOptions, eventIdsOf, isOwnEdit } from "./auditEvents";
-import { describe, eventName, fmtDay, loadRefs, loadRoleLabels, wantedOf } from "./auditDescribe";
+import { describe, eventName, fmtDay, fmtTime, loadRefs, loadRoleLabels, wantedOf } from "./auditDescribe";
 import { pageOf, pagingQuery, resolvePaging } from "./paging";
 
 /**
@@ -66,7 +66,7 @@ export const auditQuery = z.object({
 /**
  * Acara yang punya aktivitas pada rentang waktu log (untuk pilihan saringan "Acara").
  * Kursi dan sesi latihan ditelusuri ke acaranya. Rapat ditulis dengan nama kelompok, bukan judulnya.
- * Ibadah Minggu I dan II di hari yang sama digabung menjadi satu pilihan, kecuali salah satunya pernah diubah sendiri (lihat auditEvents.ts).
+ * Ibadah Minggu I dan II di hari yang sama selalu digabung menjadi satu pilihan; tiap ibadah tetap bisa disaring di dalamnya (lihat auditEvents.ts).
  */
 async function eventOptions(tenantId: string, createdAt: Prisma.AuditLogWhereInput["createdAt"]) {
   const logs = await prisma.auditLog.findMany({
@@ -103,6 +103,7 @@ async function eventOptions(tenantId: string, createdAt: Prisma.AuditLogWhereInp
     solo,
     {
       label: (x) => { const e = byId.get(x.id)!; return eventName({ kind: e.kind, title: e.title, startsAt: e.startsAt, group: e.group?.name ?? null }); },
+      part: (x) => `${x.title} · ${fmtTime(x.startsAt)}`,
       day: (x) => fmtDay(x.startsAt),
       dayKey: (x) => localParts(x.startsAt).date,
     },

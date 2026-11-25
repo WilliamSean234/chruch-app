@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { buildEventOptions, eventIdsOf, isOwnEdit, type EventIn } from "../src/lib/auditEvents";
 
 const ev = (id: string, title: string, iso: string): EventIn => ({ id, title, startsAt: new Date(iso), templateName: title });
-const fmt = { label: (e: EventIn) => `${e.title} · ${e.startsAt.toISOString().slice(0, 16)}`, day: (e: EventIn) => e.startsAt.toISOString().slice(0, 10), dayKey: (e: EventIn) => e.startsAt.toISOString().slice(0, 10) };
+const fmt = { part: (e: EventIn) => `${e.title} ${e.startsAt.toISOString().slice(11, 16)}`, label: (e: EventIn) => `${e.title} · ${e.startsAt.toISOString().slice(0, 16)}`, day: (e: EventIn) => e.startsAt.toISOString().slice(0, 10), dayKey: (e: EventIn) => e.startsAt.toISOString().slice(0, 10) };
 
 const I = ev("a", "Ibadah Minggu I", "2026-11-29T00:00:00Z");
 const II = ev("b", "Ibadah Minggu II", "2026-11-29T02:30:00Z");
@@ -16,13 +16,17 @@ test("Ibadah Minggu I dan II di hari yang sama jadi satu pilihan", () => {
   assert.equal(o[1]!.value, "a,b");
 });
 
-test("bila salah satunya pernah diubah sendiri, keduanya tampil terpisah", () => {
+test("tetap digabung walau salah satunya diubah sendiri; keduanya dipisah di dalam pilihan dan yang diubah sendiri ditandai", () => {
   const o = buildEventOptions([II, I], new Set(["b"]), fmt);
-  assert.deepEqual(o.map((x) => x.value), ["b", "a"]);
+  assert.equal(o.length, 1);
+  assert.equal(o[0]!.value, "a,b");
+  assert.deepEqual(o[0]!.parts!.map((p) => [p.value, p.solo]), [["a", false], ["b", true]]);
 });
 
 test("ibadah yang pasangannya tidak punya catatan tetap tampil sendiri", () => {
-  assert.deepEqual(buildEventOptions([I], new Set(), fmt).map((x) => x.value), ["a"]);
+  const o = buildEventOptions([I], new Set(), fmt);
+  assert.deepEqual(o.map((x) => x.value), ["a"]);
+  assert.equal(o[0]!.parts, undefined);
 });
 
 test("edit sendiri: pengaturan petugas yang ikut pasangan tidak dihitung", () => {

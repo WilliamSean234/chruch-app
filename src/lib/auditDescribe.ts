@@ -12,7 +12,7 @@ export type AuditRowIn = { action: string; entity: string; entityId: string; rea
 
 const TZ = "Asia/Jakarta";
 const fmtDate = (d: Date | string) => new Intl.DateTimeFormat("id-ID", { timeZone: TZ, day: "numeric", month: "short", year: "numeric" }).format(new Date(d));
-const fmtTime = (d: Date | string) => new Intl.DateTimeFormat("id-ID", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(d)).replace(".", ":");
+export const fmtTime = (d: Date | string) => new Intl.DateTimeFormat("id-ID", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(d)).replace(".", ":");
 export const fmtDay = fmtDate;
 export const fmtDateTime = (d: Date | string) => `${fmtDate(d)} ${fmtTime(d)}`;
 

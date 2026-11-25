@@ -7,7 +7,7 @@ import { useDebounced, usePagedList } from "@/components/ui/usePagedList";
 import { monthRange, ymd } from "@/lib/ui";
 
 type Row = { id: string; at: string; user: string; role: string | null; action: string; label: string; target: string | null; how: string | null; reason: string | null };
-type Options = { categories: { key: string; label: string }[]; users: { id: string; name: string }[]; years: number[]; events: { value: string; label: string }[] };
+type Options = { categories: { key: string; label: string }[]; users: { id: string; name: string }[]; years: number[]; events: { value: string; label: string; parts?: { value: string; label: string; solo: boolean }[] }[] };
 
 const stamp = (iso: string) => new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
 const TONE: Record<string, { bg: string; fg: string }> = {
@@ -24,15 +24,17 @@ export default function AuditPanel() {
   const [category, setCategory] = useState("");
   const [userId, setUserId] = useState("");
   const [eventId, setEventId] = useState("");
+  const [part, setPart] = useState(""); // satu ibadah dari pilihan gabungan Ibadah Minggu I dan II; kosong = keduanya
   const def = monthRange(ymd(new Date()));
   const [from, setFrom] = useState(def.from);
   const [to, setTo] = useState(def.to);
   const search = useDebounced(q.trim());
-  const list = usePagedList<Row, { options: Options }>("/api/v1/audit-logs", { search, category, userId, eventId, from, to });
+  const list = usePagedList<Row, { options: Options }>("/api/v1/audit-logs", { search, category, userId, eventId: part || eventId, from, to });
   const opts = list.data?.options;
+  const parts = opts?.events.find((x) => x.value === eventId)?.parts;
   const dateExtra = (from !== def.from ? 1 : 0) + (to !== def.to ? 1 : 0);
   const dirty = !!(q || category || userId || eventId || dateExtra);
-  const reset = () => { setQ(""); setCategory(""); setUserId(""); setEventId(""); setFrom(def.from); setTo(def.to); };
+  const reset = () => { setQ(""); setCategory(""); setUserId(""); setEventId(""); setPart(""); setFrom(def.from); setTo(def.to); };
 
   return (
     <div className="flex flex-col gap-4">
@@ -44,10 +46,22 @@ export default function AuditPanel() {
           <FSelect label="Pengguna" value={userId} onChange={setUserId} allLabel="Semua pengguna" options={opts?.users.map((x) => ({ value: x.id, label: x.name }))} />
         </>}>
         <FSearch value={q} onChange={setQ} placeholder="Jenis aktivitas atau alasan" />
-        <FMonth from={from} years={opts?.years} onRange={(f, t) => { setFrom(f); setTo(t); setEventId(""); }} />
+        <FMonth from={from} years={opts?.years} onRange={(f, t) => { setFrom(f); setTo(t); setEventId(""); setPart(""); }} />
         <FSelect label="Jenis" value={category} onChange={setCategory} allLabel="Semua jenis" options={opts?.categories.map((c) => ({ value: c.key, label: c.label }))} />
-        <FSelect label="Acara" value={eventId} onChange={setEventId} allLabel="Semua acara" options={opts?.events} width="w-64" />
+        <FSelect label="Acara" value={eventId} onChange={(v) => { setEventId(v); setPart(""); }} allLabel="Semua acara" options={opts?.events} width="w-64" />
       </FilterBar>
+
+      {parts && (
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Ibadah">
+          <span className="text-xs font-extrabold text-[var(--ink-2)]">Tampilkan</span>
+          {[{ value: "", label: "Kedua ibadah", solo: false }, ...parts].map((x) => (
+            <button key={x.value || "semua"} type="button" onClick={() => setPart(x.value)} aria-pressed={part === x.value}
+              className={`h-8 rounded-full border px-3.5 text-[12.5px] font-bold ${part === x.value ? "border-[var(--primary)] bg-[var(--primary-soft)] text-[var(--primary-ink)]" : "border-[var(--line)] bg-white text-[var(--ink-2)] hover:bg-[var(--bg)]"}`}>
+              {x.label}{x.solo ? " · diubah sendiri" : ""}
+            </button>
+          ))}
+        </div>
+      )}
 
       {list.error && <Alert>{list.error}</Alert>}
 

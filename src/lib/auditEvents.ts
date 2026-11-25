@@ -3,18 +3,18 @@ import { sundayPair } from "./seatRules";
 /**
  * Pilihan "Acara" di Log aktivitas. Murni (tanpa database) supaya mudah diuji.
  *
- * Ibadah Minggu I dan II di hari yang sama berpersonel sama, jadi keduanya jadi satu pilihan: "Ibadah Minggu · 29 Nov 2026".
- * Memilihnya menampilkan catatan kedua ibadah. Bila salah satunya pernah diubah sendiri (`solo`), keduanya tampil terpisah
- * lengkap dengan jamnya, supaya perubahan yang hanya mengenai satu ibadah bisa dipisahkan.
- * Nilai pilihan gabungan berupa dua id dipisah koma.
+ * Ibadah Minggu I dan II di hari yang sama berpersonel sama, jadi keduanya selalu jadi satu pilihan: "Ibadah Minggu · 29 Nov 2026".
+ * Memilihnya menampilkan catatan kedua ibadah. Di dalamnya, `parts` memisahkan tiap ibadah (dengan tanda `solo` bila ibadah itu pernah
+ * diubah sendiri) supaya catatan satu ibadah bisa disaring. Nilai pilihan gabungan berupa dua id dipisah koma.
  */
 export type EventIn = { id: string; startsAt: Date; templateName: string | null; title: string };
-export type EventOption = { value: string; label: string };
+export type EventPart = { value: string; label: string; solo: boolean };
+export type EventOption = { value: string; label: string; parts?: EventPart[] };
 
 export function buildEventOptions(
   events: EventIn[],
   solo: Set<string>,
-  fmt: { label: (e: EventIn) => string; day: (e: EventIn) => string; dayKey: (e: EventIn) => string },
+  fmt: { label: (e: EventIn) => string; part: (e: EventIn) => string; day: (e: EventIn) => string; dayKey: (e: EventIn) => string },
 ): EventOption[] {
   const items: { at: number; opt: EventOption }[] = [];
   const used = new Set<string>();
@@ -28,11 +28,16 @@ export function buildEventOptions(
   for (const list of byDay.values()) {
     const one = list.find((e) => sundayPair(e.templateName!)!.n === 1);
     const two = list.find((e) => sundayPair(e.templateName!)!.n === 2);
-    if (!one || !two || solo.has(one.id) || solo.has(two.id)) continue;
-    if (sundayPair(one.templateName!)!.base !== sundayPair(two.templateName!)!.base) continue;
+    if (!one || !two || sundayPair(one.templateName!)!.base !== sundayPair(two.templateName!)!.base) continue;
     used.add(one.id); used.add(two.id);
     const base = one.title.replace(/\s*[-–]?\s*(ii|i|2|1)$/i, "").trim() || one.title;
-    items.push({ at: Math.min(one.startsAt.getTime(), two.startsAt.getTime()), opt: { value: `${one.id},${two.id}`, label: `${base} · ${fmt.day(one)}` } });
+    items.push({
+      at: Math.min(one.startsAt.getTime(), two.startsAt.getTime()),
+      opt: {
+        value: `${one.id},${two.id}`, label: `${base} · ${fmt.day(one)}`,
+        parts: [one, two].map((e) => ({ value: e.id, label: fmt.part(e), solo: solo.has(e.id) })),
+      },
+    });
   }
   for (const e of events) if (!used.has(e.id)) items.push({ at: e.startsAt.getTime(), opt: { value: e.id, label: fmt.label(e) } });
   return items.sort((a, b) => b.at - a.at).map((x) => x.opt);
