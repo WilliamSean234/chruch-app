@@ -4,9 +4,10 @@ import { prisma } from "./prisma";
 import { forbidden } from "./errors";
 import { can, type AuthUser } from "./rbac";
 import { creatorNames } from "./creators";
-import { addMinutes, DATE_RE, zonedToUtc } from "./time";
+import { addMinutes, DATE_RE, localParts, zonedToUtc } from "./time";
 import { auditYears } from "./years";
-import { describe, eventName, loadRefs, loadRoleLabels, wantedOf } from "./auditDescribe";
+import { buildEventOptions, eventIdsOf, isOwnEdit } from "./auditEvents";
+import { describe, eventName, fmtDay, loadRefs, loadRoleLabels, wantedOf } from "./auditDescribe";
 import { pageOf, pagingQuery, resolvePaging } from "./paging";
 
 /**
@@ -57,7 +58,7 @@ export const auditQuery = z.object({
   search: z.string().trim().max(80).optional(),
   category: z.string().max(20).optional(),
   userId: z.string().uuid().optional(),
-  eventId: z.string().uuid().optional(), // hanya aktivitas yang menyangkut acara ini
+  eventId: z.string().refine((v) => { const ids = eventIdsOf(v); return ids.length >= 1 && ids.length <= 2 && ids.every((x) => z.string().uuid().safeParse(x).success); }, "Acara tidak valid.").optional(), // satu acara, atau dua id dipisah koma (Ibadah Minggu I dan II)
   from: z.string().regex(DATE_RE).optional(),
   to: z.string().regex(DATE_RE).optional(),
 });
@@ -65,42 +66,63 @@ export const auditQuery = z.object({
 /**
  * Acara yang punya aktivitas pada rentang waktu log (untuk pilihan saringan "Acara").
  * Kursi dan sesi latihan ditelusuri ke acaranya. Rapat ditulis dengan nama kelompok, bukan judulnya.
+ * Ibadah Minggu I dan II di hari yang sama digabung menjadi satu pilihan, kecuali salah satunya pernah diubah sendiri (lihat auditEvents.ts).
  */
 async function eventOptions(tenantId: string, createdAt: Prisma.AuditLogWhereInput["createdAt"]) {
   const logs = await prisma.auditLog.findMany({
     where: { tenantId, ...(createdAt ? { createdAt } : {}), entity: { in: ["Event", "EventAssignment", "RehearsalSession"] } },
-    select: { entity: true, entityId: true }, take: 5000,
+    select: { action: true, entity: true, entityId: true, payload: true }, take: 5000,
   });
   const ids = new Set(logs.filter((l) => l.entity === "Event").map((l) => l.entityId));
   const seatIds = logs.filter((l) => l.entity === "EventAssignment").map((l) => l.entityId);
   const rehIds = logs.filter((l) => l.entity === "RehearsalSession").map((l) => l.entityId);
   const [seats, rehs] = await Promise.all([
-    seatIds.length ? prisma.eventAssignment.findMany({ where: { id: { in: seatIds }, tenantId }, select: { eventId: true } }) : [],
+    seatIds.length ? prisma.eventAssignment.findMany({ where: { id: { in: seatIds }, tenantId }, select: { id: true, eventId: true } }) : [],
     rehIds.length ? prisma.rehearsalSession.findMany({ where: { id: { in: rehIds }, tenantId }, select: { eventId: true } }) : [],
   ]);
   for (const s of seats) ids.add(s.eventId);
   for (const r of rehs) ids.add(r.eventId);
   if (!ids.size) return [];
+
+  const seatEvent = new Map(seats.map((s) => [s.id, s.eventId]));
+  const solo = new Set<string>(); // acara yang pernah diubah sendiri
+  for (const l of logs) {
+    if (!isOwnEdit(l.action, l.payload)) continue;
+    const eid = l.entity === "Event" ? l.entityId : l.entity === "EventAssignment" ? seatEvent.get(l.entityId) : undefined;
+    if (eid) solo.add(eid);
+  }
+
   const events = await prisma.event.findMany({
     where: { id: { in: [...ids] }, tenantId },
-    select: { id: true, kind: true, title: true, startsAt: true, group: { select: { name: true } } },
+    select: { id: true, kind: true, title: true, startsAt: true, group: { select: { name: true } }, template: { select: { name: true } } },
     orderBy: { startsAt: "desc" }, take: 300,
   });
-  return events.map((e) => ({ value: e.id, label: eventName({ kind: e.kind, title: e.title, startsAt: e.startsAt, group: e.group?.name ?? null }) }));
+  const byId = new Map(events.map((e) => [e.id, e]));
+  return buildEventOptions(
+    events.map((e) => ({ id: e.id, startsAt: e.startsAt, title: e.title, templateName: e.kind === "IBADAH" ? e.template?.name ?? null : null })),
+    solo,
+    {
+      label: (x) => { const e = byId.get(x.id)!; return eventName({ kind: e.kind, title: e.title, startsAt: e.startsAt, group: e.group?.name ?? null }); },
+      day: (x) => fmtDay(x.startsAt),
+      dayKey: (x) => localParts(x.startsAt).date,
+    },
+  );
 }
 
-/** Catatan yang menyangkut satu acara: acaranya sendiri, kursi dan sesi latihannya, serta catatan yang menyebut acara itu di isinya. */
-async function eventFilter(tenantId: string, eventId: string): Promise<Prisma.AuditLogWhereInput> {
+/** Catatan yang menyangkut satu acara (atau Ibadah Minggu I dan II sekaligus): acaranya sendiri, kursi dan sesi latihannya, serta catatan yang menyebut acara itu di isinya. */
+async function eventFilter(tenantId: string, eventIds: string[]): Promise<Prisma.AuditLogWhereInput> {
   const [seats, rehs] = await Promise.all([
-    prisma.eventAssignment.findMany({ where: { eventId, tenantId }, select: { id: true } }),
-    prisma.rehearsalSession.findMany({ where: { eventId, tenantId }, select: { id: true } }),
+    prisma.eventAssignment.findMany({ where: { eventId: { in: eventIds }, tenantId }, select: { id: true } }),
+    prisma.rehearsalSession.findMany({ where: { eventId: { in: eventIds }, tenantId }, select: { id: true } }),
   ]);
   return {
     OR: [
-      { entity: { in: ["Event", "EventAssignment", "RehearsalSession"] }, entityId: { in: [eventId, ...seats.map((s) => s.id), ...rehs.map((r) => r.id)] } },
-      { payload: { path: ["eventId"], equals: eventId } },
-      { payload: { path: ["sourceEventId"], equals: eventId } },
-      { payload: { path: ["events"], array_contains: [eventId] } },
+      { entity: { in: ["Event", "EventAssignment", "RehearsalSession"] }, entityId: { in: [...eventIds, ...seats.map((s) => s.id), ...rehs.map((r) => r.id)] } },
+      ...eventIds.flatMap((id) => [
+        { payload: { path: ["eventId"], equals: id } },
+        { payload: { path: ["sourceEventId"], equals: id } },
+        { payload: { path: ["events"], array_contains: [id] } },
+      ]),
     ],
   };
 }
@@ -117,7 +139,7 @@ export async function listAuditLogs(u: AuthUser, q: z.infer<typeof auditQuery>) 
     ...(cat ? { OR: cat.prefixes.map((p) => ({ action: { startsWith: p } })) } : {}),
     ...(createdAt ? { createdAt } : {}),
   };
-  if (q.eventId) and.push(await eventFilter(u.tenantId, q.eventId));
+  if (q.eventId) and.push(await eventFilter(u.tenantId, eventIdsOf(q.eventId)));
   if (q.search) {
     const needle = q.search.toLowerCase();
     const matching = Object.entries(LABELS).filter(([k, v]) => v.toLowerCase().includes(needle) || k.includes(needle)).map(([k]) => k);
