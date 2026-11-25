@@ -265,7 +265,7 @@ export function describe(r: AuditRowIn, refs: Refs): { target: string | null; ho
       break;
     }
     case "group.position.delete": how = `Jabatan ${str(p.position) ?? ""}`.trim(); break;
-    case "group.member.add": case "group.member.remove": case "group.member.positions": {
+    case "group.member.add": case "group.member.remove": case "group.member.leave": case "group.member.positions": {
       const who = str(p.name) ?? person(p.personId) ?? "-";
       const pos = arr(p.positionIds).map((i) => refs.names.positions.get(i) ?? GONE);
       const pn = str(p.position);

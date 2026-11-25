@@ -197,6 +197,14 @@ export async function getGroup(u: AuthUser, id: string) {
     canAdmin: sa, // ubah nama/kuorum, hapus kelompok
     canPositions: await canEditPositions(u, id), // buat/ubah/hapus jabatan
     canManageMembers: await canEditMembers(u, id),
+    // keluar sendiri: id keanggotaan milik pengguna ini, dan apakah ia pemegang Admin Tim terakhir (untuk peringatan)
+    me: (() => {
+      const mine = items.find((m) => m.personId === u.personId);
+      if (!mine) return null;
+      const adminIds = positions.filter((p) => isAdminTimName(p.name)).map((p) => p.id);
+      const holders = items.filter((m) => m.positionIds.some((pid) => adminIds.includes(pid)));
+      return { memberId: mine.id, lastAdminTim: holders.length === 1 && holders[0].id === mine.id };
+    })(),
     hasAdminTim: await hasAdminTim(id), // false = Superadmin masih boleh memasukkan Admin Tim pertama
     positions: positions.map((p) => ({ id: p.id, name: p.name, seats: p.seats, filled: filled.get(p.id) ?? 0, canSchedule: p.canSchedule, canWriteMinutes: p.canWriteMinutes, canFinalize: p.canFinalize, canManageMembers: p.canManageMembers })),
     members: ebm ? items.map((m) => ({ ...m, ebmMinistryIds: ebm.byPerson[m.personId] ?? [] })) : items,
@@ -392,13 +400,37 @@ export async function setMemberPositions(u: AuthUser, groupId: string, memberId:
   await audit({ tenantId: u.tenantId, userId: u.userId, action: "group.member.positions", entity: "MeetingGroup", entityId: groupId, payload: { personId: m.personId, name: m.person.name, positionIds } });
 }
 
+/** Orang yang keluar dari kelompok tidak lagi diundang ke rapat yang belum berlangsung (yang sudah dicatat hadir atau berhalangan tetap tersimpan). */
+async function dropFromUpcomingMeetings(groupId: string, personId: string) {
+  await prisma.meetingParticipant.deleteMany({
+    where: { personId, status: "INVITED", event: { groupId, kind: "RAPAT", deletedAt: null, status: { not: "CANCELLED" }, startsAt: { gt: new Date() } } },
+  });
+}
+
 /** Keluar dari kelompok: riwayat tetap tersimpan, tetapi ia tidak bisa membuka isi rapat lagi. */
 export async function removeMember(u: AuthUser, groupId: string, memberId: string) {
   await findGroup(u, groupId);
   await requireManageMembers(u, groupId);
   const m = await findMember(groupId, memberId);
   await prisma.groupMember.update({ where: { id: memberId }, data: { leftAt: new Date() } });
+  await dropFromUpcomingMeetings(groupId, m.personId);
   await audit({ tenantId: u.tenantId, userId: u.userId, action: "group.member.remove", entity: "MeetingGroup", entityId: groupId, payload: { personId: m.personId, name: m.person.name } });
+}
+
+/**
+ * Anggota keluar sendiri dari kelompoknya. Tidak butuh hak kelola anggota: siapa pun hanya bisa mengeluarkan dirinya sendiri.
+ * Riwayat dan jabatannya tetap tersimpan (sama seperti dikeluarkan pengelola), tetapi ia tidak bisa membuka isi rapat lagi.
+ * Anggota kelompok EBM/TKI yang keluar tidak dimasukkan lagi oleh sinkronisasi otomatis. Bila ia pemegang Admin Tim terakhir,
+ * kelompok jadi tanpa Admin Tim dan Superadmin kembali boleh mengatur anggotanya.
+ */
+export async function leaveGroup(u: AuthUser, groupId: string) {
+  const g = await findGroup(u, groupId);
+  if (!u.personId) throw badRequest("Akun ini belum dihubungkan ke data orang, jadi belum tercatat sebagai anggota kelompok.");
+  const m = await prisma.groupMember.findFirst({ where: { groupId, personId: u.personId, leftAt: null }, select: { id: true } });
+  if (!m) throw notFound("Keanggotaan");
+  await prisma.groupMember.update({ where: { id: m.id }, data: { leftAt: new Date() } });
+  await dropFromUpcomingMeetings(groupId, u.personId);
+  await audit({ tenantId: u.tenantId, userId: u.userId, action: "group.member.leave", entity: "MeetingGroup", entityId: groupId, payload: { personId: u.personId, group: g.name } });
 }
 
 export type MembershipChip = { groupId: string; groupName: string; positions: string[] };

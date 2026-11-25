@@ -19,7 +19,7 @@ type GroupRow = { id: string; name: string; quorumMin: number | null; memberCoun
 type Position = { id: string; name: string; seats: number | null; filled: number; canSchedule: boolean; canWriteMinutes: boolean; canFinalize: boolean; canManageMembers: boolean };
 type Member = { id: string; personId: string; name: string; title: string | null; positionIds: string[]; ebmMinistryIds?: string[] };
 type EbmInfo = { canEdit: boolean; ministries: { id: string; name: string }[]; createTeamId: string | null };
-type Detail = { id: string; name: string; quorumMin: number | null; ebm: EbmInfo | null; canAdmin: boolean; canPositions: boolean; canManageMembers: boolean; hasAdminTim: boolean; positions: Position[]; members: Member[] };
+type Detail = { id: string; name: string; quorumMin: number | null; ebm: EbmInfo | null; canAdmin: boolean; canPositions: boolean; canManageMembers: boolean; hasAdminTim: boolean; me: { memberId: string; lastAdminTim: boolean } | null; positions: Position[]; members: Member[] };
 type PersonHit = { id: string; name: string; title: string | null };
 
 const CAPS: { key: "canSchedule" | "canWriteMinutes" | "canFinalize" | "canManageMembers"; head: string; label: string; hint: string }[] = [
@@ -231,6 +231,7 @@ export default function GroupBoard({ isSuperadmin, canAddPerson }: { isSuperadmi
                   {detail.canManageMembers && <button type="button" onClick={() => setModal({ t: "add" })} className="flex h-10 items-center gap-2 rounded-xl bg-[var(--primary)] px-4 text-[13.5px] font-bold text-white hover:brightness-110">＋ Tambah anggota</button>}
                 </div>
                 <MemberList detail={detail} posName={posName} onEdit={(m) => setModal({ t: "member", m })} onChanged={reload} />
+                {detail.me && <LeaveGroup detail={detail} onLeft={reload} />}
                 {detail.canAdmin && (
                   <span className="rounded-xl bg-[#f1f2fd] px-3.5 py-2.5 text-[12.5px] font-semibold leading-relaxed text-[var(--primary-ink)]">
                     {detail.hasAdminTim
@@ -632,5 +633,30 @@ function MemberDialog({ detail, member, onClose, onDone }: { detail: Detail; mem
       <PositionChecks positions={detail.positions} value={positionIds} onChange={setPositionIds} held={member.positionIds} />
       <ErrorLine text={err} />
     </Modal>
+  );
+}
+
+
+/** Tombol anggota untuk keluar sendiri dari kelompok. Riwayat tetap tersimpan; setelah keluar ia tidak bisa membuka isi rapat lagi. */
+function LeaveGroup({ detail, onLeft }: { detail: Detail; onLeft: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const leave = async () => {
+    const last = detail.me?.lastAdminTim;
+    const ok = await askConfirm(
+      `Keluar dari ${detail.name}? Anda tidak bisa membuka isi rapat kelompok ini lagi dan tidak diundang ke rapat yang akan datang.${last ? " Anda pemegang Admin Tim terakhir: setelah Anda keluar, kelompok ini tanpa Admin Tim dan Superadmin kembali yang mengatur anggotanya." : ""} Hanya pengelola kelompok yang bisa memasukkan Anda lagi.`,
+      { danger: true, confirmLabel: "Keluar dari kelompok" },
+    );
+    if (!ok) return;
+    setBusy(true); setErr("");
+    const r = await callApi("POST", `/api/v1/groups/${detail.id}/leave`);
+    setBusy(false);
+    if (r.ok) onLeft(); else setErr(errMsg(r.data));
+  };
+  return (
+    <div className="flex flex-col items-start gap-2 border-t border-[var(--line-2)] pt-3.5">
+      <button type="button" onClick={() => void leave()} disabled={busy} className="h-10 rounded-xl border border-[#f0c7c7] bg-white px-4 text-[13.5px] font-bold text-[#9b1c1c] hover:bg-[#fdf1f1] disabled:opacity-50">{busy ? "Memproses…" : "Keluar dari kelompok"}</button>
+      {err && <p role="alert" className="m-0 text-[13px] font-semibold text-[#9b1c1c]">{err}</p>}
+    </div>
   );
 }

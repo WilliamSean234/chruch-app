@@ -36,7 +36,7 @@ const LABELS: Record<string, string> = {
   "event.cancel": "Membatalkan acara", "event.reopen": "Mengaktifkan kembali acara", "event.band-mode": "Mengubah Band / No Band", "event.create": "Membuat acara", "event.publish": "Menerbitkan acara", "event.unpublish": "Menarik acara dari terbit", "event.update": "Mengubah acara",
   "event.seat.add": "Menambah posisi acara", "event.seat.remove": "Menghapus posisi acara", "event.team.add": "Menambah tim ke acara", "event.team.remove": "Menghapus tim dari acara",
   "group.create": "Membuat kelompok", "group.update": "Mengubah kelompok", "group.delete": "Menghapus kelompok",
-  "group.member.add": "Menambah anggota kelompok", "group.member.remove": "Mengeluarkan anggota kelompok", "group.member.positions": "Mengubah jabatan anggota",
+  "group.member.add": "Menambah anggota kelompok", "group.member.remove": "Mengeluarkan anggota kelompok", "group.member.leave": "Keluar dari kelompok", "group.member.positions": "Mengubah jabatan anggota",
   "group.position.create": "Membuat jabatan", "group.position.update": "Mengubah jabatan", "group.position.delete": "Menghapus jabatan",
   "import.apply": "Mengimpor data", "church.profile.update": "Mengubah profil gereja",
   "meeting.create": "Membuat rapat", "meeting.series.create": "Membuat rapat berulang", "meeting.update": "Mengubah jadwal rapat", "meeting.cancel": "Membatalkan rapat",
