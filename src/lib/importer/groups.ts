@@ -2,11 +2,13 @@ import { randomUUID } from "node:crypto";
 import { nameKey } from "../names";
 import { isYesNo, k, parseInt0, splitList, yes, type Ctx, type Row } from "./common";
 import type { MasterState } from "./master";
+import { ADMIN_TIM_CAPS, ADMIN_TIM_POSITION, isAdminTimName } from "../groupRules";
 
 /**
  * Kelompok rapat dari Excel: sheet KelompokRapat, JabatanKelompok, AnggotaKelompok.
  * Bagian ini murni (tanpa database): data yang sudah ada dimuat lebih dulu (lihat groupsIO.ts) lalu dicocokkan di sini.
- * Aturan sama dengan di aplikasi: setiap kelompok baru otomatis punya jabatan "Anggota" tanpa hak khusus,
+ * Aturan sama dengan di aplikasi: setiap kelompok baru otomatis punya jabatan "Anggota" tanpa hak khusus dan jabatan "Admin Tim" (hak penuh),
+ * jadi anggota di file yang sama boleh langsung diberi jabatan Admin Tim tanpa menuliskannya di sheet JabatanKelompok,
  * dan yang sudah ada TIDAK diubah (dilewati dengan catatan), supaya file boleh diunggah berulang kali.
  */
 
@@ -54,9 +56,11 @@ export function stageGroups(ctx: Ctx, st: MasterState, gs: GroupState, rows: { K
       continue;
     }
     const base: GPos = { id: randomUUID(), name: BASE_POSITION, isNew: true, auto: true, sortOrder: 99, caps: { ...NO_CAPS }, seats: null };
+    // Admin Tim wajib ada di setiap kelompok baru; dibuat di sini supaya anggota di file yang sama bisa langsung memakainya.
+    const adminTim: GPos = { id: randomUUID(), name: ADMIN_TIM_POSITION, isNew: true, auto: true, sortOrder: 0, caps: { schedule: ADMIN_TIM_CAPS.canSchedule, write: ADMIN_TIM_CAPS.canWriteMinutes, finalize: ADMIN_TIM_CAPS.canFinalize, manage: ADMIN_TIM_CAPS.canManageMembers }, seats: null };
     gs.groups.set(k(name), {
       id: randomUUID(), name, isNew: true, deleted: false, quorum, sortOrder: ++nextOrder, row: r.n,
-      positions: new Map([[k(BASE_POSITION), base]]), members: new Map(),
+      positions: new Map([[k(BASE_POSITION), base], [k(ADMIN_TIM_POSITION), adminTim]]), members: new Map(),
     });
     rep.ok("KelompokRapat");
   }
@@ -95,7 +99,8 @@ export function stageGroups(ctx: Ctx, st: MasterState, gs: GroupState, rows: { K
     const ex = g.positions.get(k(name));
     if (ex) {
       if (ex.deleted) rep.err("JabatanKelompok", r.n, `Jabatan "${name}" di ${g.name} pernah dihapus. Pakai nama lain.`);
-      else if (ex.auto) rep.skip("JabatanKelompok", r.n, `Jabatan ${BASE_POSITION} otomatis ada di setiap kelompok (tanpa hak khusus), jadi dilewati.`);
+      else if (ex.auto && isAdminTimName(name)) { ex.seats = seats; ex.row = r.n; rep.ok("JabatanKelompok"); } // Admin Tim sudah otomatis ada (hak penuh); dari sheet hanya jumlah orangnya yang dipakai
+      else if (ex.auto) rep.skip("JabatanKelompok", r.n, `Jabatan ${ex.name} otomatis ada di setiap kelompok baru, jadi dilewati.`);
       else if (ex.isNew) rep.err("JabatanKelompok", r.n, `Jabatan "${name}" muncul dua kali di kelompok ${g.name}.`);
       else rep.skip("JabatanKelompok", r.n, `Jabatan "${ex.name}" di ${g.name} sudah ada, haknya tidak diubah.`);
       continue;
