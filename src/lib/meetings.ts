@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { audit } from "./audit";
 import { ApiError, badRequest, conflict, forbidden, notFound } from "./errors";
-import { can, isSuperadmin, type AuthUser } from "./rbac";
+import { can, type AuthUser } from "./rbac";
 import { addMinutes, DATE_RE, localParts, TIME_RE, zonedToUtc } from "./time";
 import { assertRoomFree, assertRoomUsable, bookRoom, personConflicts, releaseBookings, translateOverlap } from "./booking";
 import { nextDocNumber } from "./docNumber";
@@ -92,17 +92,16 @@ export const cancelBody = z.object({
 
 /**
  * Penjadwal global (role Penjadwal atau Superadmin) boleh MELIHAT jadwal rapat semua kelompok (waktu, ruangan, judul),
- * tetapi tidak boleh menjadwalkannya: rapat hanya dijadwalkan anggota kelompok yang jabatannya berhak menjadwalkan.
- * Satu pengecualian: Superadmin sebagai pengelola sistem.
+ * tetapi tidak boleh menjadwalkan atau mengubahnya: rapat hanya dikelola anggota kelompok yang jabatannya berhak.
+ * Superadmin tidak punya pengecualian di sini.
  */
 const isGlobalScheduler = (u: AuthUser) => can(u, "event.write");
-const canManageAnyGroup = (u: AuthUser) => isSuperadmin(u);
 
 export type Access = { caps: GroupCaps; global: boolean; canManage: boolean };
 export async function accessTo(u: AuthUser, groupId: string): Promise<Access> {
   const caps = await groupCaps(u, groupId);
   const global = isGlobalScheduler(u);
-  return { caps, global, canManage: caps.canSchedule || canManageAnyGroup(u) };
+  return { caps, global, canManage: caps.canSchedule };
 }
 
 const withGroup = { group: { select: { id: true, name: true, quorumMin: true } }, room: true, links: { where: { deletedAt: null }, orderBy: { createdAt: "asc" as const } } } satisfies Prisma.EventInclude;
@@ -212,7 +211,7 @@ export async function getMeeting(u: AuthUser, id: string) {
 type ListRow = MeetingRow & { group: { id: string; name: string; quorumMin: number | null } };
 
 /** Satu baris daftar rapat, disamarkan sesuai siapa yang melihat. */
-function listItem(e: ListRow, member: boolean, global: boolean, admin: boolean) {
+function listItem(e: ListRow, member: boolean, global: boolean) {
   return {
     id: e.id, number: e.number, status: e.status,
     startsAt: e.startsAt.toISOString(), endsAt: e.endsAt.toISOString(),
@@ -221,7 +220,7 @@ function listItem(e: ListRow, member: boolean, global: boolean, admin: boolean) 
     displayTitle: member ? meetingMemberTitle(e.group.name, e.title) : meetingPublicTitle(e.group.name, e.title, e.showTopic),
     title: member || global || e.showTopic ? e.title : null,
     isMember: member,
-    canManage: admin || member, // penyempurnaan hak jabatan dicek saat mengubah
+    canManage: member, // penyempurnaan hak jabatan dicek saat mengubah
   };
 }
 
@@ -244,7 +243,7 @@ export async function listMeetings(u: AuthUser, q: { from: string; to: string; g
     ? new Set((await prisma.groupMember.findMany({ where: { personId: u.personId, leftAt: null, groupId: { in: groupIds } }, select: { groupId: true } })).map((m) => m.groupId))
     : new Set<string>();
   const global = isGlobalScheduler(u);
-  return rows.filter((e): e is ListRow => !!e.group).map((e) => listItem(e, mine.has(e.group.id), global, canManageAnyGroup(u)));
+  return rows.filter((e): e is ListRow => !!e.group).map((e) => listItem(e, mine.has(e.group.id), global));
 }
 
 export const meetingListQuery = z.object({
@@ -293,17 +292,16 @@ export async function listMeetingsPaged(u: AuthUser, q: z.infer<typeof meetingLi
     eventYears(u.tenantId, "RAPAT"),
   ]);
   const mine = new Set(myIds);
-  const items = rows.filter((e): e is ListRow => !!e.group).map((e) => listItem(e, mine.has(e.group.id), global, canManageAnyGroup(u)));
+  const items = rows.filter((e): e is ListRow => !!e.group).map((e) => listItem(e, mine.has(e.group.id), global));
   return { ...pageOf(items, total, pg), options: { groups, rooms, years } };
 }
 
-/** Kelompok yang boleh dipilih saat membuat rapat: kelompok yang jabatan Anda boleh menjadwalkan, atau semua (hanya Superadmin). */
+/** Kelompok yang boleh dipilih saat membuat rapat: hanya kelompok yang jabatan Anda berhak menjadwalkan (Superadmin pun begitu). */
 export async function schedulableGroups(u: AuthUser) {
-  const global = canManageAnyGroup(u);
   const rows = await prisma.meetingGroup.findMany({
     where: {
       tenantId: u.tenantId, deletedAt: null,
-      ...(global ? {} : { members: { some: { personId: u.personId ?? "none", leftAt: null, positions: { some: { position: { canSchedule: true, deletedAt: null } } } } } }),
+      members: { some: { personId: u.personId ?? "none", leftAt: null, positions: { some: { position: { canSchedule: true, deletedAt: null } } } } },
     },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     select: { id: true, name: true, _count: { select: { members: { where: { leftAt: null } } } } },
