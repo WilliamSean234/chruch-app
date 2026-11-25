@@ -186,11 +186,10 @@ function RoleDialog({ acc, teams, isSuper, self, onClose, patch, onDone }: { acc
   const [error, setError] = useState("");
   const toggle = (c: string) => setSel((p) => (p.includes(c) ? p.filter((x) => x !== c) : [...p, c]));
   const needTeam = sel.includes("ADMIN_TIM");
-  const [ebmSched, setEbmSched] = useState(false); // jadikan juga Penjadwal EBM
   const isEbmTeam = needTeam && /\bebm\b/i.test(teams.find((t) => t.id === teamId)?.name ?? "");
   async function save() {
     setBusy(true); setError("");
-    const r = await patch({ roleCodes: sel, teamTypeId: needTeam ? teamId || null : null, ...(isSuper && isEbmTeam && ebmSched ? { ebmScheduler: true } : {}) });
+    const r = await patch({ roleCodes: sel, teamTypeId: needTeam ? teamId || null : null });
     setBusy(false);
     if (!r.ok) setError(errMsg(r.data)); else onDone();
   }
@@ -210,15 +209,9 @@ function RoleDialog({ acc, teams, isSuper, self, onClose, patch, onDone }: { acc
             <select className={inputCls} value={teamId} onChange={(e) => setTeamId(e.target.value)}><option value="">Pilih tim…</option>{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
           </Field>
         )}
-        {isSuper && isEbmTeam && (
-          <label className="flex items-start gap-2.5 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3.5 py-3 text-[13px] font-semibold">
-            <input type="checkbox" className="mt-0.5 size-4 flex-none accent-[var(--primary)]" checked={ebmSched} onChange={(e) => setEbmSched(e.target.checked)} />
-            <span>
-              Jadikan juga Penjadwal EBM
-              <span className="mt-0.5 block text-xs font-medium text-[var(--ink-2)]">Dimasukkan ke kelompok EBM dengan jabatan yang hanya boleh menjadwalkan rapat. Tanpa ini, Admin Tim EBM tidak otomatis ikut kelompok rapat EBM.</span>
-            </span>
-          </label>
-        )}
+        {isEbmTeam && (
+        <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3.5 py-3 text-xs font-medium leading-relaxed text-[var(--ink-2)]">Admin Tim EBM otomatis menjadi anggota kelompok EBM dengan akses penuh: menjadwalkan rapat, menulis dan memfinalkan notulen, serta mengelola anggota kelompok.</p>
+      )}
         {self && <p className="text-xs font-medium text-[var(--ink-2)]">Ini akun Anda sendiri: role Superadmin tidak bisa dicabut dari sini.</p>}
         {error && <p role="alert" className="rounded-xl bg-[#fdecec] px-3.5 py-2.5 text-sm font-semibold text-[#a12b2b]">{error}</p>}
       </div>

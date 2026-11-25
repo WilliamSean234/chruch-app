@@ -1,31 +1,29 @@
 import type { Prisma } from "@prisma/client";
 import { audit } from "./audit";
-import { badRequest, forbidden } from "./errors";
 import { EBM_GROUP } from "./ebmGroup";
-import { isSuperadmin, type AuthUser } from "./rbac";
 import { teamKind } from "./seatRules";
 
 type Db = Prisma.TransactionClient;
 
-/** Jabatan di kelompok EBM yang hanya berhak menjadwalkan rapat (tanpa hak notulen, finalisasi, atau kelola anggota). */
-export const EBM_SCHEDULER_POSITION = "Penjadwal EBM";
+/** Jabatan Admin Tim EBM di kelompok EBM: akses penuh (menjadwalkan rapat, menulis dan memfinalkan notulen, mengelola anggota). */
+export const EBM_ADMIN_POSITION = "Admin Tim EBM";
+/** Nama jabatan lama (hanya boleh menjadwalkan rapat). Bila ada, diubah di tempat menjadi jabatan penuh di atas. */
+const LEGACY_POSITION = "Penjadwal EBM";
+const FULL = { canSchedule: true, canWriteMinutes: true, canFinalize: true, canManageMembers: true };
 
-/**
- * Pastikan permintaan "Penjadwal EBM" sah: hanya Superadmin (yang mengatur kelompok), role Admin Tim, dan timnya EBM.
- * Dipanggil sebelum akun dibuat/diubah, supaya tidak ada akun setengah jadi bila ditolak.
- */
-export async function assertEbmSchedulerAllowed(db: Db | typeof import("./prisma").prisma, actor: AuthUser, roleCodes: string[], teamTypeId: string | null | undefined) {
-  if (!isSuperadmin(actor)) throw forbidden("Hanya Superadmin yang boleh memberi jabatan Penjadwal EBM.");
-  if (!roleCodes.includes("ADMIN_TIM") || !teamTypeId) throw badRequest("Penjadwal EBM hanya untuk Admin Tim EBM.");
-  const team = await db.teamType.findFirst({ where: { id: teamTypeId, tenantId: actor.tenantId, deletedAt: null }, select: { name: true } });
-  if (!team || teamKind(team.name) !== "EBM") throw badRequest("Penjadwal EBM hanya untuk Admin Tim EBM.");
+/** Apakah tim ini tim EBM? Dipakai untuk menentukan Admin Tim EBM. */
+export async function isEbmTeam(db: Db | typeof import("./prisma").prisma, tenantId: string, teamTypeId: string | null | undefined) {
+  if (!teamTypeId) return false;
+  const team = await db.teamType.findFirst({ where: { id: teamTypeId, tenantId, deletedAt: null }, select: { name: true } });
+  return !!team && teamKind(team.name) === "EBM";
 }
 
 /**
- * Masukkan orang ke kelompok EBM dengan jabatan "Penjadwal EBM" (hak menjadwalkan rapat saja).
- * Kelompok dan jabatannya dibuat bila belum ada; anggota yang sudah keluar dimasukkan lagi. Jabatan lain milik orangnya tidak diubah.
+ * Masukkan orang ke kelompok EBM dengan jabatan "Admin Tim EBM" (akses penuh di kelompok itu).
+ * Kelompok dan jabatannya dibuat bila belum ada; jabatan lama "Penjadwal EBM" dinaikkan di tempat; anggota yang sudah keluar
+ * dimasukkan lagi. Jabatan lain milik orangnya tidak diubah.
  */
-export async function grantEbmScheduler(db: Db, tenantId: string, personId: string, userId: string | null) {
+export async function grantEbmAdmin(db: Db, tenantId: string, personId: string, userId: string | null) {
   const groups = await db.meetingGroup.findMany({ where: { tenantId, deletedAt: null }, select: { id: true, name: true, sortOrder: true } });
   let group = groups.find((g) => EBM_GROUP.test(g.name.trim()));
   if (!group) {
@@ -34,9 +32,12 @@ export async function grantEbmScheduler(db: Db, tenantId: string, personId: stri
     await audit({ tenantId, userId, action: "group.create", entity: "MeetingGroup", entityId: group.id, payload: { name: group.name, auto: "EBM" } }, db);
   }
 
-  let position = await db.groupPosition.findFirst({ where: { groupId: group.id, name: EBM_SCHEDULER_POSITION } });
+  let position = await db.groupPosition.findFirst({ where: { groupId: group.id, name: EBM_ADMIN_POSITION } });
   if (!position) {
-    position = await db.groupPosition.create({ data: { groupId: group.id, name: EBM_SCHEDULER_POSITION, canSchedule: true, sortOrder: 50 } });
+    const legacy = await db.groupPosition.findFirst({ where: { groupId: group.id, name: LEGACY_POSITION } });
+    position = legacy
+      ? await db.groupPosition.update({ where: { id: legacy.id }, data: { name: EBM_ADMIN_POSITION, deletedAt: null, ...FULL } })
+      : await db.groupPosition.create({ data: { groupId: group.id, name: EBM_ADMIN_POSITION, sortOrder: 50, seats: null, ...FULL } });
   } else if (position.deletedAt) {
     position = await db.groupPosition.update({ where: { id: position.id }, data: { deletedAt: null } });
   }
@@ -45,6 +46,31 @@ export async function grantEbmScheduler(db: Db, tenantId: string, personId: stri
   if (!member) member = await db.groupMember.create({ data: { groupId: group.id, personId } });
   else if (member.leftAt) member = await db.groupMember.update({ where: { id: member.id }, data: { leftAt: null, joinedAt: new Date() } });
 
-  await db.groupMemberPosition.createMany({ data: [{ memberId: member.id, positionId: position.id }], skipDuplicates: true });
-  await audit({ tenantId, userId, action: "group.member.positions", entity: "MeetingGroup", entityId: group.id, reason: "Penjadwal EBM", payload: { personId, position: EBM_SCHEDULER_POSITION } }, db);
+  const had = await db.groupMemberPosition.findUnique({ where: { memberId_positionId: { memberId: member.id, positionId: position.id } } });
+  if (had) return false;
+  await db.groupMemberPosition.create({ data: { memberId: member.id, positionId: position.id } });
+  await audit({ tenantId, userId, action: "group.member.positions", entity: "MeetingGroup", entityId: group.id, reason: "Otomatis: Admin Tim EBM", payload: { personId, position: EBM_ADMIN_POSITION } }, db);
+  return true;
+}
+
+/**
+ * Semua akun aktif ber-role Admin Tim untuk tim EBM diberi jabatan penuh di kelompok EBM.
+ * Sifatnya menambah saja: yang berhenti jadi Admin Tim EBM tidak dikeluarkan otomatis (dikelola di halaman Kelompok).
+ * @param only batasi ke orang-orang ini; tanpa ini semua akun diperiksa.
+ */
+export async function syncEbmAdmins(db: Db, tenantId: string, opts: { only?: string[]; userId?: string | null } = {}) {
+  if (opts.only && opts.only.length === 0) return { granted: 0 };
+  const users = await db.user.findMany({
+    where: {
+      tenantId, deletedAt: null, isActive: true, personId: opts.only ? { in: opts.only } : { not: null }, person: { deletedAt: null },
+      roles: { some: { role: { code: "ADMIN_TIM" }, teamTypeId: { not: null } } },
+    },
+    select: { personId: true, roles: { where: { role: { code: "ADMIN_TIM" } }, select: { teamType: { select: { name: true } } } } },
+  });
+  let granted = 0;
+  for (const x of users) {
+    if (!x.personId || !x.roles.some((r) => r.teamType && teamKind(r.teamType.name) === "EBM")) continue;
+    if (await grantEbmAdmin(db, tenantId, x.personId, opts.userId ?? null)) granted++;
+  }
+  return { granted };
 }

@@ -13,7 +13,7 @@ export const POST = handle(async (req: Request, { params }: Ctx) => {
   const { id } = await params;
   const body = accountBody.parse(await req.json());
   const acc = await createAccountForPerson(u, id, body);
-  await audit({ tenantId: u.tenantId, userId: u.userId, action: "user.create", entity: "User", entityId: acc.id, payload: { personId: id, roles: body.roleCodes, ebmScheduler: body.ebmScheduler ?? false } });
+  await audit({ tenantId: u.tenantId, userId: u.userId, action: "user.create", entity: "User", entityId: acc.id, payload: { personId: id, roles: body.roleCodes } });
   return NextResponse.json(acc, { status: 201 });
 });
 
@@ -35,7 +35,7 @@ export const PATCH = handle(async (req: Request, { params }: Ctx) => {
   const acc = await updateAccount(u, id, body);
   await audit({
     tenantId: u.tenantId, userId: u.userId, action: "user.update", entity: "User", entityId: acc.id,
-    payload: { personId: id, roles: body.roleCodes ?? null, isActive: body.isActive ?? null, passwordReset: !!body.newPassword, ebmScheduler: body.ebmScheduler ?? false },
+    payload: { personId: id, roles: body.roleCodes ?? null, isActive: body.isActive ?? null, passwordReset: !!body.newPassword },
   });
   return NextResponse.json(acc);
 });
