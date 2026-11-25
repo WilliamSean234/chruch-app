@@ -25,7 +25,7 @@ export async function publishEvent(u: AuthUser, id: string) {
   assertTransition(e.status, "PUBLISHED");
   const empty = await prisma.eventAssignment.count({ where: { eventId: id, personId: null } });
   await prisma.event.update({ where: { id }, data: { status: "PUBLISHED", publishedAt: new Date() } });
-  return { event: await getEvent(u.tenantId, id), warnings: empty ? [`Masih ada ${empty} kursi yang belum terisi.`] : [] };
+  return { event: await getEvent(u.tenantId, id, u), warnings: empty ? [`Masih ada ${empty} kursi yang belum terisi.`] : [] };
 }
 
 /** PUBLISHED → DRAFT (ditarik untuk diubah). Ditolak bila kehadiran sudah tercatat. */
@@ -35,7 +35,7 @@ export async function unpublishEvent(u: AuthUser, id: string) {
   const [names, summary] = await Promise.all([prisma.eventAttendance.count({ where: { eventId: id } }), prisma.eventAttendanceSummary.count({ where: { eventId: id } })]);
   if (names + summary > 0) throw conflict("Acara tidak bisa ditarik karena kehadiran sudah dicatat.");
   await prisma.event.update({ where: { id }, data: { status: "DRAFT", publishedAt: null } });
-  return getEvent(u.tenantId, id);
+  return getEvent(u.tenantId, id, u);
 }
 
 /** Batalkan acara: ruangan, orang, dan latihannya dilepas sehingga bisa dipakai acara lain. Status akhir. */
@@ -60,7 +60,7 @@ export async function cancelEvent(u: AuthUser, id: string, reason: string) {
     await tx.event.update({ where: { id }, data: { status: "CANCELLED", cancelReason: reason } });
   });
   if (tellStaff) afterResponse(() => notifyEventCancelled(u.tenantId, id));
-  return getEvent(u.tenantId, id);
+  return getEvent(u.tenantId, id, u);
 }
 
 /**
@@ -113,5 +113,5 @@ export async function reopenEvent(u: AuthUser, id: string) {
   const lost = await prisma.rehearsalSession.count({ where: { eventId: id, deletedAt: { not: null } } });
   if (lost) warnings.push(`Sesi latihan (${lost}) yang terhapus saat pembatalan tidak dipulihkan. Tambahkan lagi bila perlu.`);
   warnings.push(`Acara kembali berstatus draf pada ${localParts(e.startsAt).date}. Terbitkan bila sudah siap.`);
-  return { event: await getEvent(u.tenantId, id), warnings };
+  return { event: await getEvent(u.tenantId, id, u), warnings };
 }

@@ -46,6 +46,7 @@ export async function roomConflict(tenantId: string, roomId: string, startsAt: D
 export async function assertRoomUsable(tenantId: string, roomId: string) {
   const room = await prisma.room.findFirst({ where: { id: roomId, tenantId, deletedAt: null } });
   if (!room) throw notFound("Ruangan");
+  if (room.isOnline) throw badRequest("Ruangan Online khusus acara online.");
   if (!room.isActive) throw badRequest(`Ruangan ${room.name} sedang dinonaktifkan.`);
   return room;
 }

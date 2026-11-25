@@ -11,9 +11,14 @@ import { dayLong, dayShort, floorText } from "@/lib/ui";
 import { describeFirst, expandDates, MAX_OCCURRENCES, patternText, type Pattern } from "@/lib/recurrence";
 
 export type GroupOpt = { id: string; name: string; memberCount: number; isMember: boolean };
+import OnlineFields from "@/components/online/OnlineFields";
+import { emptyOnline, onlineBody, onlineProblem, type OnlineValue } from "@/lib/onlineForm";
+
 export type RoomOpt = { id: string; name: string; floor?: number | null };
 export type MeetingInit = {
   id: string; title: string; date: string; startTime: string; endTime: string; roomId: string; groupId: string; showTopic: boolean; showAttendees: boolean;
+  /** Rapat yang sedang diubah: isian online dari server (null/kosong bila offline, atau bila yang membuka bukan anggota kelompok). */
+  online?: OnlineValue; wasOnline?: boolean;
 };
 type UsageItem = { eventId: string; startsAt: string; endsAt: string; status: string };
 type UsageRoom = { id: string; items: UsageItem[] };
@@ -61,7 +66,8 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
   const [date, setDate] = useState(meeting?.date ?? todayIso());
   const [startTime, setStartTime] = useState(meeting?.startTime ?? "19:00");
   const [endTime, setEndTime] = useState(meeting?.endTime ?? "21:00");
-  const [roomId, setRoomId] = useState(meeting?.roomId ?? "");
+  const [roomId, setRoomId] = useState(meeting?.wasOnline ? "" : meeting?.roomId ?? "");
+  const [onl, setOnl] = useState<OnlineValue>(meeting?.online ?? emptyOnline);
   const [showTopic, setShowTopic] = useState(meeting?.showTopic ?? false);
   const [showAttendees, setShowAttendees] = useState(meeting?.showAttendees ?? false);
   const [links, setLinks] = useState<Link[]>([{ title: "", url: "" }]);
@@ -83,6 +89,9 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
   const [roomFree, setRoomFree] = useState<Map<string, boolean> | null>(null);
 
   const group = groups.find((g) => g.id === groupId) ?? null;
+  // tautan, tema, dan pembicara adalah isi rapat: hanya anggota kelompok yang boleh mengisinya
+  const canOnline = !!group?.isMember;
+  const isOnline = canOnline && onl.online;
   const timeOk = !!startTime && !!endTime && toMin(endTime) > toMin(startTime);
 
   // pemakaian ruangan pada tanggal terpilih
@@ -158,19 +167,19 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
   const first = describeFirst(date || todayIso());
   useEffect(() => {
     setRoomFree(null);
-    if (!repeating || !series || series.dates.length < 2 || !groupId || !roomId || !timeOk) return;
+    if (!repeating || !series || series.dates.length < 2 || !groupId || (!roomId && !isOnline) || !timeOk) return;
     let live = true;
     const t = setTimeout(async () => {
       const r = await callApi("POST", "/api/v1/meetings/series/preview", {
-        groupId, date, startTime, endTime, roomId, repeat: { pattern: repeat, ...(endMode === "COUNT" ? { count: repCount } : { until: repUntil }) },
+        groupId, date, startTime, endTime, ...(isOnline ? { online: true } : { roomId }), repeat: { pattern: repeat, ...(endMode === "COUNT" ? { count: repCount } : { until: repUntil }) },
       });
       if (live && r.ok) setRoomFree(new Map((r.data.dates as { date: string; free: boolean }[]).map((d) => [d.date, d.free])));
     }, 400);
     return () => { live = false; clearTimeout(t); };
-  }, [repeating, series, groupId, roomId, timeOk, date, startTime, endTime, repeat, endMode, repCount, repUntil]);
+  }, [repeating, series, groupId, roomId, isOnline, timeOk, date, startTime, endTime, repeat, endMode, repCount, repUntil]);
   const skippedCount = series && roomFree ? series.dates.filter((d) => roomFree.get(d) === false).length : 0;
 
-  const roomName = rooms.find((r) => r.id === roomId)?.name ?? "Belum dipilih";
+  const roomName = isOnline ? "Online" : rooms.find((r) => r.id === roomId)?.name ?? "Belum dipilih";
   const chipPublic = group ? meetingPublicTitle(group.name, title || "…", showTopic) : "Rapat";
   const chipMember = group ? meetingMemberTitle(group.name, title || "…") : "Rapat";
   const canAttach = !edit && !!group?.isMember;
@@ -180,7 +189,9 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
     if (!title.trim()) return setError("Isi judul atau topik rapat.");
     if (!date) return setError("Pilih tanggal.");
     if (!timeOk) return setError("Jam selesai harus setelah jam mulai.");
-    if (!roomId) return setError("Pilih ruangan yang tersedia.");
+    if (!isOnline && !roomId && !(edit && meeting?.wasOnline && !canOnline)) return setError("Pilih ruangan yang tersedia.");
+    const onlineProb = canOnline ? onlineProblem(onl, "RAPAT") : null;
+    if (onlineProb) return setError(onlineProb);
     if (repeating && !endOk) return setError(endMode === "COUNT" ? `Isi jumlah rapat antara 2 dan ${MAX_OCCURRENCES}.` : "Pilih tanggal berhenti yang sama dengan atau setelah tanggal rapat pertama.");
     if (repeating && (!series || series.dates.length < 2)) return setError("Pengulangan ini hanya menghasilkan satu tanggal. Perpanjang tanggal berhenti.");
     if (!edit && inviteMode === "SELECT" && picked.size === 0) return setError("Pilih minimal satu anggota yang diundang, atau undang seluruh anggota.");
@@ -188,9 +199,9 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
     if (canAttach && cleanLinks.some((l) => !l.title || !l.url)) return setError("Lengkapi judul dan alamat tautan, atau kosongkan barisnya.");
     setBusy(true); setError("");
     const r = edit
-      ? await callApi("PATCH", `/api/v1/meetings/${meeting!.id}`, { title: title.trim(), date, startTime, endTime, roomId, showTopic, showAttendees })
+      ? await callApi("PATCH", `/api/v1/meetings/${meeting!.id}`, { title: title.trim(), date, startTime, endTime, ...(isOnline || (meeting?.wasOnline && !canOnline) ? {} : { roomId }), ...(canOnline ? onlineBody(onl, "RAPAT") : {}), showTopic, showAttendees })
       : await callApi("POST", "/api/v1/meetings", {
-        groupId, title: title.trim(), date, startTime, endTime, roomId, showTopic, showAttendees, links: canAttach ? cleanLinks : [],
+        groupId, title: title.trim(), date, startTime, endTime, ...(isOnline ? {} : { roomId }), ...(canOnline ? onlineBody(onl, "RAPAT") : {}), showTopic, showAttendees, links: canAttach ? cleanLinks : [],
         invite: { mode: inviteMode, personIds: inviteMode === "SELECT" ? [...picked] : [], guests: group?.isMember ? guests : [] },
         repeat: repeating ? { pattern: repeat, ...(endMode === "COUNT" ? { count: repCount } : { until: repUntil }) } : undefined,
       });
@@ -246,6 +257,8 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
           </div>
           {!timeOk && startTime && endTime && <p className="-mt-2 text-xs font-semibold text-[#9b1c1c]">Jam selesai harus setelah jam mulai.</p>}
 
+          {canOnline && <OnlineFields kind="RAPAT" value={onl} onChange={setOnl} />}
+          {!isOnline && !(edit && meeting?.wasOnline && !canOnline) && (
           <div className="flex flex-col gap-2">
             <span className="text-[13px] font-bold">Pinjam ruangan</span>
             <div role="radiogroup" aria-label="Ruangan" className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-2.5">
@@ -263,6 +276,7 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
             </div>
             <span className="text-[12.5px] font-medium leading-relaxed text-[var(--ink-2)]">Anda hanya melihat jam yang sudah terpakai, bukan acara apa yang memakainya. Ruangan yang bentrok tidak bisa dipilih.</span>
           </div>
+          )}
         </div>
 
         {!edit && (

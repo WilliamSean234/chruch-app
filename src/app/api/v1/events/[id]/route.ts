@@ -13,7 +13,7 @@ type Ctx = { params: Promise<{ id: string }> };
 export const GET = handle(async (req: Request, { params }: Ctx) => {
   const u = await requireUser(req);
   requirePermission(u, "calendar.read");
-  const e = await getEvent(u.tenantId, (await params).id);
+  const e = await getEvent(u.tenantId, (await params).id, u);
   if (e.status === "DRAFT" && !canSeeDrafts(u)) throw notFound("Acara"); // draf belum untuk umum
   // jumlah kehadiran hanya untuk yang boleh mencatat atau mengatur acara
   const attendance = can(u, "attendance.write") || can(u, "event.write") ? await attendanceBrief(e.id) : null;
@@ -27,7 +27,7 @@ export const PATCH = handle(async (req: Request, { params }: Ctx) => {
   requirePermission(u, "event.write");
   const { id } = await params;
   const body = eventUpdateBody.parse(await req.json());
-  const before = await getEvent(u.tenantId, id);
+  const before = await getEvent(u.tenantId, id, u);
   const e = await updateEvent(u, id, body);
   await audit({ tenantId: u.tenantId, userId: u.userId, action: "event.update", entity: "Event", entityId: id, payload: { changes: diffEvent(before, e) } });
   return NextResponse.json(e);

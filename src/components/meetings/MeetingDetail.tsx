@@ -12,6 +12,7 @@ import { showToast } from "@/components/ui/Toast";
 import SavedDialog from "@/components/ui/SavedDialog";
 import Fab from "@/components/ui/Fab";
 import { dayLong, hm } from "@/lib/ui";
+import OnlineInfo, { type OnlineDto } from "@/components/online/OnlineInfo";
 
 type LinkRow = { id: string; title: string; url: string };
 export type MeetingDto = {
@@ -19,6 +20,7 @@ export type MeetingDto = {
   room: { id: string; name: string }; group: { id: string; name: string; quorumMin: number | null };
   title: string | null; displayTitle: string; showTopic: boolean; showAttendees: boolean; createdBy: string | null;
   locked: boolean; links: LinkRow[];
+  isOnline?: boolean; online?: OnlineDto | null;
   participants: Participant[]; attendance: Attendance | null; attendeesPublic: string[] | null;
   minutes: { status: string; version: number } | null;
   series: { text: string; index: number; total: number; later: number } | null;
@@ -133,6 +135,7 @@ export default function MeetingDetail({ meeting: m }: { meeting: MeetingDto }) {
         <section className="flex min-w-0 flex-[999_1_520px] flex-col gap-5">
           <div className={card}>
             <Rule>JADWAL</Rule>
+            {m.online && <div className="mb-3"><OnlineInfo online={m.online} showTheme /></div>}
             <div className="flex flex-col text-[14px]">
               {([["Tanggal", dayLong(m.startsAt)], ["Waktu", `${hm(m.startsAt)}–${hm(m.endsAt)}`], ["Ruangan", m.room.name], ["Kelompok", m.group.name]] as const).map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-3 border-t border-[var(--line-2)] py-2.5 first:border-t-0"><span className="font-medium text-[var(--ink-2)]">{k}</span><span className="text-right font-bold">{v}</span></div>

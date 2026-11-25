@@ -7,6 +7,8 @@ import { useEffect, useState } from "react";
 import { btnGhost, btnPrimary, callApi, card, errMsg, inputCls } from "./api";
 import { ymd } from "@/lib/ui";
 import RoomOptions from "@/components/ui/RoomOptions";
+import OnlineFields from "@/components/online/OnlineFields";
+import { emptyOnline, onlineBody, onlineProblem, type OnlineValue } from "@/lib/onlineForm";
 
 type Tpl = { id: string; name: string; weekday: number; recurrence: string; ordinal: number | null; startTime: string; durationMin: number; room: { name: string }; pair: { id: string; name: string } | null };
 type Team = { id: string; name: string };
@@ -22,6 +24,7 @@ export default function NewEvent() {
   const [tpls, setTpls] = useState<Tpl[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [onl, setOnl] = useState<OnlineValue>(emptyOnline); // acara khusus online: tanpa ruangan
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   type Made = { id: string; number: string; date: string };
@@ -67,7 +70,7 @@ export default function NewEvent() {
 
   async function createOneOff() {
     setBusy(true); setError("");
-    const r = await callApi("POST", "/api/v1/events", { title: k.title, date: k.date, startTime: k.start, durationMin: k.dur, roomId: k.roomId, attendanceMode: k.mode, theme: k.theme, padus: k.padus, teamTypeIds: teamIds });
+    const r = await callApi("POST", "/api/v1/events", { title: k.title, date: k.date, startTime: k.start, durationMin: k.dur, ...(onl.online ? {} : { roomId: k.roomId }), ...onlineBody(onl, "IBADAH"), attendanceMode: k.mode, theme: k.theme, padus: k.padus, teamTypeIds: teamIds });
     setBusy(false);
     if (!r.ok) return setError(errMsg(r.data));
     router.push(`/jadwal/${r.data.id}`);
@@ -84,7 +87,7 @@ export default function NewEvent() {
       <Fab quick="create" actions={tab === "template"
         ? [{ key: "create", label: busy ? "Membuat…" : range ? "Buat jadwal" : "Buat dan buka", icon: "check", disabled: busy || !tplId, busy, onClick: () => { void generate(); } }]
         : [
-          { key: "create", label: busy ? "Membuat…" : "Buat dan buka", icon: "check", disabled: busy || !k.title.trim() || !k.roomId, busy, onClick: () => { void createOneOff(); } },
+          { key: "create", label: busy ? "Membuat…" : "Buat dan buka", icon: "check", disabled: busy || !k.title.trim() || (!onl.online && !k.roomId) || !!onlineProblem(onl, "IBADAH"), busy, onClick: () => { void createOneOff(); } },
           { key: "cancel", label: "Batal", icon: "cancel", tone: "neutral", href: "/jadwal" },
         ]} />
       {error && <p role="alert" className="rounded-xl bg-[#FBE4E4] px-4 py-3 text-sm font-semibold text-[#9B1C1C]">{error}</p>}
@@ -146,9 +149,12 @@ export default function NewEvent() {
             <label className="flex flex-col gap-1.5 text-[13px] font-bold">Tanggal<input type="date" className={inputCls} value={k.date} onChange={(e) => setK({ ...k, date: e.target.value })} /></label>
             <label className="flex flex-col gap-1.5 text-[13px] font-bold">Mulai<input type="time" className={inputCls} value={k.start} onChange={(e) => setK({ ...k, start: e.target.value })} /></label>
             <label className="flex flex-col gap-1.5 text-[13px] font-bold">Durasi (menit)<input type="number" min={15} max={720} step={15} className={inputCls} value={k.dur} onChange={(e) => setK({ ...k, dur: Number(e.target.value) })} /></label>
-            <label className="flex flex-col gap-1.5 text-[13px] font-bold">Ruangan
-              <select className={inputCls} value={k.roomId} onChange={(e) => setK({ ...k, roomId: e.target.value })}><RoomOptions rooms={rooms.filter((r) => r.isActive)} /></select>
-            </label>
+            <OnlineFields kind="IBADAH" value={onl} onChange={setOnl} />
+            {!onl.online && (
+              <label className="flex flex-col gap-1.5 text-[13px] font-bold">Ruangan
+                <select className={inputCls} value={k.roomId} onChange={(e) => setK({ ...k, roomId: e.target.value })}><RoomOptions rooms={rooms.filter((r) => r.isActive)} /></select>
+              </label>
+            )}
             <label className="flex flex-col gap-1.5 text-[13px] font-bold sm:col-span-2">Kehadiran dicatat
               <select className={inputCls} value={k.mode} onChange={(e) => setK({ ...k, mode: e.target.value })}><option value="COUNT">Jumlah saja</option><option value="NAMES">Per nama</option></select>
             </label>
@@ -167,7 +173,7 @@ export default function NewEvent() {
               })}
             </div>
           </fieldset>
-          <div className="mt-5 flex gap-2.5 max-md:hidden"><button className={btnPrimary} disabled={busy || !k.title.trim() || !k.roomId} onClick={createOneOff}>{busy ? "Membuat…" : "Buat dan buka"}</button><Link href="/jadwal" className={`${btnGhost} inline-flex items-center`}>Batal</Link></div>
+          <div className="mt-5 flex gap-2.5 max-md:hidden"><button className={btnPrimary} disabled={busy || !k.title.trim() || (!onl.online && !k.roomId) || !!onlineProblem(onl, "IBADAH")} onClick={createOneOff}>{busy ? "Membuat…" : "Buat dan buka"}</button><Link href="/jadwal" className={`${btnGhost} inline-flex items-center`}>Batal</Link></div>
         </section>
       )}
     </div>

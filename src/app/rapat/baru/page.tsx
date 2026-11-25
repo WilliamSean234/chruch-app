@@ -7,7 +7,7 @@ export default async function RapatBaruPage() {
   const u = await currentUser();
   const [groups, rooms] = await Promise.all([
     schedulableGroups(u),
-    prisma.room.findMany({ where: { tenantId: u.tenantId, deletedAt: null, isActive: true }, orderBy: [{ floor: { sort: "asc", nulls: "last" } }, { name: "asc" }], select: { id: true, name: true, floor: true } }),
+    prisma.room.findMany({ where: { tenantId: u.tenantId, deletedAt: null, isActive: true, isOnline: false }, orderBy: [{ floor: { sort: "asc", nulls: "last" } }, { name: "asc" }], select: { id: true, name: true, floor: true } }),
   ]);
   return (
     <AppShell active="rapat" title="Buat rapat" subtitle="Jadwal rapat kelompok dan peminjaman ruangan">

@@ -8,6 +8,9 @@ import { attendanceWriteBlock } from "./eventStatusFlow";
 import { canSeeMeetingSchedule } from "./groups";
 import { dedupeTwinRehearsals } from "./rehearsalRules";
 import { birthdaysInRange } from "./birthdays";
+import { openOnlineUrl } from "./meetingCrypto";
+
+const safeOnlineUrl = (id: string, v: string | null) => { try { return openOnlineUrl(id, v); } catch { return null; } };
 
 /** Hanya penjadwal yang boleh melihat acara DRAFT; semua orang lain hanya melihat yang sudah diterbitkan. */
 export const canSeeDrafts = (u: AuthUser) => can(u, "event.write");
@@ -100,7 +103,7 @@ export async function listCalendar(u: AuthUser, q: CalendarQuery) {
       const myOwn = u.personId ? e.assignments.find((a) => a.personId === u.personId) : undefined;
       return {
         id: e.id, number: e.number, title: e.title, status: e.status, attendanceMode: e.attendanceMode,
-        startsAt: e.startsAt.toISOString(), endsAt: e.endsAt.toISOString(), room: { id: e.room.id, name: e.room.name },
+        startsAt: e.startsAt.toISOString(), endsAt: e.endsAt.toISOString(), room: { id: e.room.id, name: e.room.name }, isOnline: e.isOnline,
         teams: e.teams.map((t) => t.teamType.name),
         seatsTotal: e.assignments.length, seatsFilled: e.assignments.filter((a) => a.personId).length,
         createdBy: (e.createdById && creators.get(e.createdById)) || null,
@@ -136,6 +139,9 @@ export async function mySchedule(u: AuthUser, range: { from?: string; to?: strin
     items: seats.map((s) => ({
       eventId: s.eventId, number: s.event.number, title: s.event.title, status: s.event.status,
       startsAt: s.event.startsAt.toISOString(), endsAt: s.event.endsAt.toISOString(), room: s.event.room.name,
+      isOnline: s.event.isOnline,
+      // petugas acara online selalu boleh melihat tautannya (ia ditugaskan di acara itu)
+      onlineUrl: s.event.isOnline ? safeOnlineUrl(s.event.id, s.event.onlineUrl) : null,
       role: s.ministry.name, rehearsalRequired: s.rehearsalRequired,
       attendanceMode: s.event.attendanceMode,
       canAttend: canRecordAttendance(u, s.event),

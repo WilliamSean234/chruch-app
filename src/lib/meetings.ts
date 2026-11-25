@@ -13,7 +13,8 @@ import { meetingMemberTitle, meetingPublicTitle } from "./meetingLabel";
 import { pageOf, pagingQuery, resolvePaging } from "./paging";
 import { eventYears } from "./years";
 import { randomUUID } from "node:crypto";
-import { openGuest, openMeetingRow, openNote, openTitleSafe, sealGuest, sealLink, sealNote, sealReason, sealTitle } from "./meetingCrypto";
+import { openGuest, openMeetingRow, openNote, openOnlineUrl, openSpeaker, openTheme, openTitleSafe, sealGuest, sealLink, sealNote, sealReason, sealTheme, sealTitle } from "./meetingCrypto";
+import { ensureOnlineRoom, NOT_ONLINE, onlineFields, prepareOnline } from "./online";
 import { describeFirst, expandDates, MAX_OCCURRENCES, PATTERNS, patternText, type Pattern } from "./recurrence";
 
 /**
@@ -68,7 +69,9 @@ export const meetingCreateBody = z.object({
   date: z.string().regex(DATE_RE),
   startTime: z.string().regex(TIME_RE),
   endTime: z.string().regex(TIME_RE),
-  roomId: z.string().uuid(),
+  roomId: z.string().uuid().optional(), // wajib kecuali rapat online
+  ...onlineFields,
+  theme: z.string().trim().max(600).nullish(), // tema rapat online (terenkripsi)
   showTopic: z.boolean().default(false),
   showAttendees: z.boolean().default(false),
   links: z.array(linkBody).max(20).default([]),
@@ -82,6 +85,8 @@ export const meetingUpdateBody = z.object({
   startTime: z.string().regex(TIME_RE).optional(),
   endTime: z.string().regex(TIME_RE).optional(),
   roomId: z.string().uuid().optional(),
+  ...onlineFields,
+  theme: z.string().trim().max(600).nullish(),
   showTopic: z.boolean().optional(),
   showAttendees: z.boolean().optional(),
 });
@@ -191,6 +196,9 @@ async function toDto(u: AuthUser, e: MeetingRow & { group: { id: string; name: s
     // isi rapat: hanya anggota kelompok
     locked: !member,
     links: member ? e.links.map((l) => ({ id: l.id, title: l.title, url: l.url })) : [],
+    // rapat online: tautan, tema, dan pembicara adalah isi rapat, hanya untuk anggota kelompok. Yang lain hanya tahu rapat ini online (ruangannya "Online").
+    isOnline: e.isOnline,
+    online: e.isOnline && member ? await onlineMeetingView(e) : null,
     minutes: minutes ? { status: minutes.status, version: minutes.version } : null,
     series,
     participants: people.participants,
@@ -203,6 +211,19 @@ async function toDto(u: AuthUser, e: MeetingRow & { group: { id: string; name: s
       canWriteMinutes: member && (a.caps.canWriteMinutes || a.caps.canFinalize) && e.status !== "CANCELLED",
       canRecord: member && (a.caps.canSchedule || a.caps.canWriteMinutes) && e.status !== "CANCELLED", // undang, hapus, catat kehadiran
     },
+  };
+}
+
+/** Tautan, tema, dan pembicara rapat online; hanya dipanggil untuk anggota kelompok. */
+async function onlineMeetingView(e: MeetingRow) {
+  const open = (f: () => string | null): string | null => { try { return f(); } catch { return null; } };
+  const person = e.speakerPersonId ? await prisma.person.findFirst({ where: { id: e.speakerPersonId, tenantId: e.tenantId }, select: { id: true, name: true } }) : null;
+  const typed = e.speakerName ? open(() => openSpeaker(e.id, e.speakerName)) : null;
+  return {
+    isOnline: true as const, canSeeLink: true,
+    url: open(() => openOnlineUrl(e.id, e.onlineUrl)),
+    theme: e.theme ? open(() => openTheme(e.id, e.theme)) : null,
+    speaker: person ? { personId: person.id, name: person.name } : typed ? { personId: null, name: typed } : null,
   };
 }
 
@@ -309,7 +330,7 @@ export async function listMeetingsPaged(u: AuthUser, q: z.infer<typeof meetingLi
   const [{ total, rows }, groups, rooms, years] = await Promise.all([
     pageRows(),
     prisma.meetingGroup.findMany({ where: { tenantId: u.tenantId, deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } }),
-    prisma.room.findMany({ where: { tenantId: u.tenantId, deletedAt: null }, orderBy: [{ floor: { sort: "asc", nulls: "last" } }, { name: "asc" }], select: { id: true, name: true, floor: true } }),
+    prisma.room.findMany({ where: { tenantId: u.tenantId, deletedAt: null, isOnline: false }, orderBy: [{ floor: { sort: "asc", nulls: "last" } }, { name: "asc" }], select: { id: true, name: true, floor: true } }),
     eventYears(u.tenantId, "RAPAT"),
   ]);
   const mine = new Set(myIds);
@@ -365,16 +386,24 @@ export async function createMeeting(u: AuthUser, b: z.infer<typeof meetingCreate
   const guests = uniqueGuests(b.invite.guests);
 
   const { startsAt, endsAt } = range(b.date, b.startTime, b.endTime);
-  await assertRoomUsable(u.tenantId, b.roomId);
-  await assertRoomFree(u.tenantId, b.roomId, startsAt, endsAt);
+  // rapat online: ruangan maya, tanpa pemesanan. Tautan, tema, dan pembicara adalah isi rapat, jadi hanya anggota kelompok yang boleh mengisinya.
+  const online = !!b.online;
+  if (online && !a.caps.isMember) throw forbidden("Tautan, tema, dan pembicara rapat online hanya bisa diisi oleh anggota kelompok.");
+  if (!online && !b.roomId) throw badRequest("Pilih ruangan.");
+  const roomId = online ? await ensureOnlineRoom(prisma, u.tenantId) : b.roomId!;
+  if (!online) {
+    await assertRoomUsable(u.tenantId, roomId);
+    await assertRoomFree(u.tenantId, roomId, startsAt, endsAt);
+  }
   const number = await nextDocNumber(u.tenantId, "RP", startsAt);
 
   const eventId = randomUUID(); // dibuat dulu: judul, tautan, dan nama tamu dienkripsi terikat ke id rapat
+  const onl = await prepareOnline(u.tenantId, eventId, b, "RAPAT");
   const created = await translateOverlap(() =>
     prisma.$transaction(async (tx) => {
       const e = await tx.event.create({
         data: {
-          id: eventId, tenantId: u.tenantId, number, kind: "RAPAT", groupId: group.id, title: sealTitle(eventId, b.title), startsAt, endsAt, roomId: b.roomId,
+          id: eventId, tenantId: u.tenantId, number, kind: "RAPAT", groupId: group.id, title: sealTitle(eventId, b.title), startsAt, endsAt, roomId, ...(onl ?? {}), theme: online ? sealTheme(eventId, b.theme) : null,
           status: "PUBLISHED", publishedAt: new Date(), attendanceMode: "COUNT", createdById: u.userId,
           showTopic: b.showTopic, showAttendees: b.showAttendees, seriesId: opts.seriesId ?? null, seriesIndex: opts.seriesIndex ?? null,
           links: { create: b.links.map((l) => ({ ...sealLink(eventId, l), createdById: u.userId })) },
@@ -386,11 +415,11 @@ export async function createMeeting(u: AuthUser, b: z.infer<typeof meetingCreate
           },
         },
       });
-      await bookRoom(tx, { tenantId: u.tenantId, roomId: b.roomId, startsAt, endsAt, sourceType: "EVENT", sourceId: e.id });
+      if (!online) await bookRoom(tx, { tenantId: u.tenantId, roomId, startsAt, endsAt, sourceType: "EVENT", sourceId: e.id });
       return e;
     }),
   "Ruangan sudah dipakai pada jam itu. Pilih ruangan atau jam lain.");
-  await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.create", entity: "Event", entityId: created.id, payload: { number, group: group.name, startsAt: startsAt.toISOString(), onBehalf: !a.caps.isMember, invited: invitees.length, guests: guests.length } });
+  await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.create", entity: "Event", entityId: created.id, payload: { number, group: group.name, startsAt: startsAt.toISOString(), online, onBehalf: !a.caps.isMember, invited: invitees.length, guests: guests.length } });
   return getMeeting(u, created.id);
 }
 
@@ -403,22 +432,38 @@ export async function updateMeeting(u: AuthUser, id: string, b: z.infer<typeof m
   const was = localParts(cur.startsAt);
   const wasEnd = localParts(cur.endsAt);
   const { startsAt, endsAt } = range(b.date ?? was.date, b.startTime ?? was.time, b.endTime ?? wasEnd.time);
-  const roomId = b.roomId ?? cur.roomId;
+  const willBeOnline = b.online ?? cur.isOnline;
+  const touchesOnline = b.online !== undefined || b.onlineUrl !== undefined || b.speakerPersonId !== undefined || b.speakerName !== undefined || b.theme !== undefined;
+  if (willBeOnline && touchesOnline && !a.caps.isMember) throw forbidden("Tautan, tema, dan pembicara rapat online hanya bisa diisi oleh anggota kelompok.");
+  if (!willBeOnline && cur.isOnline && !b.roomId) throw badRequest("Rapat tidak lagi online: pilih ruangannya.");
+  const roomId = willBeOnline ? await ensureOnlineRoom(prisma, u.tenantId) : (b.roomId ?? cur.roomId);
   const timeChanged = startsAt.getTime() !== cur.startsAt.getTime() || endsAt.getTime() !== cur.endsAt.getTime();
   const roomChanged = roomId !== cur.roomId;
-  if (roomChanged) await assertRoomUsable(u.tenantId, roomId);
-  if (timeChanged || roomChanged) await assertRoomFree(u.tenantId, roomId, startsAt, endsAt, id);
+  if (roomChanged && !willBeOnline) await assertRoomUsable(u.tenantId, roomId);
+  if ((timeChanged || roomChanged) && !willBeOnline) await assertRoomFree(u.tenantId, roomId, startsAt, endsAt, id);
+  // isian online: tautan wajib; yang tidak dikirim dipertahankan dari rapat ini (rapat sudah online) supaya mengubah jam saja tidak menghapusnya
+  const keepSpeaker = b.speakerPersonId === undefined && b.speakerName === undefined;
+  const onl = willBeOnline && cur.isOnline && !touchesOnline ? undefined
+    : willBeOnline ? await prepareOnline(u.tenantId, id, {
+        online: true,
+        onlineUrl: b.onlineUrl !== undefined ? b.onlineUrl : cur.onlineUrl ? openOnlineUrl(id, cur.onlineUrl) : null,
+        speakerPersonId: keepSpeaker ? cur.speakerPersonId : b.speakerPersonId ?? null,
+        speakerName: keepSpeaker ? (cur.speakerName ? openSpeaker(id, cur.speakerName) : null) : b.speakerName ?? null,
+      }, "RAPAT")
+    : b.online === false ? NOT_ONLINE : undefined;
+  const themeData = !willBeOnline ? (cur.isOnline ? null : undefined) : b.theme !== undefined ? sealTheme(id, b.theme) : undefined;
 
   await translateOverlap(() =>
     prisma.$transaction(async (tx) => {
-      await tx.event.update({ where: { id }, data: { title: b.title !== undefined ? sealTitle(id, b.title) : undefined, startsAt, endsAt, roomId, showTopic: b.showTopic, showAttendees: b.showAttendees } });
+      await tx.event.update({ where: { id }, data: { title: b.title !== undefined ? sealTitle(id, b.title) : undefined, startsAt, endsAt, roomId, ...(onl ?? {}), theme: themeData, showTopic: b.showTopic, showAttendees: b.showAttendees } });
       if (timeChanged || roomChanged) {
         await releaseBookings(tx, { sourceType: "EVENT", sourceId: id, resourceType: "ROOM" });
-        await bookRoom(tx, { tenantId: u.tenantId, roomId, startsAt, endsAt, sourceType: "EVENT", sourceId: id });
+        if (!willBeOnline) await bookRoom(tx, { tenantId: u.tenantId, roomId, startsAt, endsAt, sourceType: "EVENT", sourceId: id });
       }
     }),
   "Ruangan sudah dipakai pada jam itu. Pilih ruangan atau jam lain.");
-  await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.update", entity: "Event", entityId: id, payload: { ...b, title: undefined, titleChanged: b.title !== undefined } }); // isi judul tidak dicatat di log
+  // tautan, tema, dan nama pembicara tidak pernah dicatat di log; hanya bahwa rapat jadi online / berubah
+  await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.update", entity: "Event", entityId: id, payload: { ...b, title: undefined, titleChanged: b.title !== undefined, onlineUrl: undefined, speakerName: undefined, speakerPersonId: undefined, theme: undefined, themeChanged: b.theme !== undefined, onlineLinkChanged: b.onlineUrl !== undefined, speakerChanged: b.speakerPersonId !== undefined || b.speakerName !== undefined } }); // isi judul tidak dicatat di log
   return getMeeting(u, id);
 }
 
@@ -579,7 +624,7 @@ export async function applyMeetingChanges(u: AuthUser, id: string, b: z.infer<ty
 }
 
 // ───────── Rapat berulang ─────────
-async function seriesContext(u: AuthUser, b: Pick<z.infer<typeof meetingCreateBody>, "groupId" | "date" | "startTime" | "endTime" | "roomId"> & { repeat: z.infer<typeof repeatBody> }) {
+async function seriesContext(u: AuthUser, b: Pick<z.infer<typeof meetingCreateBody>, "groupId" | "date" | "startTime" | "endTime"> & { repeat: z.infer<typeof repeatBody> }) {
   const group = await prisma.meetingGroup.findFirst({ where: { id: b.groupId, tenantId: u.tenantId, deletedAt: null }, select: { id: true, name: true } });
   if (!group) throw notFound("Kelompok");
   const a = await accessTo(u, group.id);
@@ -592,7 +637,7 @@ async function seriesContext(u: AuthUser, b: Pick<z.infer<typeof meetingCreateBo
 
 export const seriesPreviewBody = z.object({
   groupId: z.string().uuid(), date: z.string().regex(DATE_RE), startTime: z.string().regex(TIME_RE), endTime: z.string().regex(TIME_RE),
-  roomId: z.string().uuid(), repeat: repeatBody,
+  roomId: z.string().uuid().optional(), online: z.boolean().optional(), repeat: repeatBody,
 });
 
 /** Pratinjau semua tanggal beserta status ruangan (bebas atau sudah terpakai) sebelum seri dibuat. */
@@ -601,6 +646,7 @@ export async function previewSeries(u: AuthUser, b: z.infer<typeof seriesPreview
   const out: { date: string; free: boolean; reason: string | null }[] = [];
   for (const date of dates) {
     const { startsAt, endsAt } = range(date, b.startTime, b.endTime);
+    if (b.online || !b.roomId) { out.push({ date, free: true, reason: null }); continue; } // rapat online tidak memakai ruangan
     try { await assertRoomFree(u.tenantId, b.roomId, startsAt, endsAt); out.push({ date, free: true, reason: null }); }
     catch (e) { if (e instanceof ApiError && e.status === 409) out.push({ date, free: false, reason: e.message }); else throw e; }
   }

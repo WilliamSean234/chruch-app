@@ -22,6 +22,14 @@ export const openGuest = (eventId: string, v: string | null) => (v ? decryptText
 export const sealNote = (eventId: string, v: string | null | undefined) => (v ? encryptText(v, sc(eventId), "note") : null);
 export const openNote = (eventId: string, v: string | null) => (v ? decryptText(v, sc(eventId), "note") : v);
 
+/** Acara online (ibadah atau rapat): tautan meeting, nama pembicara luar, dan (khusus rapat) tema. */
+export const sealOnlineUrl = (eventId: string, v: string | null | undefined) => (v ? encryptText(v, sc(eventId), "onlineUrl") : null);
+export const openOnlineUrl = (eventId: string, v: string | null) => (v ? decryptText(v, sc(eventId), "onlineUrl") : v);
+export const sealSpeaker = (eventId: string, v: string | null | undefined) => (v ? encryptText(v, sc(eventId), "speakerName") : null);
+export const openSpeaker = (eventId: string, v: string | null) => (v ? decryptText(v, sc(eventId), "speakerName") : v);
+export const sealTheme = (eventId: string, v: string | null | undefined) => (v ? encryptText(v, sc(eventId), "theme") : null);
+export const openTheme = (eventId: string, v: string | null) => (v ? decryptText(v, sc(eventId), "theme") : v);
+
 /** Pengganti isi yang gagal dibuka di daftar dan kalender (kunci salah atau data rusak), supaya satu rapat bermasalah tidak merusak seluruh halaman. */
 export const UNREADABLE = "🔒 isi tidak bisa dibuka";
 const safe = (f: () => string): string => { try { return f(); } catch { return UNREADABLE; } };

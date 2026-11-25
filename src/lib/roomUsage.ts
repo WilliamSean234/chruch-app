@@ -21,7 +21,7 @@ export async function roomUsage(tenantId: string, date: string, seeDrafts = true
   const dayEnd = zonedToUtc(date, "23:59");
 
   const [rooms, bookings] = await Promise.all([
-    prisma.room.findMany({ where: { tenantId, deletedAt: null }, orderBy: [{ floor: { sort: "asc", nulls: "last" } }, { name: "asc" }] }),
+    prisma.room.findMany({ where: { tenantId, deletedAt: null, isOnline: false }, orderBy: [{ floor: { sort: "asc", nulls: "last" } }, { name: "asc" }] }),
     prisma.booking.findMany({
       where: { tenantId, resourceType: "ROOM", deletedAt: null, startsAt: { lt: dayEnd }, endsAt: { gt: dayStart } },
       orderBy: { startsAt: "asc" },
@@ -58,7 +58,7 @@ export async function roomAvailability(tenantId: string, q: { roomId: string; da
   const startsAt = zonedToUtc(q.date, q.start);
   const endsAt = zonedToUtc(q.date, q.end);
   if (endsAt <= startsAt) throw badRequest("Jam selesai harus setelah jam mulai.");
-  const room = await prisma.room.findFirst({ where: { id: q.roomId, tenantId, deletedAt: null } });
+  const room = await prisma.room.findFirst({ where: { id: q.roomId, tenantId, deletedAt: null, isOnline: false } });
   if (!room) throw notFound("Ruangan");
   if (!room.isActive) return { available: false, roomName: room.name, conflicts: [] as string[], inactive: true };
   const busy = await roomConflict(tenantId, room.id, startsAt, endsAt);

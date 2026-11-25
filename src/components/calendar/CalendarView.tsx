@@ -1,5 +1,6 @@
 "use client";
 
+import OnlineInfo, { type OnlineDto } from "@/components/online/OnlineInfo";
 import { stickyPage } from "@/components/ui/sticky";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -17,7 +18,7 @@ type CalRehearsal = { id: string; eventId: string; eventTitle: string; seq: numb
 type Detail = {
   createdBy: string | null; createdAt: string;
   id: string; number: string; title: string; status: string; startsAt: string; endsAt: string; room: { name: string };
-  theme?: string | null; padus?: string | null; bandMode?: "BAND" | "NO_BAND";
+  theme?: string | null; padus?: string | null; bandMode?: "BAND" | "NO_BAND"; isOnline?: boolean; online?: OnlineDto | null;
   attendance?: { mode: "COUNT" | "NAMES"; total: number; note: string | null; recordedAt: string | null } | null;
   teams: { teamTypeId: string; name: string }[];
   seats: { id: string; teamTypeId: string; label: string; ministryName: string; rehearsalRequired: boolean; person: { id: string; name: string; origin: string; originChurch: string | null } | null }[];
@@ -492,6 +493,7 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
                 <div className="flex flex-1 flex-col gap-0.5 rounded-xl bg-[var(--bg)] px-3 py-2.5"><span className="text-[11.5px] font-semibold text-[var(--ink-2)]">Waktu</span><span className="text-sm font-bold">{hm(detail.startsAt)}–{hm(detail.endsAt)}</span></div>
                 <div className="flex flex-1 flex-col gap-0.5 rounded-xl bg-[var(--bg)] px-3 py-2.5"><span className="text-[11.5px] font-semibold text-[var(--ink-2)]">Ruangan</span><span className="text-sm font-bold">{detail.room.name}</span></div>
               </div>
+              <OnlineInfo online={detail.online} />
               {detail.attendance && (
                 <div className="flex flex-col gap-0.5 rounded-xl bg-[var(--bg)] px-3 py-2.5">
                   <span className="text-[11.5px] font-semibold text-[var(--ink-2)]">Kehadiran</span>
@@ -667,7 +669,7 @@ function RehearsalPanel({ detail, reh, myPersonId, canEdit, onBack }: { detail: 
 
 type MeetingInfo = {
   id: string; number: string; status: string; startsAt: string; endsAt: string; room: { name: string }; group: { id: string; name: string };
-  displayTitle: string; locked: boolean; viewer: { isMember: boolean; canManage: boolean };
+  displayTitle: string; locked: boolean; viewer: { isMember: boolean; canManage: boolean }; online?: OnlineDto | null;
   participants?: { id: string; name: string; isGuest: boolean; status: string }[];
   attendance?: { invited: number; present: number; percent: number; quorumMin: number | null; quorumMet: boolean | null } | null;
   attendeesPublic?: string[] | null;
@@ -703,6 +705,7 @@ function MeetingPanel({ id, onClose }: { id: string; onClose: () => void }) {
           <div key={k} className="flex justify-between gap-3 border-t border-[var(--line-2)] py-2.5 last:border-b"><span className="font-medium text-[var(--ink-2)]">{k}</span><span className="text-right font-bold">{v}</span></div>
         ))}
       </div>
+      <OnlineInfo online={m.online} showTheme />
       {m.locked && (
         <div className="flex items-start gap-3 rounded-[14px] border border-dashed border-[#c4c8dc] bg-[var(--bg)] p-3.5">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#565B76" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="mt-px flex-none"><rect x="5" y="11" width="14" height="9" rx="2.5" /><path d="M8 11V8a4 4 0 018 0v3" /></svg>

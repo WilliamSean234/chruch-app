@@ -1,5 +1,6 @@
 "use client";
 
+import OnlineInfo, { type OnlineDto } from "@/components/online/OnlineInfo";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { seatSections, type SeatLite, type TeamLite } from "@/lib/seatSections";
@@ -8,7 +9,7 @@ import { dayLong, hm, STATUS_LABEL } from "@/lib/ui";
 
 type Detail = {
   id: string; number: string; title: string; status: string; startsAt: string; endsAt: string; room: { name: string };
-  theme?: string | null; padus?: string | null; bandMode?: "BAND" | "NO_BAND";
+  theme?: string | null; padus?: string | null; bandMode?: "BAND" | "NO_BAND"; online?: OnlineDto | null;
   teams: TeamLite[]; seats: SeatLite[];
   rehearsals: { id: string; seq: number; startsAt: string; endsAt: string; room: { name: string }; note: string | null }[];
   pair?: { id: string; title: string } | null;
@@ -128,6 +129,8 @@ export default function EventDetailDialog({ target, myPersonId, onClose }: { tar
           {!isRehearsal && first && <span className="text-xs font-semibold text-[var(--ink-2)]">{first.number}</span>}
           {!isRehearsal && first?.bandMode === "NO_BAND" && <span className="whitespace-nowrap rounded-full bg-[var(--gold-soft)] px-2.5 py-[3px] text-xs font-bold text-[#6F4304]">No Band</span>}
         </div>
+
+        {!isRehearsal && single && <OnlineInfo online={first?.online} />}
 
         {state === "loading" && <p className="m-0 py-4 text-center text-sm font-semibold text-[var(--ink-2)]" role="status">Memuat petugas…</p>}
         {state === "gone" && <p className="m-0 rounded-xl bg-[var(--bg)] p-3.5 text-sm font-semibold text-[var(--ink-2)]">Daftar petugas belum bisa dilihat karena jadwal ini masih draf. Setelah diterbitkan Penjadwal, daftarnya muncul di sini.</p>}

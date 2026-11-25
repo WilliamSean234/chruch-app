@@ -14,7 +14,7 @@ export const roomListQuery = z.object({
 export async function listRooms(tenantId: string, q: z.infer<typeof roomListQuery>) {
   const pg = resolvePaging(q);
   const where: Prisma.RoomWhereInput = {
-    tenantId, deletedAt: null,
+    tenantId, deletedAt: null, isOnline: false,
     ...(q.search ? { name: { contains: q.search, mode: "insensitive" } } : {}),
     ...(q.floor === "NONE" ? { floor: null } : q.floor !== undefined ? { floor: q.floor } : {}),
     ...(q.status ? { isActive: q.status === "ACTIVE" } : {}),
@@ -22,7 +22,7 @@ export async function listRooms(tenantId: string, q: z.infer<typeof roomListQuer
   const [total, rows, floorRows] = await Promise.all([
     prisma.room.count({ where }),
     prisma.room.findMany({ where, orderBy: [{ floor: { sort: "asc", nulls: "last" } }, { name: "asc" }], skip: pg.skip, take: pg.take }),
-    prisma.room.findMany({ where: { tenantId, deletedAt: null }, distinct: ["floor"], select: { floor: true }, orderBy: { floor: { sort: "asc", nulls: "last" } } }),
+    prisma.room.findMany({ where: { tenantId, deletedAt: null, isOnline: false }, distinct: ["floor"], select: { floor: true }, orderBy: { floor: { sort: "asc", nulls: "last" } } }),
   ]);
   const upcoming = rows.length
     ? await prisma.booking.groupBy({ by: ["resourceId"], where: { tenantId, resourceType: "ROOM", resourceId: { in: rows.map((r) => r.id) }, deletedAt: null, endsAt: { gte: new Date() } }, _count: { _all: true } })

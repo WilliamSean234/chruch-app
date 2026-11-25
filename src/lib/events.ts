@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
@@ -13,6 +14,8 @@ import { pageOf, pagingQuery, resolvePaging } from "./paging";
 import { eventYears } from "./years";
 import { afterResponse } from "./notify";
 import { notifySeatChange } from "./eventNotify";
+import { ensureOnlineRoom, NOT_ONLINE, onlineFields, onlineView, prepareOnline } from "./online";
+import { openOnlineUrl, openSpeaker } from "./meetingCrypto";
 
 /** Teks opsional: kosong atau spasi saja = tidak ada (null). */
 const optText = (max: number) => z.string().trim().max(max).nullish().transform((v) => (v ? v : null));
@@ -26,7 +29,8 @@ export const eventCreateBody = z.object({
   date: z.string().regex(DATE_RE),
   startTime: z.string().regex(TIME_RE),
   durationMin: z.number().int().min(15).max(720).default(120),
-  roomId: z.string().uuid(),
+  roomId: z.string().uuid().optional(), // wajib kecuali acara online
+  ...onlineFields,
   attendanceMode: z.enum(["COUNT", "NAMES"]).default("COUNT"),
   theme: optText(THEME_MAX), // tema ibadah (opsional)
   padus: optText(PADUS_MAX), // catatan paduan suara (opsional)
@@ -40,6 +44,7 @@ export const eventUpdateBody = z.object({
   startTime: z.string().regex(TIME_RE).optional(),
   durationMin: z.number().int().min(15).max(720).optional(),
   roomId: z.string().uuid().optional(),
+  ...onlineFields,
   attendanceMode: z.enum(["COUNT", "NAMES"]).optional(),
   theme: z.string().trim().max(THEME_MAX).nullish().transform((v) => (v === undefined ? undefined : v ? v : null)), // kosong = hapus tema
   padus: z.string().trim().max(PADUS_MAX).nullish().transform((v) => (v === undefined ? undefined : v ? v : null)),
@@ -62,7 +67,7 @@ type EventFull = Prisma.EventGetPayload<{ include: typeof include }>;
 
 export const toDto = (e: EventFull) => ({
   id: e.id, number: e.number, title: e.title, status: e.status, attendanceMode: e.attendanceMode,
-  theme: e.theme, padus: e.padus, bandMode: e.bandMode, locked: isLockedByAge(e.startsAt),
+  isOnline: e.isOnline, theme: e.theme, padus: e.padus, bandMode: e.bandMode, locked: isLockedByAge(e.startsAt),
   startsAt: e.startsAt.toISOString(), endsAt: e.endsAt.toISOString(),
   durationMin: Math.round((e.endsAt.getTime() - e.startsAt.getTime()) / 60_000),
   room: { id: e.room.id, name: e.room.name },
@@ -101,10 +106,11 @@ async function pairOf(tenantId: string, e: EventFull) {
   return hit ? { id: hit.id, number: hit.number, title: hit.title, startsAt: hit.startsAt.toISOString(), filled: hit.assignments.filter((a) => a.personId).length, sessions: hit.rehearsals.length, seats: hit.assignments.map((a) => ({ ministryId: a.ministryId, slotNo: a.slotNo, personId: a.personId })) } : null;
 }
 
-export const getEvent = async (tenantId: string, id: string) => {
+/** `viewer` menentukan apakah tautan online ikut terisi (hanya bila ia berhak); tanpa viewer tautan kosong. */
+export const getEvent = async (tenantId: string, id: string, viewer?: AuthUser) => {
   const e = await load(tenantId, id);
-  const [names, pair] = await Promise.all([creatorNames([e.createdById]), pairOf(tenantId, e)]);
-  return { ...toDto(e), createdBy: (e.createdById && names.get(e.createdById)) || null, createdAt: e.createdAt.toISOString(), pair };
+  const [names, pair, online] = await Promise.all([creatorNames([e.createdById]), pairOf(tenantId, e), onlineView(tenantId, viewer, e, e.assignments.map((a) => a.personId))]);
+  return { ...toDto(e), online, createdBy: (e.createdById && names.get(e.createdById)) || null, createdAt: e.createdAt.toISOString(), pair };
 };
 
 /** Kehadiran yang sudah tercatat untuk acara ini (null bila belum ada). Mode "jumlah": angka dan catatan; mode "per nama": jumlah yang hadir. */
@@ -166,7 +172,7 @@ export async function listEvents(tenantId: string, q: z.infer<typeof eventListQu
       skip: pg.skip, take: pg.take,
     }),
     prisma.eventTemplate.findMany({ where: { tenantId, deletedAt: null }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    prisma.room.findMany({ where: { tenantId, deletedAt: null }, orderBy: [{ floor: { sort: "asc", nulls: "last" } }, { name: "asc" }], select: { id: true, name: true, floor: true } }),
+    prisma.room.findMany({ where: { tenantId, deletedAt: null, isOnline: false }, orderBy: [{ floor: { sort: "asc", nulls: "last" } }, { name: "asc" }], select: { id: true, name: true, floor: true } }),
     eventYears(tenantId, "IBADAH"),
   ]);
   const names = await creatorNames(rows.map((e) => e.createdById));
@@ -174,6 +180,7 @@ export async function listEvents(tenantId: string, q: z.infer<typeof eventListQu
     id: e.id, number: e.number, title: e.title, status: e.status, startsAt: e.startsAt.toISOString(), endsAt: e.endsAt.toISOString(),
     templateId: e.templateId, templateName: e.template?.name ?? null,
     createdBy: (e.createdById && names.get(e.createdById)) || null,
+    isOnline: e.isOnline,
     room: { id: e.room.id, name: e.room.name, floor: e.room.floor },
     seatsTotal: e.assignments.length, seatsFilled: e.assignments.filter((a) => a.personId).length,
     rehearsals: e.rehearsals.map((r) => ({ id: r.id, seq: r.seq, startsAt: r.startsAt.toISOString(), endsAt: r.endsAt.toISOString(), room: { id: r.room.id, name: r.room.name, floor: r.room.floor }, note: r.note })),
@@ -195,29 +202,38 @@ async function expandSeats(tenantId: string, seats: z.infer<typeof seatSpec>[]) 
 
 /** Acara satu kali (tidak dari template). */
 export async function createEvent(u: AuthUser, b: z.infer<typeof eventCreateBody>) {
-  await assertRoomUsable(u.tenantId, b.roomId);
   const startsAt = zonedToUtc(b.date, b.startTime);
   const endsAt = addMinutes(startsAt, b.durationMin);
-  await assertRoomFree(u.tenantId, b.roomId, startsAt, endsAt);
+  // acara online: ruangan maya, tanpa cek bentrok dan tanpa pemesanan ruangan
+  const online = !!b.online;
+  if (!online && !b.roomId) throw badRequest("Pilih ruangan.");
+  const roomId = online ? await ensureOnlineRoom(prisma, u.tenantId) : b.roomId!;
+  if (!online) {
+    await assertRoomUsable(u.tenantId, roomId);
+    await assertRoomFree(u.tenantId, roomId, startsAt, endsAt);
+  }
   const seats = await expandSeats(u.tenantId, b.seats);
   const teamIds = [...new Set([...b.teamTypeIds, ...seats.map((s) => s.teamTypeId)])];
   if (teamIds.length && (await prisma.teamType.count({ where: { id: { in: teamIds }, tenantId: u.tenantId, deletedAt: null } })) !== teamIds.length) throw badRequest("Ada tim yang tidak valid.");
 
   const number = await nextDocNumber(u.tenantId, "EV", startsAt);
+  const id = randomUUID(); // id dibuat dulu karena tautan online disegel dengan id acara
+  const onl = await prepareOnline(u.tenantId, id, b, "IBADAH");
   const created = await translateOverlap(() =>
     prisma.$transaction(async (tx) => {
       const e = await tx.event.create({
         data: {
-          tenantId: u.tenantId, number, title: b.title, startsAt, endsAt, roomId: b.roomId, status: "DRAFT", attendanceMode: b.attendanceMode, theme: b.theme, padus: b.padus, createdById: u.userId,
+          id, ...(onl ?? {}),
+          tenantId: u.tenantId, number, title: b.title, startsAt, endsAt, roomId, status: "DRAFT", attendanceMode: b.attendanceMode, theme: b.theme, padus: b.padus, createdById: u.userId,
           teams: { create: teamIds.map((teamTypeId) => ({ teamTypeId })) },
           assignments: { create: seats.map((s, i) => ({ tenantId: u.tenantId, ...s, sortOrder: i })) },
         },
       });
-      await bookRoom(tx, { tenantId: u.tenantId, roomId: b.roomId, startsAt, endsAt, sourceType: "EVENT", sourceId: e.id });
+      if (!online) await bookRoom(tx, { tenantId: u.tenantId, roomId, startsAt, endsAt, sourceType: "EVENT", sourceId: e.id });
       return e;
     }),
   );
-  return getEvent(u.tenantId, created.id);
+  return getEvent(u.tenantId, created.id, u);
 }
 
 /** Ubah judul, tema, catatan padus, waktu, ruangan, atau mode kehadiran. Pemakaian ruangan dan orang ikut dipindah. */
@@ -228,24 +244,38 @@ export async function updateEvent(u: AuthUser, id: string, b: z.infer<typeof eve
   const curDuration = Math.round((cur.endsAt.getTime() - cur.startsAt.getTime()) / 60_000);
   const startsAt = zonedToUtc(b.date ?? was.date, b.startTime ?? was.time);
   const endsAt = addMinutes(startsAt, b.durationMin ?? curDuration);
-  const roomId = b.roomId ?? cur.roomId;
+  // online/offline: online memakai ruangan maya tanpa pemesanan; kembali ke offline wajib memilih ruangan fisik
+  const willBeOnline = b.online ?? cur.isOnline;
+  if (!willBeOnline && cur.isOnline && !b.roomId) throw badRequest("Acara tidak lagi online: pilih ruangannya.");
+  const roomId = willBeOnline ? await ensureOnlineRoom(prisma, u.tenantId) : (b.roomId ?? cur.roomId);
   const timeChanged = startsAt.getTime() !== cur.startsAt.getTime() || endsAt.getTime() !== cur.endsAt.getTime();
   const roomChanged = roomId !== cur.roomId;
+  // online baru, atau tautan/pembicara/penerima diubah: isian divalidasi dan disegel. Acara yang sudah online dan hanya diubah jamnya tidak perlu mengirim ulang.
+  const onl = willBeOnline && (b.online || b.onlineUrl !== undefined || b.speakerPersonId !== undefined || b.speakerName !== undefined || b.onlineCommunityIds !== undefined)
+    ? await prepareOnline(u.tenantId, id, {
+        online: true,
+        onlineUrl: b.onlineUrl !== undefined ? b.onlineUrl : cur.onlineUrl ? openOnlineUrl(id, cur.onlineUrl) : null,
+        ...(b.speakerPersonId !== undefined || b.speakerName !== undefined
+          ? { speakerPersonId: b.speakerPersonId ?? null, speakerName: b.speakerName ?? null }
+          : { speakerPersonId: cur.speakerPersonId, speakerName: cur.speakerName ? openSpeaker(id, cur.speakerName) : null }),
+        onlineCommunityIds: b.onlineCommunityIds ?? cur.onlineCommunityIds,
+      }, "IBADAH")
+    : b.online === false ? NOT_ONLINE : undefined;
 
   if (b.attendanceMode && b.attendanceMode !== cur.attendanceMode) {
     const [names, summary] = await Promise.all([prisma.eventAttendance.count({ where: { eventId: id } }), prisma.eventAttendanceSummary.count({ where: { eventId: id } })]);
     if (names + summary > 0) throw conflict("Mode kehadiran tidak bisa diganti karena data kehadiran sudah ada.");
   }
-  if (roomChanged) await assertRoomUsable(u.tenantId, roomId);
-  if (timeChanged || roomChanged) await assertRoomFree(u.tenantId, roomId, startsAt, endsAt, id);
+  if (roomChanged && !willBeOnline) await assertRoomUsable(u.tenantId, roomId);
+  if ((timeChanged || roomChanged) && !willBeOnline) await assertRoomFree(u.tenantId, roomId, startsAt, endsAt, id);
 
   await translateOverlap(
     () =>
       prisma.$transaction(async (tx) => {
-        await tx.event.update({ where: { id }, data: { title: b.title, attendanceMode: b.attendanceMode, theme: b.theme, padus: b.padus, startsAt, endsAt, roomId } });
+        await tx.event.update({ where: { id }, data: { title: b.title, attendanceMode: b.attendanceMode, theme: b.theme, padus: b.padus, startsAt, endsAt, roomId, ...(onl ?? {}) } });
         if (timeChanged || roomChanged) {
           await releaseBookings(tx, { sourceType: "EVENT", sourceId: id, resourceType: "ROOM" });
-          await bookRoom(tx, { tenantId: u.tenantId, roomId, startsAt, endsAt, sourceType: "EVENT", sourceId: id });
+          if (!willBeOnline) await bookRoom(tx, { tenantId: u.tenantId, roomId, startsAt, endsAt, sourceType: "EVENT", sourceId: id });
         }
         if (timeChanged) {
           // orang yang sudah dijadwalkan ikut pindah jam; bila ada yang bentrok, seluruh perubahan dibatalkan
@@ -261,7 +291,7 @@ export async function updateEvent(u: AuthUser, id: string, b: z.infer<typeof eve
       await prisma.event.update({ where: { id: pair.id }, data: { theme: b.theme, padus: b.padus } });
     }
   }
-  return getEvent(u.tenantId, id);
+  return getEvent(u.tenantId, id, u);
 }
 
 /**

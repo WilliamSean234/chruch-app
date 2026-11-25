@@ -99,7 +99,7 @@ function announceSeat(seat: Awaited<ReturnType<typeof loadSeat>>, newPersonId: s
  */
 export async function assignPerson(u: AuthUser, eventId: string, assignmentId: string, body: z.infer<typeof assignBody>, opts: AssignOpts = {}) {
   const { warnings } = await assignCore(u, eventId, assignmentId, body, opts);
-  return { event: await getEvent(u.tenantId, eventId), warnings };
+  return { event: await getEvent(u.tenantId, eventId, u), warnings };
 }
 
 /** Isi inti tanpa memuat ulang seluruh acara (untuk pekerjaan massal seperti upload jadwal). Mengembalikan catatan untuk pengguna. */
@@ -332,5 +332,5 @@ export async function copyPersonnel(u: AuthUser, targetEventId: string, sourceEv
     try { await setSeatRequired(u, targetEventId, n.seatId, true); required++; }
     catch (e) { if (e instanceof ApiError) rehearsals.skipped.push(`${n.label}: tidak diwajibkan latihan. ${e.message}`); else throw e; }
   }
-  return { filled, skipped, notes: [...notes], rehearsals: { added: rehearsals.added, skipped: rehearsals.skipped, required }, event: await getEvent(u.tenantId, targetEventId) };
+  return { filled, skipped, notes: [...notes], rehearsals: { added: rehearsals.added, skipped: rehearsals.skipped, required }, event: await getEvent(u.tenantId, targetEventId, u) };
 }

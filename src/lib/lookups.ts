@@ -43,7 +43,7 @@ function dataFor(kind: LookupKind, b: z.infer<typeof lookupBody>) {
 
 export const listLookup = (kind: LookupKind, tenantId: string) =>
   d(kind).findMany({
-    where: { tenantId, deletedAt: null },
+    where: { tenantId, deletedAt: null, ...(kind === "rooms" ? { isOnline: false } : {}) }, // ruangan maya "Online" tidak ikut daftar
     // ruangan diurutkan per lantai (yang belum berlantai di akhir), lalu kode
     orderBy: kind === "rooms" ? [{ floor: { sort: "asc", nulls: "last" } }, { name: "asc" }] : { name: "asc" },
   });
