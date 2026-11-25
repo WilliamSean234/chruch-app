@@ -24,6 +24,7 @@ export const CATEGORIES: { key: string; label: string; prefixes: string[] }[] = 
   { key: "attendance", label: "Kehadiran ibadah", prefixes: ["attendance."] },
   { key: "import", label: "Impor data", prefixes: ["import."] },
   { key: "church", label: "Profil gereja dan cadangan", prefixes: ["church.", "backup."] },
+  { key: "report", label: "Laporan", prefixes: ["report."] },
 ];
 
 const LABELS: Record<string, string> = {
@@ -38,7 +39,7 @@ const LABELS: Record<string, string> = {
   "group.create": "Membuat kelompok", "group.update": "Mengubah kelompok", "group.delete": "Menghapus kelompok",
   "group.member.add": "Menambah anggota kelompok", "group.member.remove": "Mengeluarkan anggota kelompok", "group.member.leave": "Keluar dari kelompok", "group.member.positions": "Mengubah jabatan anggota",
   "group.position.create": "Membuat jabatan", "group.position.update": "Mengubah jabatan", "group.position.delete": "Menghapus jabatan",
-  "import.apply": "Mengimpor data", "backup.download": "Mengunduh cadangan data", "church.profile.update": "Mengubah profil gereja",
+  "import.apply": "Mengimpor data", "backup.download": "Mengunduh cadangan data", "report.load.download": "Mengunduh statistik beban pelayan", "church.profile.update": "Mengubah profil gereja",
   "meeting.create": "Membuat rapat", "meeting.series.create": "Membuat rapat berulang", "meeting.update": "Mengubah jadwal rapat", "meeting.cancel": "Membatalkan rapat",
   "meeting.changes": "Menyimpan perubahan kehadiran dan lampiran", "meeting.link.add": "Menambah tautan lampiran", "meeting.link.remove": "Menghapus tautan lampiran",
   "meeting.minutes.create": "Membuat notulen", "meeting.minutes.save": "Menyimpan draf notulen", "meeting.minutes.finalize": "Memfinalkan notulen", "meeting.minutes.revise": "Membuka revisi notulen",

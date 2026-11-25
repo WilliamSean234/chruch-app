@@ -8,6 +8,7 @@ const MIN = 60_000;
 export const LIMITS = {
   resend: { max: 10, windowMs: 15 * MIN, lockMs: 15 * MIN }, // kirim ulang verifikasi email, per alamat
   backup: { max: 6, windowMs: 60 * MIN, lockMs: 30 * MIN }, // unduh cadangan, per akun
+  loadReport: { max: 30, windowMs: 60 * MIN, lockMs: 15 * MIN }, // unduh statistik beban pelayan, per akun
   swapRequest: { max: 10, windowMs: 60 * MIN, lockMs: 60 * MIN }, // minta pengganti, per akun
   pushTest: { max: 5, windowMs: 5 * MIN, lockMs: 5 * MIN }, // tombol tes notifikasi, per akun
 } as const satisfies Record<string, Policy>;
