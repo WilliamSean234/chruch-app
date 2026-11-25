@@ -270,10 +270,10 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
         )}
       </div>
 
-      {canMaster && (
+      {(canMaster || canManagePeople) && (
         <div className="flex flex-wrap items-center gap-2.5 rounded-2xl border border-[#EFE3C2] bg-[#FFFBF0] px-5 py-3.5">
           <span className="text-sm font-bold">Daftar ini bisa ditambah kapan saja:</span>
-          {([["positions", "Posisi"], ["ministry", "Pelayanan"], ["communities", "Komunitas"], ["cg-groups", "Kelompok CG"]] as [NonNullable<typeof manage>, string][]).map(([k, label]) => (
+          {([["positions", "Posisi"], ["ministry", "Pelayanan"], ["communities", "Komunitas"], ["cg-groups", "Kelompok CG"]] as [NonNullable<typeof manage>, string][]).filter(([k]) => canMaster || k !== "ministry").map(([k, label]) => ( // Admin Jemaat: tanpa Pelayanan
             <button key={k} type="button" onClick={() => setManage(k)} className="h-9 rounded-full border border-[#E3D3A4] bg-white px-4 text-[13px] font-bold hover:bg-[#FFF5DC]">{label}</button>
           ))}
         </div>
@@ -290,7 +290,7 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
       {manage === "ministry" && <MinistryManager onClose={() => { setManage(null); void loadLookups(); void reload(); }} onChange={() => void loadLookups()} />}
       {manage && manage !== "ministry" && (
         <Modal title={PICKLISTS[manage].title} onClose={() => { setManage(null); void loadLookups(); void reload(); }} footer={<button type="button" className={btnPrimary} onClick={() => { setManage(null); void loadLookups(); void reload(); }}>Selesai</button>}>
-          <LookupManager kind={manage} singular={PICKLISTS[manage].singular} hint={PICKLISTS[manage].hint} />
+          <LookupManager kind={manage} singular={PICKLISTS[manage].singular} hint={PICKLISTS[manage].hint} addOnly={!canMaster} />
         </Modal>
       )}
       {form && lookups && (

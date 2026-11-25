@@ -10,7 +10,7 @@ type Row = { id: string; name: string; isActive?: boolean; leaders?: Leader[] };
 export type LookupKind = "rooms" | "positions" | "cg-groups" | "communities";
 
 /** Daftar pilihan sederhana yang bisa ditambah/diubah/dihapus: ruangan, posisi di gereja, CG, komunitas. */
-export default function LookupManager({ kind, singular, hint, canWrite = true, onChange }: { kind: LookupKind; singular: string; hint?: string; canWrite?: boolean; onChange?: () => void }) {
+export default function LookupManager({ kind, singular, hint, canWrite = true, addOnly = false, onChange }: { kind: LookupKind; singular: string; hint?: string; canWrite?: boolean; /** hanya boleh menambah yang baru: tanpa ubah, hapus, dan pemimpin CG */ addOnly?: boolean; onChange?: () => void }) {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [name, setName] = useState("");
   const [editId, setEditId] = useState<string | null>(null);
@@ -18,6 +18,7 @@ export default function LookupManager({ kind, singular, hint, canWrite = true, o
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const withActive = kind === "rooms";
+  const canEdit = canWrite && !addOnly;
 
   const load = useCallback(async () => {
     const r = await callApi("GET", `/api/v1/lookups/${kind}`);
@@ -68,10 +69,10 @@ export default function LookupManager({ kind, singular, hint, canWrite = true, o
                   {withActive && (
                     <span className="flex items-center gap-2 text-xs font-bold text-[var(--ink-2)]">
                       {r.isActive === false ? "Nonaktif" : "Aktif"}
-                      <Switch checked={r.isActive !== false} onChange={(v) => void toggle(r, v)} label={`Ruangan ${r.name} aktif`} disabled={busy || !canWrite} />
+                      <Switch checked={r.isActive !== false} onChange={(v) => void toggle(r, v)} label={`Ruangan ${r.name} aktif`} disabled={busy || !canEdit} />
                     </span>
                   )}
-                  {canWrite && (
+                  {canEdit && (
                     <span className="flex gap-1">
                       <button type="button" onClick={() => { setEditId(r.id); setEditName(r.name); }} className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-[var(--primary-ink)] hover:bg-[var(--primary-soft)]">Ubah</button>
                       <button type="button" onClick={() => remove(r)} className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-[#9B1C1C] hover:bg-[#FFF5F5]">Hapus</button>
@@ -79,7 +80,7 @@ export default function LookupManager({ kind, singular, hint, canWrite = true, o
                   )}
                 </>
               )}
-              {kind === "cg-groups" && editId !== r.id && <CgLeaders cgId={r.id} leaders={r.leaders ?? []} canWrite={canWrite} onSaved={() => { void load(); onChange?.(); }} />}
+              {kind === "cg-groups" && editId !== r.id && <CgLeaders cgId={r.id} leaders={r.leaders ?? []} canWrite={canEdit} onSaved={() => { void load(); onChange?.(); }} />}
             </li>
           ))}
         </ul>
