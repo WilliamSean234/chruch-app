@@ -11,8 +11,8 @@ import { teamKind } from "./seatRules";
  * Kelompok rapat (Majelis, Pengurus Pemuda, Tim EBM, ...).
  * Aturan dasarnya: isi rapat (notulen, dokumen) hanya terbaca oleh anggota kelompok. Superadmin dan Admin lain
  * yang bukan anggota TIDAK otomatis boleh membaca. Karena itu hak di sini dihitung dari keanggotaan dan jabatan,
- * bukan dari role global. Superadmin hanya mengatur struktur (kelompok dan jabatan); mengubah anggota dan mengelola rapat hanya
- * untuk anggota yang jabatannya berhak. Satu jalan keluar: Superadmin boleh memasukkan anggota selama kelompok belum punya pengelola anggota.
+ * bukan dari role global. Superadmin mengatur struktur (kelompok dan jabatan) dan keanggotaan (menambah, mengeluarkan, mengubah jabatan
+ * anggota) di semua kelompok; mengelola rapat dan notulen hanya untuk anggota yang jabatannya berhak.
  */
 
 export type GroupCaps = {
@@ -78,26 +78,16 @@ function requireSuperadmin(u: AuthUser) {
   if (!isSuperadmin(u)) throw forbidden("Hanya Superadmin yang boleh mengatur kelompok dan jabatan.");
 }
 
-/** Ada anggota aktif di kelompok ini yang jabatannya berhak mengatur anggota? */
-async function hasMemberManager(groupId: string): Promise<boolean> {
-  const n = await prisma.groupMember.count({
-    where: { groupId, leftAt: null, person: { deletedAt: null }, positions: { some: { position: { canManageMembers: true, deletedAt: null } } } },
-  });
-  return n > 0;
-}
-
 /**
- * Boleh mengatur anggota kelompok ini? Hanya anggota yang jabatannya berhak "kelola anggota". Superadmin tidak otomatis boleh.
- * Satu-satunya pengecualian (supaya kelompok tidak macet): selama belum ada satu pun anggota berhak itu, Superadmin boleh
- * memasukkan anggota pertama. Begitu ada, hak Superadmin hilang lagi.
+ * Boleh mengatur anggota kelompok ini (menambah, mengeluarkan, mengubah jabatan anggota)? Anggota yang jabatannya berhak
+ * "kelola anggota", dan Superadmin di kelompok mana pun. Hak Superadmin tidak mencakup menjadwalkan rapat atau notulen.
  */
 async function canEditMembers(u: AuthUser, groupId: string): Promise<boolean> {
-  const isManagerMember = (await groupCaps(u, groupId)).canManageMembers;
-  if (isManagerMember) return true;
-  return canEditGroupMembers({ isManagerMember, isSuperadmin: isSuperadmin(u), groupHasManager: isSuperadmin(u) ? await hasMemberManager(groupId) : true });
+  if (isSuperadmin(u)) return true;
+  return canEditGroupMembers({ isManagerMember: (await groupCaps(u, groupId)).canManageMembers, isSuperadmin: false });
 }
 async function requireManageMembers(u: AuthUser, groupId: string) {
-  if (!(await canEditMembers(u, groupId))) throw forbidden("Hanya anggota kelompok yang jabatannya berhak mengatur anggota yang boleh mengubah anggota kelompok ini.");
+  if (!(await canEditMembers(u, groupId))) throw forbidden("Hanya Superadmin dan anggota yang jabatannya berhak mengatur anggota yang boleh mengubah anggota kelompok ini.");
 }
 
 async function findGroup(u: AuthUser, id: string) {
