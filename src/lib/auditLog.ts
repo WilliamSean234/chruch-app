@@ -42,7 +42,7 @@ const LABELS: Record<string, string> = {
   "import.apply": "Mengimpor data", "backup.download": "Mengunduh cadangan data", "report.load.download": "Mengunduh statistik beban pelayan", "church.profile.update": "Mengubah profil gereja",
   "meeting.create": "Membuat rapat", "meeting.series.create": "Membuat rapat berulang", "meeting.update": "Mengubah jadwal rapat", "meeting.cancel": "Membatalkan rapat",
   "meeting.changes": "Menyimpan perubahan kehadiran dan lampiran", "meeting.link.add": "Menambah tautan lampiran", "meeting.link.remove": "Menghapus tautan lampiran",
-  "meeting.minutes.create": "Membuat notulen", "meeting.minutes.save": "Menyimpan draf notulen", "meeting.minutes.finalize": "Memfinalkan notulen", "meeting.minutes.revise": "Membuka revisi notulen",
+  "meeting.minutes.create": "Membuat notulen", "meeting.minutes.save": "Menyimpan draf notulen", "meeting.minutes.finalize": "Memfinalkan notulen", "meeting.minutes.revise": "Membuka revisi notulen", "meeting.notulen.unlock": "Membuka kunci notulen dengan kata sandi",
   "meeting.participant.add": "Menambah peserta rapat", "meeting.participant.attend": "Mencatat kehadiran rapat", "meeting.participant.bulk": "Menandai kehadiran rapat sekaligus", "meeting.participant.remove": "Menghapus peserta rapat",
   "ministry.create": "Membuat posisi pelayanan", "ministry.update": "Mengubah posisi pelayanan", "ministry.delete": "Menghapus posisi pelayanan",
   "person.create": "Menambah orang", "person.update": "Mengubah data orang", "person.delete": "Menghapus orang",

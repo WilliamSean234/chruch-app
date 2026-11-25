@@ -4,6 +4,7 @@ import PrintToolbar from "@/components/meetings/PrintButton";
 import { getMeeting } from "@/lib/meetings";
 import { getMinutes } from "@/lib/meetingMinutes";
 import { getChurchProfile } from "@/lib/church";
+import { unlockExpiry } from "@/lib/notulenGuard";
 import { ApiError } from "@/lib/errors";
 import { dayLong, hm } from "@/lib/ui";
 
@@ -30,6 +31,7 @@ export default async function NotulenCetakPage({ params, searchParams }: Props) 
   const nf = (e: unknown) => { if (e instanceof ApiError && e.status === 404) notFound(); throw e; };
   const m = await getMeeting(u, id).catch(nf);
   if (m.locked) redirect(`/rapat/${id}`);
+  if ((await unlockExpiry(u)) === null) redirect(`/rapat/${id}/notulen`); // terkunci: halaman notulen meminta kata sandi
   const minutes = await getMinutes(u, id).catch(nf);
 
   const want = v ? Number(v) : null;

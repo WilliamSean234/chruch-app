@@ -14,6 +14,7 @@ import { dayLong, hm } from "@/lib/ui";
 import type { MeetingDto } from "./MeetingDetail";
 import { STATUS } from "./MeetingAttendance";
 import ShareNotulen from "./ShareNotulen";
+import { useUnlockPrompt } from "./NotulenUnlock";
 import type { getMinutes } from "@/lib/meetingMinutes";
 
 type MinutesDto = Awaited<ReturnType<typeof getMinutes>>;
@@ -52,6 +53,7 @@ export default function MeetingMinutes({ meeting: m, minutes, churchName }: { me
   const [reviseOpen, setReviseOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [viewVersion, setViewVersion] = useState<number | null>(null);
+  const unlock = useUnlockPrompt(); // waktu buka notulen habis di tengah pekerjaan: minta kata sandi, lalu ulangi aksinya
 
   const serverKey = `${status}-${minutes.version}-${minutes.updatedAt}-${minutes.showingFinal}`;
   useEffect(() => { setDraft(minutes.content); }, [serverKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -67,7 +69,8 @@ export default function MeetingMinutes({ meeting: m, minutes, churchName }: { me
 
   const run = async (fn: () => Promise<{ ok: boolean; data: unknown }>, okMsg?: string) => {
     setBusy(true); setError(""); setSaved("");
-    const r = await fn();
+    let r = await fn();
+    if (!r.ok && (r.data as { error?: { code?: string } } | null)?.error?.code === "NOTULEN_LOCKED" && (await unlock.ask())) r = await fn();
     setBusy(false);
     if (r.ok) { if (okMsg) { setSaved(okMsg); showToast(okMsg); } router.refresh(); } else { setError(errMsg(r.data)); showToast("Notulen belum tersimpan", "error"); }
     return r.ok;
@@ -110,6 +113,7 @@ export default function MeetingMinutes({ meeting: m, minutes, churchName }: { me
 
   return (
     <>
+      {unlock.dialog}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex min-w-0 flex-col gap-2.5">
           <Link href={`/rapat/${m.id}`} className="text-[13px] font-bold text-[var(--primary-ink)] hover:underline">← Kembali ke rapat</Link>

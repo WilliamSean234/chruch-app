@@ -106,6 +106,7 @@ supaya seed dummy menolak berjalan.
 - [x] W7T2 Form jadwal acara: daftar, buat (template/khusus), editor dengan suggestion dan tanda bentrok
 - [x] W7T3 Halaman Template acara, Orang & pelayanan (termasuk akun login), Ruangan dan daftar pilihan (posisi, CG, komunitas)
 - [x] Notulen (draf, final, revisi), cetak/PDF, bagikan ke WhatsApp sebagai gambar
+- [x] Kunci notulen: isi notulen (baca, tulis, finalkan, revisi, cetak) baru terbuka setelah pemilik akun memasukkan kata sandinya lagi; berlaku 60 menit (cookie bertanda tangan terikat akun dan sesi), salah 5 kali dalam 15 menit dikunci 15 menit, tombol "Kunci sekarang", dan dialog kata sandi bila waktunya habis saat menulis (isian tidak hilang); pembukaan tercatat di log aktivitas; tanpa migrasi
 - [x] Rapat berulang, log aktivitas, profil gereja
 - [x] Tampilan HP: Jadwal saya, isi kehadiran, menu bawah; filter dan tab lengket di semua halaman
 - [x] W8 Tes unit, health check, header keamanan, panduan deploy

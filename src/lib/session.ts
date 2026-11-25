@@ -24,6 +24,11 @@ async function readUser(req?: Request): Promise<AuthUser> {
   return live;
 }
 
+/** Waktu sesi ini dibuat; dipakai untuk mengikat bukti "kata sandi ulang" ke sesi (keluar lalu masuk lagi = bukti lama tidak berlaku). */
+export async function sessionAuthAt(req?: Request): Promise<number | undefined> {
+  return (await readClaims(req)).authAt;
+}
+
 async function readClaims(req?: Request): Promise<AuthUser> {
   const header = req?.headers.get("authorization");
   if (header?.toLowerCase().startsWith("bearer ")) {
