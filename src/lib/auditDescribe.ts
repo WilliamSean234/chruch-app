@@ -105,11 +105,13 @@ const GONE = "(sudah dihapus)";
 const list = (xs: string[]) => (xs.length ? xs.join(", ") : "-");
 
 /** Nama acara untuk dibaca orang. Rapat: hanya kelompok dan tanggalnya, judul/topik rapat tidak pernah ditampilkan. */
+export function eventName(e: { kind: string; title: string; startsAt: Date; group: string | null }): string {
+  return e.kind === "RAPAT" ? `Rapat ${e.group ?? ""} · ${fmtDateTime(e.startsAt)}`.replace("Rapat  ·", "Rapat ·") : `${e.title} · ${fmtDateTime(e.startsAt)}`;
+}
 function eventLabel(refs: Refs, id: string | null): string {
   if (!id) return GONE;
   const e = refs.events.get(id);
-  if (!e) return `Acara ${GONE}`;
-  return e.kind === "RAPAT" ? `Rapat ${e.group ?? ""} · ${fmtDateTime(e.startsAt)}`.replace("Rapat  ·", "Rapat ·") : `${e.title} · ${fmtDateTime(e.startsAt)}`;
+  return e ? eventName(e) : `Acara ${GONE}`;
 }
 
 const seatLabel = (a: { ministry: string; slotNo: number }) => (a.slotNo > 1 ? `${a.ministry} ${a.slotNo}` : a.ministry);

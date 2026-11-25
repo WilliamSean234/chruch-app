@@ -6,7 +6,7 @@ import { can, type AuthUser } from "./rbac";
 import { creatorNames } from "./creators";
 import { addMinutes, DATE_RE, zonedToUtc } from "./time";
 import { auditYears } from "./years";
-import { describe, loadRefs, loadRoleLabels, wantedOf } from "./auditDescribe";
+import { describe, eventName, loadRefs, loadRoleLabels, wantedOf } from "./auditDescribe";
 import { pageOf, pagingQuery, resolvePaging } from "./paging";
 
 /**
@@ -57,30 +57,79 @@ export const auditQuery = z.object({
   search: z.string().trim().max(80).optional(),
   category: z.string().max(20).optional(),
   userId: z.string().uuid().optional(),
+  eventId: z.string().uuid().optional(), // hanya aktivitas yang menyangkut acara ini
   from: z.string().regex(DATE_RE).optional(),
   to: z.string().regex(DATE_RE).optional(),
 });
+
+/**
+ * Acara yang punya aktivitas pada rentang waktu log (untuk pilihan saringan "Acara").
+ * Kursi dan sesi latihan ditelusuri ke acaranya. Rapat ditulis dengan nama kelompok, bukan judulnya.
+ */
+async function eventOptions(tenantId: string, createdAt: Prisma.AuditLogWhereInput["createdAt"]) {
+  const logs = await prisma.auditLog.findMany({
+    where: { tenantId, ...(createdAt ? { createdAt } : {}), entity: { in: ["Event", "EventAssignment", "RehearsalSession"] } },
+    select: { entity: true, entityId: true }, take: 5000,
+  });
+  const ids = new Set(logs.filter((l) => l.entity === "Event").map((l) => l.entityId));
+  const seatIds = logs.filter((l) => l.entity === "EventAssignment").map((l) => l.entityId);
+  const rehIds = logs.filter((l) => l.entity === "RehearsalSession").map((l) => l.entityId);
+  const [seats, rehs] = await Promise.all([
+    seatIds.length ? prisma.eventAssignment.findMany({ where: { id: { in: seatIds }, tenantId }, select: { eventId: true } }) : [],
+    rehIds.length ? prisma.rehearsalSession.findMany({ where: { id: { in: rehIds }, tenantId }, select: { eventId: true } }) : [],
+  ]);
+  for (const s of seats) ids.add(s.eventId);
+  for (const r of rehs) ids.add(r.eventId);
+  if (!ids.size) return [];
+  const events = await prisma.event.findMany({
+    where: { id: { in: [...ids] }, tenantId },
+    select: { id: true, kind: true, title: true, startsAt: true, group: { select: { name: true } } },
+    orderBy: { startsAt: "desc" }, take: 300,
+  });
+  return events.map((e) => ({ value: e.id, label: eventName({ kind: e.kind, title: e.title, startsAt: e.startsAt, group: e.group?.name ?? null }) }));
+}
+
+/** Catatan yang menyangkut satu acara: acaranya sendiri, kursi dan sesi latihannya, serta catatan yang menyebut acara itu di isinya. */
+async function eventFilter(tenantId: string, eventId: string): Promise<Prisma.AuditLogWhereInput> {
+  const [seats, rehs] = await Promise.all([
+    prisma.eventAssignment.findMany({ where: { eventId, tenantId }, select: { id: true } }),
+    prisma.rehearsalSession.findMany({ where: { eventId, tenantId }, select: { id: true } }),
+  ]);
+  return {
+    OR: [
+      { entity: { in: ["Event", "EventAssignment", "RehearsalSession"] }, entityId: { in: [eventId, ...seats.map((s) => s.id), ...rehs.map((r) => r.id)] } },
+      { payload: { path: ["eventId"], equals: eventId } },
+      { payload: { path: ["sourceEventId"], equals: eventId } },
+      { payload: { path: ["events"], array_contains: [eventId] } },
+    ],
+  };
+}
 
 export async function listAuditLogs(u: AuthUser, q: z.infer<typeof auditQuery>) {
   if (!can(u, "audit.read")) throw forbidden("Log aktivitas hanya untuk Superadmin dan Pengawas.");
   const pg = resolvePaging(q);
   const cat = CATEGORIES.find((c) => c.key === q.category);
+  const createdAt = q.from || q.to ? { ...(q.from ? { gte: zonedToUtc(q.from, "00:00") } : {}), ...(q.to ? { lt: addMinutes(zonedToUtc(q.to, "00:00"), 24 * 60) } : {}) } : undefined;
+  const and: Prisma.AuditLogWhereInput[] = [];
   const where: Prisma.AuditLogWhereInput = {
     tenantId: u.tenantId,
     ...(q.userId ? { userId: q.userId } : {}),
     ...(cat ? { OR: cat.prefixes.map((p) => ({ action: { startsWith: p } })) } : {}),
-    ...(q.from || q.to ? { createdAt: { ...(q.from ? { gte: zonedToUtc(q.from, "00:00") } : {}), ...(q.to ? { lt: addMinutes(zonedToUtc(q.to, "00:00"), 24 * 60) } : {}) } } : {}),
+    ...(createdAt ? { createdAt } : {}),
   };
+  if (q.eventId) and.push(await eventFilter(u.tenantId, q.eventId));
   if (q.search) {
     const needle = q.search.toLowerCase();
     const matching = Object.entries(LABELS).filter(([k, v]) => v.toLowerCase().includes(needle) || k.includes(needle)).map(([k]) => k);
-    where.AND = [{ OR: [{ action: { in: matching } }, { action: { contains: needle, mode: "insensitive" } }, { reason: { contains: q.search, mode: "insensitive" } }] }];
+    and.push({ OR: [{ action: { in: matching } }, { action: { contains: needle, mode: "insensitive" } }, { reason: { contains: q.search, mode: "insensitive" } }] });
   }
-  const [total, rows, actors, years] = await Promise.all([
+  if (and.length) where.AND = and;
+  const [total, rows, actors, years, events] = await Promise.all([
     prisma.auditLog.count({ where }),
     prisma.auditLog.findMany({ where, orderBy: { createdAt: "desc" }, skip: pg.skip, take: pg.take }),
     prisma.auditLog.findMany({ where: { tenantId: u.tenantId, userId: { not: null } }, distinct: ["userId"], select: { userId: true }, take: 200 }),
     auditYears(u.tenantId),
+    eventOptions(u.tenantId, createdAt),
   ]);
   const [names, roles, refs] = await Promise.all([
     creatorNames([...rows.map((r) => r.userId), ...actors.map((a) => a.userId)]),
@@ -96,5 +145,5 @@ export async function listAuditLogs(u: AuthUser, q: z.infer<typeof auditQuery>) 
     };
   });
   const users = actors.map((a) => ({ id: a.userId as string, name: names.get(a.userId as string) ?? "Pengguna dihapus" })).sort((x, y) => x.name.localeCompare(y.name));
-  return { ...pageOf(items, total, pg), options: { categories: CATEGORIES.map((c) => ({ key: c.key, label: c.label })), users, years } };
+  return { ...pageOf(items, total, pg), options: { categories: CATEGORIES.map((c) => ({ key: c.key, label: c.label })), users, years, events } };
 }

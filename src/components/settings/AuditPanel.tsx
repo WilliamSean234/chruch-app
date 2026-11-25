@@ -7,7 +7,7 @@ import { useDebounced, usePagedList } from "@/components/ui/usePagedList";
 import { monthRange, ymd } from "@/lib/ui";
 
 type Row = { id: string; at: string; user: string; role: string | null; action: string; label: string; target: string | null; how: string | null; reason: string | null };
-type Options = { categories: { key: string; label: string }[]; users: { id: string; name: string }[]; years: number[] };
+type Options = { categories: { key: string; label: string }[]; users: { id: string; name: string }[]; years: number[]; events: { value: string; label: string }[] };
 
 const stamp = (iso: string) => new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
 const TONE: Record<string, { bg: string; fg: string }> = {
@@ -23,15 +23,16 @@ export default function AuditPanel() {
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("");
   const [userId, setUserId] = useState("");
+  const [eventId, setEventId] = useState("");
   const def = monthRange(ymd(new Date()));
   const [from, setFrom] = useState(def.from);
   const [to, setTo] = useState(def.to);
   const search = useDebounced(q.trim());
-  const list = usePagedList<Row, { options: Options }>("/api/v1/audit-logs", { search, category, userId, from, to });
+  const list = usePagedList<Row, { options: Options }>("/api/v1/audit-logs", { search, category, userId, eventId, from, to });
   const opts = list.data?.options;
   const dateExtra = (from !== def.from ? 1 : 0) + (to !== def.to ? 1 : 0);
-  const dirty = !!(q || category || userId || dateExtra);
-  const reset = () => { setQ(""); setCategory(""); setUserId(""); setFrom(def.from); setTo(def.to); };
+  const dirty = !!(q || category || userId || eventId || dateExtra);
+  const reset = () => { setQ(""); setCategory(""); setUserId(""); setEventId(""); setFrom(def.from); setTo(def.to); };
 
   return (
     <div className="flex flex-col gap-4">
@@ -43,8 +44,9 @@ export default function AuditPanel() {
           <FSelect label="Pengguna" value={userId} onChange={setUserId} allLabel="Semua pengguna" options={opts?.users.map((x) => ({ value: x.id, label: x.name }))} />
         </>}>
         <FSearch value={q} onChange={setQ} placeholder="Jenis aktivitas atau alasan" />
-        <FMonth from={from} years={opts?.years} onRange={(f, t) => { setFrom(f); setTo(t); }} />
+        <FMonth from={from} years={opts?.years} onRange={(f, t) => { setFrom(f); setTo(t); setEventId(""); }} />
         <FSelect label="Jenis" value={category} onChange={setCategory} allLabel="Semua jenis" options={opts?.categories.map((c) => ({ value: c.key, label: c.label }))} />
+        <FSelect label="Acara" value={eventId} onChange={setEventId} allLabel="Semua acara" options={opts?.events} width="w-64" />
       </FilterBar>
 
       {list.error && <Alert>{list.error}</Alert>}
