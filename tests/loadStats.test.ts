@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildLoad, isHeavy, loadFileName, rangeError, sortLoad, teamsText, type LoadSeat } from "../src/lib/loadStats";
+import { buildLoad, displayName, isHeavy, loadFileName, rangeError, seatLabel, sortLoad, teamsText, type LoadSeat } from "../src/lib/loadStats";
 
 const seat = (personId: string, eventId: string, at: string, team: string, ministry: string, name = personId.toUpperCase()): LoadSeat =>
-  ({ personId, personName: name, eventId, at, teamTypeId: `t-${team}`, teamName: team, ministryName: ministry });
+  ({ personId, personName: name, eventId, at, teamTypeId: `t-${team}`, teamName: team, ministryName: ministry, title: `Ibadah ${eventId}`, seat: ministry });
 
 test("dua kursi di ibadah yang sama dihitung satu ibadah, kursinya tetap dihitung", () => {
   const { rows } = buildLoad([
@@ -100,7 +100,7 @@ test("urutan: beban, paling sedikit, nama", () => {
   const base = [
     { personId: "1", name: "Citra", events: 2, seats: 2 }, { personId: "2", name: "Andi", events: 5, seats: 5 },
     { personId: "3", name: "Budi", events: 2, seats: 3 }, { personId: "4", name: "Dedi", events: 0, seats: 0 },
-  ].map((r) => ({ ...r, main: "", teams: [], last: null, level: "WAJAR" as const }));
+  ].map((r) => ({ ...r, main: "", teams: [], can: [], services: [], last: null, level: "WAJAR" as const }));
   assert.deepEqual(sortLoad(base, "beban").map((r) => r.name), ["Andi", "Budi", "Citra", "Dedi"]); // seri 2: kursi lebih banyak dulu
   assert.deepEqual(sortLoad(base, "sedikit").map((r) => r.name), ["Dedi", "Citra", "Budi", "Andi"]);
   assert.deepEqual(sortLoad(base, "nama").map((r) => r.name), ["Andi", "Budi", "Citra", "Dedi"]);
@@ -122,4 +122,35 @@ test("nama berkas: satu bulan penuh memakai tahun-bulan", () => {
   assert.equal(loadFileName("2024-02-01", "2024-02-29"), "BEBAN_PELAYAN_2024-02.xlsx");
   assert.equal(loadFileName("2026-12-05", "2026-12-31"), "BEBAN_PELAYAN_2026-12-05_2026-12-31.xlsx");
   assert.equal(loadFileName("2026-01-01", "2026-03-31"), "BEBAN_PELAYAN_2026-01-01_2026-03-31.xlsx");
+});
+
+test("rincian tanggal: tiap kursi, urut tanggal; dua kursi di ibadah yang sama sama-sama tampil", () => {
+  const { rows } = buildLoad([
+    seat("a", "e2", "2026-12-13T02:00:00.000Z", "Musik", "Keyboard"),
+    seat("a", "e1", "2026-12-06T02:00:00.000Z", "Musik", "MC"),
+    seat("a", "e1", "2026-12-06T02:00:00.000Z", "Musik", "Gitar"),
+  ], []);
+  const sv = rows[0]!.services;
+  assert.equal(sv.length, 3);
+  assert.deepEqual(sv.map((x) => x.eventId), ["e1", "e1", "e2"]);
+  assert.deepEqual(sv.slice(0, 2).map((x) => x.seat), ["Gitar", "MC"]); // seri tanggal: urut nama kursi
+  assert.equal(sv[0]!.team, "Musik");
+});
+
+test("daftar 'Bisa': dari catatan kemampuan, juga untuk yang sudah bertugas; kosong bila tidak tercatat", () => {
+  const { rows } = buildLoad(
+    [seat("a", "e1", "2026-12-06T02:00:00.000Z", "Musik", "Keyboard"), seat("b", "e1", "2026-12-06T02:00:00.000Z", "Musik", "Drum")],
+    [{ id: "a", name: "A", ministries: ["Keyboard", "Bass"] }],
+  );
+  assert.deepEqual(rows.find((r) => r.personId === "a")!.can, ["Keyboard", "Bass"]);
+  assert.deepEqual(rows.find((r) => r.personId === "b")!.can, []);
+});
+
+test("nama bergelar dan nama kursi", () => {
+  assert.equal(displayName({ name: "Yosi", title: "Ps." }), "Ps. Yosi");
+  assert.equal(displayName({ name: "Ps. Yosi", title: "Ps." }), "Ps. Yosi"); // gelar sudah ada di nama
+  assert.equal(displayName({ name: "Budi", title: null }), "Budi");
+  assert.equal(displayName({ name: "Budi" }), "Budi");
+  assert.equal(seatLabel("Gitar", 1), "Gitar");
+  assert.equal(seatLabel("Gitar", 2), "Gitar 2");
 });

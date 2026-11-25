@@ -6,8 +6,8 @@ import { pageOf, pagingQuery, resolvePaging } from "./paging";
 import { zonedToUtc } from "./time";
 import { eventYears } from "./years";
 import { buildXlsx } from "./xlsxWrite";
-import { dateText, noteSheet, tableSheet } from "./backupSheets";
-import { buildLoad, loadFileName, MAX_RANGE_DAYS, rangeError, teamsText, type IdlePerson, type LoadSeat } from "./loadStats";
+import { dateText, noteSheet, tableSheet, timeText } from "./backupSheets";
+import { buildLoad, displayName, loadFileName, MAX_RANGE_DAYS, rangeError, seatLabel, teamsText, type IdlePerson, type LoadSeat } from "./loadStats";
 
 export const loadQuery = z
   .object({
@@ -15,6 +15,8 @@ export const loadQuery = z
     to: z.string(),
     team: z.string().uuid().optional(), // satu tim saja; kosong = semua tim yang boleh dilihat
     sort: z.enum(["beban", "sedikit", "nama"]).default("beban"),
+    search: z.string().trim().max(80).optional(), // cari nama; hanya untuk daftar di layar
+
     format: z.enum(["xlsx"]).optional(),
     ...pagingQuery,
   })
@@ -55,10 +57,10 @@ async function compute(u: AuthUser, q: LoadQuery) {
         event: { ...eventWhere, startsAt: { gte, lte } },
       },
       select: {
-        personId: true, eventId: true, teamTypeId: true,
-        person: { select: { name: true } },
+        personId: true, eventId: true, teamTypeId: true, slotNo: true,
+        person: { select: { name: true, title: true } },
         ministry: { select: { name: true, teamType: { select: { name: true } } } },
-        event: { select: { startsAt: true } },
+        event: { select: { startsAt: true, title: true } },
       },
       take: MAX_SEATS + 1,
     }),
@@ -73,20 +75,21 @@ async function compute(u: AuthUser, q: LoadQuery) {
         person: { tenantId: u.tenantId, deletedAt: null },
         ministry: { deletedAt: null, ...(teamFilter ? { teamTypeId: { in: teamFilter } } : {}) },
       },
-      select: { personId: true, person: { select: { name: true } }, ministry: { select: { name: true, sortOrder: true } } },
+      select: { personId: true, person: { select: { name: true, title: true } }, ministry: { select: { name: true, sortOrder: true } } },
     }),
   ]);
 
   const truncated = seatRows.length > MAX_SEATS;
   const seats: LoadSeat[] = seatRows.slice(0, MAX_SEATS).map((s) => ({
-    personId: s.personId!, personName: s.person?.name ?? "Pelayan", eventId: s.eventId, at: s.event.startsAt.toISOString(),
+    personId: s.personId!, personName: s.person ? displayName(s.person) : "Pelayan", eventId: s.eventId, at: s.event.startsAt.toISOString(),
     teamTypeId: s.teamTypeId, teamName: s.ministry.teamType.name, ministryName: s.ministry.name,
+    title: s.event.title, seat: seatLabel(s.ministry.name, s.slotNo),
   }));
 
   // calon yang bisa melayani di tim yang dilihat (untuk menampilkan yang belum bertugas)
   const byPerson = new Map<string, { name: string; ms: { name: string; order: number }[] }>();
   for (const c of capable) {
-    const e = byPerson.get(c.personId) ?? { name: c.person.name, ms: [] };
+    const e = byPerson.get(c.personId) ?? { name: displayName(c.person), ms: [] };
     e.ms.push({ name: c.ministry.name, order: c.ministry.sortOrder });
     byPerson.set(c.personId, e);
   }
@@ -118,8 +121,10 @@ async function compute(u: AuthUser, q: LoadQuery) {
 export async function listLoad(u: AuthUser, q: LoadQuery) {
   const pg = resolvePaging(q);
   const d = await compute(u, q);
+  const needle = q.search?.toLowerCase();
+  const rows = needle ? d.rows.filter((r) => r.name.toLowerCase().includes(needle)) : d.rows;
   return {
-    ...pageOf(d.rows.slice(pg.skip, pg.skip + pg.take), d.rows.length, pg),
+    ...pageOf(rows.slice(pg.skip, pg.skip + pg.take), rows.length, pg),
     summary: d.summary,
     scoped: d.scoped,
     truncated: d.truncated,
@@ -135,9 +140,10 @@ export async function loadWorkbook(u: AuthUser, q: LoadQuery) {
     "Beban pelayan",
     [
       { head: "Nama", width: 30 }, { head: "Posisi utama", width: 22 }, { head: "Ibadah", width: 10 }, { head: "Kursi", width: 10 },
-      { head: "Rincian per tim (ibadah)", width: 40 }, { head: "Terakhir bertugas", width: 18 }, { head: "Keterangan", width: 16 },
+      { head: "Rincian per tim (ibadah)", width: 40 }, { head: "Terakhir bertugas", width: 18 }, { head: "Keterangan", width: 16 }, { head: "Jadwal (tanggal, jam, ibadah, posisi)", width: 90 },
     ],
-    d.rows.map((r) => [r.name, r.main, r.events, r.seats, teamsText(r.teams), r.last ? dateText(new Date(r.last)) : "", LEVEL[r.level]]),
+    d.rows.map((r) => [r.name, r.main, r.events, r.seats, teamsText(r.teams), r.last ? dateText(new Date(r.last)) : "", LEVEL[r.level],
+      r.services.map((x) => `${dateText(new Date(x.at))} ${timeText(new Date(x.at))} ${x.title} (${x.seat})`).join("; ")]),
   );
   const note = noteSheet("Petunjuk", [
     "# Cara membaca statistik beban pelayan",

@@ -18,9 +18,13 @@ export type LoadSeat = {
   teamTypeId: string;
   teamName: string;
   ministryName: string;
+  /** Judul ibadah dan nama kursi (mis. "Gitar 2" untuk slot kedua), untuk rincian tanggal. */
+  title: string;
+  seat: string;
 };
-/** Orang yang mampu melayani di tim yang sedang dilihat; ikut ditampilkan bila belum bertugas di periode ini. */
+/** Orang yang tercatat bisa melayani di tim yang sedang dilihat (urut menurut posisi). Yang belum bertugas di periode ini ikut ditampilkan; yang sudah bertugas hanya dipakai untuk daftar "Bisa". */
 export type IdlePerson = { id: string; name: string; ministries: string[] };
+export type LoadService = { eventId: string; at: string; title: string; seat: string; team: string };
 export type TeamLoad = { teamTypeId: string; team: string; events: number; seats: number };
 export type LoadLevel = "BELUM" | "TINGGI" | "WAJAR";
 export type LoadRow = {
@@ -29,6 +33,10 @@ export type LoadRow = {
   /** Posisi yang paling sering dipegang di periode ini (bagi yang belum bertugas: posisi pertama yang ia bisa). */
   main: string;
   teams: TeamLoad[];
+  /** Posisi yang tercatat bisa ia lakukan (di tim yang dilihat). */
+  can: string[];
+  /** Rincian: tiap kursi yang ia pegang di periode ini, urut tanggal. Kosong bagi yang belum bertugas. */
+  services: LoadService[];
   /** Tanggal ibadah terakhir ia bertugas (di periode ini; bagi yang belum bertugas: sebelum periode, bila ada). */
   last: string | null;
   level: LoadLevel;
@@ -61,6 +69,7 @@ type Acc = {
   name: string; events: Set<string>; seats: number; last: string;
   teams: Map<string, { team: string; events: Set<string>; seats: number }>;
   ministries: Map<string, number>;
+  services: LoadService[];
 };
 
 /** Posisi yang paling sering muncul; bila sama banyak, yang urutan hurufnya lebih awal. */
@@ -85,7 +94,7 @@ export function buildLoad(seats: LoadSeat[], idle: IdlePerson[], lastBefore: Rea
   const by = new Map<string, Acc>();
   for (const s of seats) {
     let a = by.get(s.personId);
-    if (!a) { a = { name: s.personName, events: new Set(), seats: 0, last: "", teams: new Map(), ministries: new Map() }; by.set(s.personId, a); }
+    if (!a) { a = { name: s.personName, events: new Set(), seats: 0, last: "", teams: new Map(), ministries: new Map(), services: [] }; by.set(s.personId, a); }
     a.events.add(s.eventId);
     a.seats += 1;
     if (s.at > a.last) a.last = s.at;
@@ -94,7 +103,9 @@ export function buildLoad(seats: LoadSeat[], idle: IdlePerson[], lastBefore: Rea
     t.events.add(s.eventId);
     t.seats += 1;
     a.ministries.set(s.ministryName, (a.ministries.get(s.ministryName) ?? 0) + 1);
+    a.services.push({ eventId: s.eventId, at: s.at, title: s.title, seat: s.seat, team: s.teamName });
   }
+  const canOf = new Map(idle.map((p) => [p.id, p.ministries]));
 
   let sum = 0;
   for (const a of by.values()) sum += a.events.size;
@@ -106,6 +117,8 @@ export function buildLoad(seats: LoadSeat[], idle: IdlePerson[], lastBefore: Rea
     rows.push({
       personId: id, name: a.name, events, seats: a.seats, main: mostOften(a.ministries),
       teams: [...a.teams].map(([teamTypeId, t]) => ({ teamTypeId, team: t.team, events: t.events.size, seats: t.seats })).sort((x, y) => y.events - x.events || byName(x.team, y.team)),
+      can: canOf.get(id) ?? [],
+      services: a.services.sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : byName(x.seat, y.seat))),
       last: a.last || null,
       level: isHeavy(events, average) ? "TINGGI" : "WAJAR",
     });
@@ -113,7 +126,7 @@ export function buildLoad(seats: LoadSeat[], idle: IdlePerson[], lastBefore: Rea
   const heavy = rows.filter((r) => r.level === "TINGGI").length;
   const idleRows: LoadRow[] = idle
     .filter((p) => !by.has(p.id))
-    .map((p) => ({ personId: p.id, name: p.name, events: 0, seats: 0, main: p.ministries[0] ?? "", teams: [], last: lastBefore.get(p.id) ?? null, level: "BELUM" as const }));
+    .map((p) => ({ personId: p.id, name: p.name, events: 0, seats: 0, main: p.ministries[0] ?? "", teams: [], can: p.ministries, services: [], last: lastBefore.get(p.id) ?? null, level: "BELUM" as const }));
 
   const all = sortLoad([...rows, ...idleRows], sort);
   return {
@@ -128,6 +141,13 @@ export function buildLoad(seats: LoadSeat[], idle: IdlePerson[], lastBefore: Rea
     },
   };
 }
+
+/** Nama dengan gelar di depan (Ps., Pdt., dst.) bila gelarnya belum ada di dalam nama. */
+export const displayName = (p: { name: string; title?: string | null }): string =>
+  p.title && !p.name.toLowerCase().startsWith(p.title.toLowerCase()) ? `${p.title} ${p.name}` : p.name;
+
+/** Nama kursi: slot kedua dan seterusnya diberi nomor ("Gitar 2"). */
+export const seatLabel = (ministry: string, slotNo: number): string => (slotNo > 1 ? `${ministry} ${slotNo}` : ministry);
 
 /** "Musik 4, EBM 2": rincian per tim dalam satu baris teks. */
 export const teamsText = (teams: readonly TeamLoad[]): string => teams.map((t) => `${t.team} ${t.events}`).join(", ");
