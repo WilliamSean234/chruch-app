@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { diffEvent } from "@/lib/eventDiff";
 import { handle, notFound } from "@/lib/errors";
 import { requireUser } from "@/lib/session";
 import { can, requirePermission } from "@/lib/rbac";
@@ -26,7 +27,8 @@ export const PATCH = handle(async (req: Request, { params }: Ctx) => {
   requirePermission(u, "event.write");
   const { id } = await params;
   const body = eventUpdateBody.parse(await req.json());
+  const before = await getEvent(u.tenantId, id);
   const e = await updateEvent(u, id, body);
-  await audit({ tenantId: u.tenantId, userId: u.userId, action: "event.update", entity: "Event", entityId: id, payload: body });
+  await audit({ tenantId: u.tenantId, userId: u.userId, action: "event.update", entity: "Event", entityId: id, payload: { changes: diffEvent(before, e) } });
   return NextResponse.json(e);
 });

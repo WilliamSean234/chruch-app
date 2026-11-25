@@ -6,7 +6,7 @@ import Pager from "@/components/ui/Pager";
 import { useDebounced, usePagedList } from "@/components/ui/usePagedList";
 import { monthRange, ymd } from "@/lib/ui";
 
-type Row = { id: string; at: string; user: string; action: string; label: string; entity: string; reason: string | null; detail: string | null };
+type Row = { id: string; at: string; user: string; role: string | null; action: string; label: string; target: string | null; how: string | null; reason: string | null };
 type Options = { categories: { key: string; label: string }[]; users: { id: string; name: string }[]; years: number[] };
 
 const stamp = (iso: string) => new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
@@ -14,7 +14,9 @@ const TONE: Record<string, { bg: string; fg: string }> = {
   event: { bg: "#E6F0FA", fg: "#1D4F8C" }, meeting: { bg: "#F8E6DD", fg: "#7A3A1E" }, group: { bg: "#F8E6DD", fg: "#7A3A1E" }, person: { bg: "#E3F3E7", fg: "#1B6B34" },
   user: { bg: "#EEF0FD", fg: "#3037A8" }, registration: { bg: "#EEF0FD", fg: "#3037A8" }, booking: { bg: "#FBE4E4", fg: "#9B1C1C" }, attendance: { bg: "#FBF0D9", fg: "#6F4304" }, import: { bg: "#ECEEF4", fg: "#565B76" },
 };
-const toneOf = (action: string) => TONE[action.split(".")[0]] ?? TONE.import;
+// jenis aksi yang belum punya warna sendiri ikut warna kelompoknya
+const TONE_ALIAS: Record<string, string> = { rehearsal: "event", template: "event", assignment: "event", ministry: "person", team: "person", cg: "person", positions: "person", communities: "person", "cg-groups": "person", rooms: "booking" };
+const toneOf = (action: string) => { const k = action.split(".")[0]; return TONE[k] ?? TONE[TONE_ALIAS[k] ?? ""] ?? TONE.import; };
 
 /** Log aktivitas: tab di Pengaturan (Superadmin) dan halaman /log (Pengawas). */
 export default function AuditPanel() {
@@ -34,7 +36,7 @@ export default function AuditPanel() {
   return (
     <div className="flex flex-col gap-4">
       <p className="m-0 text-[13.5px] font-medium leading-relaxed text-[var(--ink-2)]">
-        Catatan siapa mengubah apa dan kapan. Isi rapat (nama peserta, judul tautan, notulen) sengaja tidak ditampilkan di sini.
+        Kapan, siapa, apa, dan bagaimana. Isi rapat (judul, nama peserta, tautan, notulen) sengaja tidak ditampilkan di sini.
       </p>
       <FilterBar active={dirty} onReset={reset} moreCount={userId ? 1 : 0}
         more={<>
@@ -56,12 +58,13 @@ export default function AuditPanel() {
             <div key={r.id} className="flex flex-wrap items-start gap-x-4 gap-y-1.5 border-b border-[var(--line-2)] px-5 py-3.5 last:border-b-0">
               <span className="w-[150px] flex-none pt-0.5 text-[12.5px] font-semibold text-[var(--ink-2)] max-md:w-full">{stamp(r.at)}</span>
               <div className="flex min-w-0 flex-1 flex-col gap-1 max-md:basis-full">
-                <span className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="inline-block max-w-full truncate rounded-full px-2.5 py-[3px] text-xs font-extrabold" style={{ background: t.bg, color: t.fg }}>{r.label}</span>
-                  <span className="text-sm font-bold">{r.user}</span>
+                  {r.target && <span className="min-w-0 break-words text-sm font-bold">{r.target}</span>}
                 </span>
+                {r.how && <span className="break-words text-[13px] font-medium text-[var(--ink)]">{r.how}</span>}
                 {r.reason && <span className="text-[13px] font-semibold text-[#6f4304]">Alasan: {r.reason}</span>}
-                {r.detail && <span className="break-words text-[12.5px] font-medium text-[var(--ink-2)]">{r.detail}</span>}
+                <span className="text-[12.5px] font-medium text-[var(--ink-2)]">Oleh <b className="font-bold text-[var(--ink)]">{r.user}</b>{r.role ? ` · ${r.role}` : ""}</span>
               </div>
             </div>
           );

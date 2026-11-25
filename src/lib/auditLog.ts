@@ -6,19 +6,20 @@ import { can, type AuthUser } from "./rbac";
 import { creatorNames } from "./creators";
 import { addMinutes, DATE_RE, zonedToUtc } from "./time";
 import { auditYears } from "./years";
+import { describe, loadRefs, loadRoleLabels, wantedOf } from "./auditDescribe";
 import { pageOf, pagingQuery, resolvePaging } from "./paging";
 
 /**
- * Log aktivitas: siapa mengubah apa dan kapan. Hanya Superadmin yang boleh membukanya.
- * Isi rapat tetap rahasia: nama peserta, judul tautan, dan isi notulen tidak pernah ditampilkan di sini.
+ * Log aktivitas: kapan, siapa, apa, dan bagaimana. Dibuka Superadmin dan Pengawas; tanpa ID, hanya nama.
+ * Isi rapat tetap rahasia: judul, nama peserta, tautan, dan isi notulen tidak pernah ditampilkan di sini (lihat auditDescribe.ts).
  */
 export const CATEGORIES: { key: string; label: string; prefixes: string[] }[] = [
   { key: "event", label: "Jadwal acara", prefixes: ["event.", "rehearsal.", "template.", "assignment."] },
   { key: "meeting", label: "Rapat", prefixes: ["meeting."] },
   { key: "group", label: "Kelompok rapat", prefixes: ["group."] },
-  { key: "person", label: "Orang dan pelayanan", prefixes: ["person.", "ministry.", "team.", "cg."] },
+  { key: "person", label: "Orang dan pelayanan", prefixes: ["person.", "ministry.", "team.", "cg.", "positions.", "communities.", "cg-groups."] },
   { key: "account", label: "Akun", prefixes: ["user.", "registration."] },
-  { key: "booking", label: "Ruangan dan bentrok", prefixes: ["booking."] },
+  { key: "booking", label: "Ruangan dan bentrok", prefixes: ["booking.", "rooms."] },
   { key: "attendance", label: "Kehadiran ibadah", prefixes: ["attendance."] },
   { key: "import", label: "Impor data", prefixes: ["import."] },
   { key: "church", label: "Profil gereja", prefixes: ["church."] },
@@ -26,7 +27,11 @@ export const CATEGORIES: { key: string; label: string; prefixes: string[] }[] = 
 
 const LABELS: Record<string, string> = {
   "assignment.set": "Mengatur petugas", "assignment.copy": "Menyalin personel antar acara", "assignment.upload": "Mengunggah jadwal tim", "person.alias": "Menyimpan ejaan nama jadwal", "attendance.guest": "Mencatat tamu ibadah", "attendance.batch": "Mencatat kehadiran ibadah per nama", "attendance.summary": "Mencatat jumlah kehadiran", "booking.override": "Menimpa bentrok jadwal",
-  "cg.leaders": "Mengatur pemimpin CG",
+  "cg.leaders": "Mengatur pemimpin CG", "person.ministries": "Mengubah pelayanan orang", "event.notify": "Memberi tahu pelayan",
+  "positions.create": "Menambah posisi orang", "positions.update": "Mengubah posisi orang", "positions.delete": "Menghapus posisi orang",
+  "communities.create": "Menambah komunitas", "communities.update": "Mengubah komunitas", "communities.delete": "Menghapus komunitas",
+  "cg-groups.create": "Menambah kelompok CG", "cg-groups.update": "Mengubah kelompok CG", "cg-groups.delete": "Menghapus kelompok CG",
+  "rooms.create": "Menambah ruangan", "rooms.update": "Mengubah ruangan", "rooms.delete": "Menghapus ruangan",
   "event.cancel": "Membatalkan acara", "event.reopen": "Mengaktifkan kembali acara", "event.band-mode": "Mengubah Band / No Band", "event.create": "Membuat acara", "event.publish": "Menerbitkan acara", "event.unpublish": "Menarik acara dari terbit", "event.update": "Mengubah acara",
   "event.seat.add": "Menambah posisi acara", "event.seat.remove": "Menghapus posisi acara", "event.team.add": "Menambah tim ke acara", "event.team.remove": "Menghapus tim dari acara",
   "group.create": "Membuat kelompok", "group.update": "Mengubah kelompok", "group.delete": "Menghapus kelompok",
@@ -46,18 +51,6 @@ const LABELS: Record<string, string> = {
   "user.create": "Membuat akun", "user.update": "Mengubah akun", "user.deactivate": "Menonaktifkan akun", "user.password.change": "Mengganti kata sandi",
 };
 export const actionLabel = (a: string) => LABELS[a] ?? a;
-
-/** Isi rapat tidak ikut tampil: kunci ini dibuang dari ringkasan untuk semua aksi rapat. */
-const HIDDEN_KEYS = new Set(["name", "title", "note", "participantId", "guests", "url"]);
-function detailOf(action: string, payload: unknown): string | null {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
-  const hide = action.startsWith("meeting.") || action.startsWith("attendance.");
-  const parts = Object.entries(payload as Record<string, unknown>)
-    .filter(([k, v]) => (!hide || !HIDDEN_KEYS.has(k)) && (typeof v === "string" || typeof v === "number" || typeof v === "boolean"))
-    .slice(0, 6)
-    .map(([k, v]) => `${k}: ${String(v).slice(0, 80)}`);
-  return parts.length ? parts.join(" · ") : null;
-}
 
 export const auditQuery = z.object({
   ...pagingQuery,
@@ -89,11 +82,19 @@ export async function listAuditLogs(u: AuthUser, q: z.infer<typeof auditQuery>) 
     prisma.auditLog.findMany({ where: { tenantId: u.tenantId, userId: { not: null } }, distinct: ["userId"], select: { userId: true }, take: 200 }),
     auditYears(u.tenantId),
   ]);
-  const names = await creatorNames([...rows.map((r) => r.userId), ...actors.map((a) => a.userId)]);
-  const items = rows.map((r) => ({
-    id: r.id, at: r.createdAt.toISOString(), user: r.userId ? names.get(r.userId) ?? "Pengguna dihapus" : "Sistem",
-    action: r.action, label: actionLabel(r.action), entity: r.entity, reason: r.reason, detail: detailOf(r.action, r.payload),
-  }));
+  const [names, roles, refs] = await Promise.all([
+    creatorNames([...rows.map((r) => r.userId), ...actors.map((a) => a.userId)]),
+    loadRoleLabels(rows.map((r) => r.userId).filter((x): x is string => !!x)),
+    loadRefs(u.tenantId, wantedOf(rows)),
+  ]);
+  const items = rows.map((r) => {
+    const d = describe(r, refs);
+    return {
+      id: r.id, at: r.createdAt.toISOString(), user: r.userId ? names.get(r.userId) ?? "Pengguna dihapus" : "Sistem",
+      role: r.userId ? roles.get(r.userId) ?? null : null,
+      action: r.action, label: actionLabel(r.action), target: d.target, how: d.how, reason: r.reason,
+    };
+  });
   const users = actors.map((a) => ({ id: a.userId as string, name: names.get(a.userId as string) ?? "Pengguna dihapus" })).sort((x, y) => x.name.localeCompare(y.name));
   return { ...pageOf(items, total, pg), options: { categories: CATEGORIES.map((c) => ({ key: c.key, label: c.label })), users, years } };
 }
