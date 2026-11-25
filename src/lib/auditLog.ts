@@ -105,6 +105,7 @@ async function eventOptions(tenantId: string, createdAt: Prisma.AuditLogWhereInp
       label: (x) => { const e = byId.get(x.id)!; return `${e.kind === "RAPAT" ? `Rapat ${e.group?.name ?? ""}`.trim() : e.title} · ${fmtDay(e.startsAt)}`; },
       labelTime: (x) => { const e = byId.get(x.id)!; return eventName({ kind: e.kind, title: e.title, startsAt: e.startsAt, group: e.group?.name ?? null }); },
       part: (x) => `${x.title} · ${fmtTime(x.startsAt)}`,
+      group: (x) => { const e = byId.get(x.id)!; return e.kind === "RAPAT" ? `Rapat ${e.group?.name ?? ""}`.trim() : e.title; },
       day: (x) => fmtDay(x.startsAt),
       dayKey: (x) => localParts(x.startsAt).date,
     },

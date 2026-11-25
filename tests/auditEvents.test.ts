@@ -48,3 +48,10 @@ test("nilai pilihan gabungan dipecah jadi id", () => {
   assert.deepEqual(eventIdsOf("a,b"), ["a", "b"]);
   assert.deepEqual(eventIdsOf("a"), ["a"]);
 });
+
+test("tiap pilihan punya kategori (nama acara tanpa tanggal): Ibadah Minggu satu kategori, kegiatan lain sesuai namanya", () => {
+  const o = buildEventOptions([I2, II, I, FELLOW], new Set(), fmt);
+  assert.deepEqual(o.map((x) => x.group), ["Ibadah Minggu", "Ibadah Minggu", "Fellowship"]);
+  const single = buildEventOptions([I], new Set(), fmt);
+  assert.equal(single[0]!.group, "Ibadah Minggu");
+});

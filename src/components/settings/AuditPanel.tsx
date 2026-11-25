@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Alert, FMonth, FilterBar, FSearch, FSelect, listCard } from "@/components/ui/Filters";
 import Pager from "@/components/ui/Pager";
 import { useDebounced, usePagedList } from "@/components/ui/usePagedList";
 import { monthRange, ymd } from "@/lib/ui";
 
 type Row = { id: string; at: string; user: string; role: string | null; action: string; label: string; target: string | null; how: string | null; reason: string | null };
-type Options = { categories: { key: string; label: string }[]; users: { id: string; name: string }[]; years: number[]; events: { value: string; label: string; parts?: { value: string; label: string; solo: boolean }[] }[] };
+type Options = { categories: { key: string; label: string }[]; users: { id: string; name: string }[]; years: number[]; events: { value: string; label: string; group: string; parts?: { value: string; label: string; solo: boolean }[] }[] };
 
 const stamp = (iso: string) => new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
 const TONE: Record<string, { bg: string; fg: string }> = {
@@ -24,6 +24,7 @@ export default function AuditPanel() {
   const [category, setCategory] = useState("");
   const [userId, setUserId] = useState("");
   const [eventId, setEventId] = useState("");
+  const [group, setGroup] = useState(""); // kategori acara (nama yang sama): hanya mempersempit daftar Acara di bawahnya
   const [part, setPart] = useState(""); // satu ibadah dari pilihan gabungan Ibadah Minggu I dan II; kosong = keduanya
   const def = monthRange(ymd(new Date()));
   const [from, setFrom] = useState(def.from);
@@ -32,9 +33,17 @@ export default function AuditPanel() {
   const list = usePagedList<Row, { options: Options }>("/api/v1/audit-logs", { search, category, userId, eventId: part || eventId, from, to });
   const opts = list.data?.options;
   const parts = opts?.events.find((x) => x.value === eventId)?.parts;
+  // kategori = nama acara tanpa tanggal, urut dari yang paling baru muncul; satu kategori memuat semua tanggalnya
+  const groups = useMemo(() => {
+    const n = new Map<string, number>();
+    for (const e of opts?.events ?? []) n.set(e.group, (n.get(e.group) ?? 0) + 1);
+    return [...n].map(([g, c]) => ({ value: g, label: `${g} (${c})` }));
+  }, [opts?.events]);
+  // dalam satu kategori nama acaranya tidak diulang di tiap baris, cukup tanggalnya
+  const shownEvents = group ? opts?.events.filter((e) => e.group === group).map((e) => ({ ...e, label: e.label.startsWith(`${group} · `) ? e.label.slice(group.length + 3) : e.label })) : opts?.events;
   const dateExtra = (from !== def.from ? 1 : 0) + (to !== def.to ? 1 : 0);
-  const dirty = !!(q || category || userId || eventId || dateExtra);
-  const reset = () => { setQ(""); setCategory(""); setUserId(""); setEventId(""); setPart(""); setFrom(def.from); setTo(def.to); };
+  const dirty = !!(q || category || userId || eventId || group || dateExtra);
+  const reset = () => { setQ(""); setCategory(""); setUserId(""); setEventId(""); setPart(""); setGroup(""); setFrom(def.from); setTo(def.to); };
 
   return (
     <div className="flex flex-col gap-4">
@@ -46,9 +55,10 @@ export default function AuditPanel() {
           <FSelect label="Pengguna" value={userId} onChange={setUserId} allLabel="Semua pengguna" options={opts?.users.map((x) => ({ value: x.id, label: x.name }))} />
         </>}>
         <FSearch value={q} onChange={setQ} placeholder="Jenis aktivitas atau alasan" />
-        <FMonth from={from} years={opts?.years} onRange={(f, t) => { setFrom(f); setTo(t); setEventId(""); setPart(""); }} />
+        <FMonth from={from} years={opts?.years} onRange={(f, t) => { setFrom(f); setTo(t); setEventId(""); setPart(""); setGroup(""); }} />
         <FSelect label="Jenis" value={category} onChange={setCategory} allLabel="Semua jenis" options={opts?.categories.map((c) => ({ value: c.key, label: c.label }))} />
-        <FSelect label="Acara" value={eventId} onChange={(v) => { setEventId(v); setPart(""); }} allLabel="Semua acara" options={opts?.events} width="w-64" />
+        <FSelect label="Nama acara" value={group} onChange={(v) => { setGroup(v); setEventId(""); setPart(""); }} allLabel="Semua nama" options={groups} width="w-56" />
+        <FSelect label={group ? "Tanggal" : "Acara"} value={eventId} onChange={(v) => { setEventId(v); setPart(""); }} allLabel={group ? "Pilih tanggal" : "Semua acara"} options={shownEvents} width="w-64" />
       </FilterBar>
 
       {parts && (

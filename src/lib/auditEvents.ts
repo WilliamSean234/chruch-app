@@ -9,12 +9,13 @@ import { sundayPair } from "./seatRules";
  */
 export type EventIn = { id: string; startsAt: Date; templateName: string | null; title: string };
 export type EventPart = { value: string; label: string; solo: boolean };
-export type EventOption = { value: string; label: string; parts?: EventPart[] };
+/** `group` = nama acara tanpa tanggal ("Ibadah Minggu", "Fellowship", "Rapat Pemuda"): acara bernama sama satu kategori, untuk menyaring daftar yang panjang. */
+export type EventOption = { value: string; label: string; group: string; parts?: EventPart[] };
 
 export function buildEventOptions(
   events: EventIn[],
   solo: Set<string>,
-  fmt: { label: (e: EventIn) => string; labelTime: (e: EventIn) => string; part: (e: EventIn) => string; day: (e: EventIn) => string; dayKey: (e: EventIn) => string },
+  fmt: { label: (e: EventIn) => string; labelTime: (e: EventIn) => string; part: (e: EventIn) => string; day: (e: EventIn) => string; dayKey: (e: EventIn) => string; group?: (e: EventIn) => string },
 ): EventOption[] {
   const items: { at: number; opt: EventOption; ev: EventIn[] }[] = [];
   const baseTitle = (t: string) => t.replace(/\s*[-–]?\s*(ii|i|2|1)$/i, "").trim() || t;
@@ -36,7 +37,7 @@ export function buildEventOptions(
       ev: [one, two],
       at: Math.min(one.startsAt.getTime(), two.startsAt.getTime()),
       opt: {
-        value: `${one.id},${two.id}`, label: `${base} · ${fmt.day(one)}`,
+        value: `${one.id},${two.id}`, label: `${base} · ${fmt.day(one)}`, group: base,
         parts: [one, two].map((e) => ({ value: e.id, label: fmt.part(e), solo: solo.has(e.id) })),
       },
     });
@@ -45,7 +46,7 @@ export function buildEventOptions(
     if (used.has(e.id)) continue;
     // Ibadah Minggu yang pasangannya tidak punya catatan: tetap ditulis "Ibadah Minggu · tanggal", tanpa I/II dan jam
     const sunday = !!e.templateName && !!sundayPair(e.templateName);
-    items.push({ at: e.startsAt.getTime(), ev: [e], opt: { value: e.id, label: sunday ? `${baseTitle(e.title)} · ${fmt.day(e)}` : fmt.label(e) } });
+    items.push({ at: e.startsAt.getTime(), ev: [e], opt: { value: e.id, label: sunday ? `${baseTitle(e.title)} · ${fmt.day(e)}` : fmt.label(e), group: sunday ? baseTitle(e.title) : fmt.group ? fmt.group(e) : fmt.label(e).replace(/\s·\s[^·]*$/, "") } });
   }
   // Tanpa jam. Hanya bila dua pilihan berlabel sama (mis. dua kegiatan sehari), jamnya ditambahkan agar bisa dibedakan.
   const seen = new Map<string, number>();
