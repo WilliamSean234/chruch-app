@@ -153,7 +153,7 @@ SHEETS = [
          note="Hanya untuk orang yang perlu login. Nama harus sama dengan di sheet Orang. Kata sandi TIDAK ditulis di sini: sistem membuat kata sandi sementara saat impor, dan orangnya wajib menggantinya saat login pertama. Superadmin dibuat manual.",
          cols=[("Nama orang", True, 26, "Sama persis dengan kolom Nama di sheet Orang.", LST("=lst_orang"), None),
                ("Email", True, 30, "Dipakai untuk login. Tidak boleh kembar.", None, None),
-               ("Role", True, 18, "Tanpa role = hanya melihat jadwal.", LST('"Tanpa role,Penjadwal,Admin Tim,Petugas Absen,Pelayan"'), None),
+               ("Role", True, 18, "Tanpa role = hanya melihat jadwal.", LST('"Tanpa role,Penjadwal,Admin Tim,Admin Jemaat,Petugas Absen,Pelayan"'), None),
                ("Tim yang dikelola", False, 22, "Wajib bila Role = Admin Tim.", LST("=lst_tim"), None)],
          data=AKUN, examples=AKUN[:2]),
     dict(name="TemplateAcara", tab="1B6B34", title="Template acara — pola acara berulang",

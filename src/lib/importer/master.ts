@@ -51,6 +51,7 @@ const DAYS: Record<string, number> = { minggu: 0, ahad: 0, senin: 1, selasa: 2, 
 const ROLE_MAP: Record<string, { code: string; label: string }> = {
   penjadwal: { code: "PENJADWAL", label: "Penjadwal" },
   "admin tim": { code: "ADMIN_TIM", label: "Admin Tim" },
+  "admin jemaat": { code: "ADMIN_JEMAAT", label: "Admin Jemaat" },
   "petugas absen": { code: "PETUGAS_ABSEN", label: "Petugas Absen" },
   pelayan: { code: "PELAYAN", label: "Pelayan" },
 };
@@ -335,7 +336,7 @@ export async function stageAkun(ctx: Ctx, st: MasterState, rows: Row[]) {
       if (["tanpa role", "-", "anggota", "tanpa"].includes(kx)) continue;
       if (kx === "superadmin") { errs.push("Superadmin tidak dibuat lewat impor. Buat manual dari halaman Orang."); continue; }
       const m = ROLE_MAP[kx];
-      if (!m) { errs.push(`Role "${x}" tidak dikenal (pilih: Penjadwal, Admin Tim, Petugas Absen, Pelayan, atau Tanpa role).`); continue; }
+      if (!m) { errs.push(`Role "${x}" tidak dikenal (pilih: Penjadwal, Admin Tim, Admin Jemaat, Petugas Absen, Pelayan, atau Tanpa role).`); continue; }
       if (!M.roleIds.has(m.code)) { errs.push(`Role ${m.label} belum ada di sistem. Jalankan seed.`); continue; }
       roles.push(m);
     }
