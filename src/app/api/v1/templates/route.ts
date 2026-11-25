@@ -11,7 +11,7 @@ export const GET = handle(async (req: Request) => {
   return NextResponse.json({ items: await listTemplates(u.tenantId) });
 });
 
-/** Mengelola template hanya untuk Superadmin (permission template.write). */
+/** Mengelola template untuk Superadmin dan Penjadwal (permission template.write). */
 export const POST = handle(async (req: Request) => {
   const u = await requireUser(req);
   requirePermission(u, "template.write");

@@ -15,7 +15,7 @@ const PERMISSIONS = [
   "master.write", // TeamType, Ministry, Room, lookup (hanya Superadmin)
   "person.write", // lihat data lengkap orang dan atur pelayanannya
   "person.manage", // tambah dan ubah data jemaat (Admin Jemaat dan Superadmin)
-  "template.write", // hanya Superadmin
+  "template.write", // Superadmin dan Penjadwal
   "event.write",
   "assignment.write",
   "rehearsal.write",
@@ -34,6 +34,7 @@ const ROLES: { code: string; name: string; isSuperadmin?: boolean; permissions: 
     name: "Penjadwal",
     permissions: [
       "person.write",
+      "template.write",
       "event.write",
       "assignment.write",
       "rehearsal.write",

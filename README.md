@@ -91,7 +91,7 @@ supaya seed dummy menolak berjalan.
 - [x] W2T1 Person dan lookup (posisi, CG, komunitas, ruangan)
 - [x] W2T2 Tim, posisi pelayanan, ruangan
 - [x] W2T3 Kemampuan orang (PersonMinistry) dan akun login
-- [x] W3T1 Template acara (khusus Superadmin)
+- [x] W3T1 Template acara (Superadmin dan Penjadwal)
 - [x] W3T2 Generate acara DRAFT dari template (termasuk Sabtu ke-4)
 - [x] W3T3 Edit acara: waktu, ruangan, tim dan kursi dinamis
 - [x] W4T1 Layanan Booking (cek, buat, lepas, terjemahan error 23P01)
