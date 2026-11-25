@@ -24,6 +24,7 @@
     "db:sync-tki": "tsx scripts/sync-tki.ts",
     "db:encrypt-minutes": "tsx scripts/encrypt-minutes.ts",
     "db:check-key": "tsx scripts/check-enc-key.ts",
+    "db:reset-bad-minutes": "tsx scripts/reset-unreadable-minutes.ts",
     "vercel-build": "prisma generate && node scripts/migrate-deploy.js && next build"
   },
   "prisma": {
