@@ -228,6 +228,7 @@ async function onlineMeetingView(e: MeetingRow) {
 }
 
 export async function getMeeting(u: AuthUser, id: string) {
+  if (!(await canSeeMeetingSchedule(u))) throw notFound("Rapat"); // bukan anggota kelompok mana pun dan bukan penjadwal: rapat tidak terlihat sama sekali, sama seperti daftarnya
   return toDto(u, await loadMeeting(u, id));
 }
 

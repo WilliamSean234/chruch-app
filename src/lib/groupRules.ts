@@ -28,3 +28,13 @@ export function canManageGroupPositions(o: { isAdminTimMember: boolean; isSupera
   if (o.isAdminTimMember) return true;
   return o.isSuperadmin && !o.groupHasAdminTim;
 }
+
+/**
+ * Apakah perubahan jabatan seorang anggota memberi atau mencabut Admin Tim? `adminIds` = id jabatan Admin Tim kelompok itu.
+ * Perubahan seperti ini tidak boleh dilakukan hanya karena punya hak "kelola anggota": pemegang jabatan lain bisa menaikkan dirinya
+ * sendiri menjadi Admin Tim, atau mencopot Admin Tim yang sebenarnya.
+ */
+export function adminTimChanged(adminIds: string[], before: string[], after: string[]): boolean {
+  const admin = new Set(adminIds);
+  return before.some((id) => admin.has(id)) !== after.some((id) => admin.has(id));
+}

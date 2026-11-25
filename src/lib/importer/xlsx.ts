@@ -2,6 +2,11 @@ import { inflateRawSync } from "node:zlib";
 
 /** Pembaca .xlsx minimal (zip + XML), tanpa dependensi. Cukup untuk membaca teks, angka, tanggal dan jam per sel. */
 
+// Batas isi setelah dibuka: file zip kecil bisa mengembang menjadi gigabita ("zip bomb") dan menghabiskan memori server.
+const MAX_ENTRIES = 2_000;
+const MAX_ENTRY_BYTES = 40 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 120 * 1024 * 1024;
+
 function unzip(buf: Buffer): Map<string, Buffer> {
   let eocd = -1;
   for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65_557); i--) {
@@ -9,6 +14,8 @@ function unzip(buf: Buffer): Map<string, Buffer> {
   }
   if (eocd < 0) throw new Error("Bukan file zip/xlsx.");
   const count = buf.readUInt16LE(eocd + 10);
+  if (count > MAX_ENTRIES) throw new Error("File terlalu banyak isinya.");
+  let total = 0;
   let p = buf.readUInt32LE(eocd + 16);
   const out = new Map<string, Buffer>();
   for (let n = 0; n < count; n++) {
@@ -24,7 +31,10 @@ function unzip(buf: Buffer): Map<string, Buffer> {
     if (name.endsWith("/")) continue;
     const dataStart = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
     const raw = buf.subarray(dataStart, dataStart + compSize);
-    out.set(name, method === 0 ? raw : inflateRawSync(raw));
+    const data = method === 0 ? raw : inflateRawSync(raw, { maxOutputLength: MAX_ENTRY_BYTES }); // melebihi batas: galat, bukan memori habis
+    total += data.length;
+    if (total > MAX_TOTAL_BYTES) throw new Error("Isi file terlalu besar setelah dibuka.");
+    out.set(name, data);
   }
   return out;
 }
