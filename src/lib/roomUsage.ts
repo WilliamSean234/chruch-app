@@ -1,5 +1,5 @@
 import { prisma } from "./prisma";
-import { openTitle } from "./meetingCrypto";
+import { openTitleSafe } from "./meetingCrypto";
 import { badRequest, notFound } from "./errors";
 import { roomConflict } from "./booking";
 import { DATE_RE, TIME_RE, zonedToUtc } from "./time";
@@ -43,7 +43,7 @@ export async function roomUsage(tenantId: string, date: string, seeDrafts = true
         const e = evById.get(b.sourceId);
         if (!e) return [];
         const meeting = e.kind === "RAPAT";
-        return [{ kind: "EVENT", eventId: e.id, title: meeting ? meetingPublicTitle(e.group?.name ?? "", openTitle(e.id, e.title), e.showTopic) : e.title, number: e.number, status: e.status, seq: null, startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString(), meeting }];
+        return [{ kind: "EVENT", eventId: e.id, title: meeting ? meetingPublicTitle(e.group?.name ?? "", openTitleSafe(e.id, e.title), e.showTopic) : e.title, number: e.number, status: e.status, seq: null, startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString(), meeting }];
       }
       const r = rhById.get(b.sourceId);
       return r ? [{ kind: "REHEARSAL", eventId: r.eventId, title: r.event.title, number: r.event.number, status: r.event.status, seq: r.seq, startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString() }] : [];

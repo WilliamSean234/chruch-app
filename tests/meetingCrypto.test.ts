@@ -45,3 +45,15 @@ test("openMeetingRow membuka judul, alasan batal, dan tautan sekaligus", () => {
   assert.deepEqual(o.links[0], { id: "l", title: "T", url: "U" });
   assert.equal(o.other, 1);
 });
+
+test("mode lenient: isi yang gagal dibuka diganti penanda, mode ketat melempar galat", () => {
+  const t = m.sealTitle("eA", "Topik");
+  const row = { id: "eB", title: t, cancelReason: m.sealReason("eB", "x"), links: [{ ...m.sealLink("eA", { title: "T", url: "U" }) }] }; // dienkripsi untuk rapat lain = gagal dibuka
+  assert.throws(() => m.openMeetingRow(row));
+  const o = m.openMeetingRow(row, true);
+  assert.equal(o.title, m.UNREADABLE);
+  assert.equal(o.cancelReason, "x"); // yang benar tetap terbuka
+  assert.equal(o.links[0].url, m.UNREADABLE);
+  assert.equal(m.openTitleSafe("eB", t), m.UNREADABLE);
+  assert.equal(m.openTitleSafe("eB", "teks lama"), "teks lama");
+});

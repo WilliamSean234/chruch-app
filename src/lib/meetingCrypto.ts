@@ -1,4 +1,4 @@
-import { decryptText, encryptText } from "./fieldCrypto";
+import { decryptText, encryptText, isEncrypted } from "./fieldCrypto";
 
 /**
  * Isi rapat yang tersimpan terenkripsi di database (kunci MINUTES_ENC_KEY, lihat fieldCrypto.ts): judul atau topik rapat,
@@ -22,12 +22,23 @@ export const openGuest = (eventId: string, v: string | null) => (v ? decryptText
 export const sealNote = (eventId: string, v: string | null | undefined) => (v ? encryptText(v, sc(eventId), "note") : null);
 export const openNote = (eventId: string, v: string | null) => (v ? decryptText(v, sc(eventId), "note") : v);
 
-/** Baris rapat dari database → bentuk terbaca (judul, alasan batal, tautan). Dipakai di semua tempat yang membaca rapat. */
-export function openMeetingRow<T extends { id: string; title: string; cancelReason: string | null; links?: { title: string; url: string }[] }>(e: T): T {
+/** Pengganti isi yang gagal dibuka di daftar dan kalender (kunci salah atau data rusak), supaya satu rapat bermasalah tidak merusak seluruh halaman. */
+export const UNREADABLE = "🔒 isi tidak bisa dibuka";
+const safe = (f: () => string): string => { try { return f(); } catch { return UNREADABLE; } };
+
+/** Seperti openTitle tetapi tidak melempar galat: untuk daftar, kalender, dan label bentrok ruangan. */
+export const openTitleSafe = (eventId: string, v: string) => (isEncrypted(v) ? safe(() => openTitle(eventId, v)) : v);
+
+/**
+ * Baris rapat dari database → bentuk terbaca (judul, alasan batal, tautan). Dipakai di semua tempat yang membaca rapat.
+ * `lenient`: isi yang gagal dibuka diganti UNREADABLE (untuk daftar); tanpa itu galatnya dilempar (halaman rapat, ubah, notulen).
+ */
+export function openMeetingRow<T extends { id: string; title: string; cancelReason: string | null; links?: { title: string; url: string }[] }>(e: T, lenient = false): T {
+  const w = lenient ? safe : (f: () => string) => f();
   return {
     ...e,
-    title: openTitle(e.id, e.title),
-    cancelReason: openReason(e.id, e.cancelReason),
-    ...(e.links ? { links: e.links.map((l) => openLink(e.id, l)) } : {}),
+    title: w(() => openTitle(e.id, e.title)),
+    cancelReason: e.cancelReason ? w(() => openReason(e.id, e.cancelReason) as string) : e.cancelReason,
+    ...(e.links ? { links: e.links.map((l) => ({ ...l, title: w(() => openLink(e.id, l).title), url: w(() => openLink(e.id, l).url) })) } : {}),
   };
 }

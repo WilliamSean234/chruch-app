@@ -51,7 +51,7 @@ export function decryptText(stored: string, scope: string, field: string): strin
   try {
     return Buffer.concat([d.update(buf.subarray(28)), d.final()]).toString("utf8");
   } catch {
-    throw new ApiError(500, "ENC_DECRYPT_FAILED", "Isi notulen tidak bisa dibuka: kunci enkripsi berbeda dari yang dipakai saat menyimpan, atau datanya rusak.");
+    throw new ApiError(500, "ENC_DECRYPT_FAILED", "Isi rapat atau notulen tidak bisa dibuka: kunci enkripsi (MINUTES_ENC_KEY) di server berbeda dari yang dipakai saat menyimpan, atau datanya rusak.");
   }
 }
 

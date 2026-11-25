@@ -13,7 +13,7 @@ import { meetingMemberTitle, meetingPublicTitle } from "./meetingLabel";
 import { pageOf, pagingQuery, resolvePaging } from "./paging";
 import { eventYears } from "./years";
 import { randomUUID } from "node:crypto";
-import { openGuest, openMeetingRow, openNote, openTitle, sealGuest, sealLink, sealNote, sealReason, sealTitle } from "./meetingCrypto";
+import { openGuest, openMeetingRow, openNote, openTitleSafe, sealGuest, sealLink, sealNote, sealReason, sealTitle } from "./meetingCrypto";
 import { describeFirst, expandDates, MAX_OCCURRENCES, PATTERNS, patternText, type Pattern } from "./recurrence";
 
 /**
@@ -245,7 +245,7 @@ export async function listMeetings(u: AuthUser, q: { from: string; to: string; g
     ? new Set((await prisma.groupMember.findMany({ where: { personId: u.personId, leftAt: null, groupId: { in: groupIds } }, select: { groupId: true } })).map((m) => m.groupId))
     : new Set<string>();
   const global = isGlobalScheduler(u);
-  return rows.filter((e): e is ListRow => !!e.group).map((e) => listItem(openMeetingRow(e), mine.has(e.group.id), global));
+  return rows.filter((e): e is ListRow => !!e.group).map((e) => listItem(openMeetingRow(e, true), mine.has(e.group.id), global));
 }
 
 export const meetingListQuery = z.object({
@@ -299,7 +299,7 @@ export async function listMeetingsPaged(u: AuthUser, q: z.infer<typeof meetingLi
     const hit = cand.filter((e) => {
       if (has(e.group?.name) || has(e.number) || has(e.room?.name)) return true;
       const titleVisible = global || e.showTopic || (!!e.groupId && myIds.includes(e.groupId));
-      return titleVisible && has(openTitle(e.id, e.title));
+      return titleVisible && has(openTitleSafe(e.id, e.title));
     });
     const ids = hit.slice(pg.skip, pg.skip + pg.take).map((e) => e.id);
     const found = ids.length ? await prisma.event.findMany({ where: { id: { in: ids } }, include: withGroup }) : [];
@@ -313,7 +313,7 @@ export async function listMeetingsPaged(u: AuthUser, q: z.infer<typeof meetingLi
     eventYears(u.tenantId, "RAPAT"),
   ]);
   const mine = new Set(myIds);
-  const items = rows.map((e) => listItem(openMeetingRow(e), mine.has(e.group.id), global));
+  const items = rows.map((e) => listItem(openMeetingRow(e, true), mine.has(e.group.id), global));
   return { ...pageOf(items, total, pg), options: { groups, rooms, years } };
 }
 
