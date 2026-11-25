@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { audit } from "./audit";
+import { ensureAdminTimPosition } from "./groupAdminTim";
 
 type Db = Prisma.TransactionClient;
 
@@ -35,6 +36,7 @@ export async function syncTkiGroup(db: Db, tenantId: string, opts: { only?: stri
     const nextOrder = groups.reduce((m, g) => Math.max(m, g.sortOrder), 0) + 1;
     group = await db.meetingGroup.create({ data: { tenantId, name: "TKI", sortOrder: nextOrder }, select: { id: true, name: true, sortOrder: true } });
     await audit({ tenantId, userId: opts.userId ?? null, action: "group.create", entity: "MeetingGroup", entityId: group.id, payload: { name: group.name, auto: "TKI" } }, db);
+    await ensureAdminTimPosition(db, group.id);
   }
 
   const members = await db.groupMember.findMany({ where: { groupId: group.id, personId: { in: [...people.keys()] } }, select: { id: true, personId: true, leftAt: true } });

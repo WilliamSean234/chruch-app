@@ -1,6 +1,7 @@
 import { prisma } from "../prisma";
 import { k, type Ctx } from "./common";
 import { BASE_POSITION, type GroupState, type Grp } from "./groups";
+import { ADMIN_TIM_CAPS, ADMIN_TIM_POSITION, isAdminTimName } from "../groupRules";
 
 /** Muat kelompok, jabatan, dan anggota yang sudah ada supaya sheet bisa dicocokkan dan data dobel dilewati. */
 export async function loadGroups(tenantId: string): Promise<GroupState> {
@@ -40,10 +41,13 @@ export async function flushGroups(ctx: Ctx, gs: GroupState) {
           await tx.groupPosition.createMany({
             data: newPositions.map(({ g, p }) => ({
               id: p.id, groupId: g.id, name: p.name, sortOrder: p.sortOrder, seats: p.seats,
-              canSchedule: p.caps.schedule, canWriteMinutes: p.caps.write, canFinalize: p.caps.finalize, canManageMembers: p.caps.manage,
+              canSchedule: isAdminTimName(p.name) || p.caps.schedule, canWriteMinutes: isAdminTimName(p.name) || p.caps.write, canFinalize: isAdminTimName(p.name) || p.caps.finalize, canManageMembers: isAdminTimName(p.name) || p.caps.manage, // Admin Tim selalu berhak penuh
             })),
           });
         }
+        // Setiap kelompok baru wajib punya jabatan Admin Tim, juga bila file impor tidak memuatnya.
+        const lacking = newGroups.filter((g) => ![...g.positions.values()].some((p) => isAdminTimName(p.name)));
+        if (lacking.length) await tx.groupPosition.createMany({ data: lacking.map((g) => ({ groupId: g.id, name: ADMIN_TIM_POSITION, sortOrder: 0, seats: null, ...ADMIN_TIM_CAPS })) });
         if (newMembers.length) await tx.groupMember.createMany({ data: newMembers.map(({ g, m }) => ({ id: m.id, groupId: g.id, personId: m.personId })) });
         for (const { m } of rejoin) {
           await tx.groupMember.update({ where: { id: m.id }, data: { leftAt: null, joinedAt: new Date() } });

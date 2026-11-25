@@ -210,7 +210,7 @@ function RoleDialog({ acc, teams, isSuper, self, onClose, patch, onDone }: { acc
           </Field>
         )}
         {isEbmTeam && (
-        <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3.5 py-3 text-xs font-medium leading-relaxed text-[var(--ink-2)]">Admin Tim EBM otomatis menjadi anggota kelompok EBM dengan akses penuh: menjadwalkan rapat, menulis dan memfinalkan notulen, serta mengelola anggota kelompok.</p>
+        <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3.5 py-3 text-xs font-medium leading-relaxed text-[var(--ink-2)]">Admin Tim EBM otomatis menjadi anggota kelompok EBM dengan jabatan Admin Tim (akses penuh): menjadwalkan rapat, menulis dan memfinalkan notulen, serta mengelola anggota kelompok.</p>
       )}
         {self && <p className="text-xs font-medium text-[var(--ink-2)]">Ini akun Anda sendiri: role Superadmin tidak bisa dicabut dari sini.</p>}
         {error && <p role="alert" className="rounded-xl bg-[#fdecec] px-3.5 py-2.5 text-sm font-semibold text-[#a12b2b]">{error}</p>}

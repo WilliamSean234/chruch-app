@@ -232,7 +232,7 @@ function AccountSection({ person, teams, isSuper, onChanged }: { person: PersonD
         </Field>
       )}
       {isEbmTeam && (
-        <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3.5 py-3 text-xs font-medium leading-relaxed text-[var(--ink-2)]">Admin Tim EBM otomatis menjadi anggota kelompok EBM dengan akses penuh: menjadwalkan rapat, menulis dan memfinalkan notulen, serta mengelola anggota kelompok.</p>
+        <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3.5 py-3 text-xs font-medium leading-relaxed text-[var(--ink-2)]">Admin Tim EBM otomatis menjadi anggota kelompok EBM dengan jabatan Admin Tim (akses penuh): menjadwalkan rapat, menulis dan memfinalkan notulen, serta mengelola anggota kelompok.</p>
       )}
     </>
   );

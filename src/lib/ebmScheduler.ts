@@ -2,14 +2,10 @@ import type { Prisma } from "@prisma/client";
 import { audit } from "./audit";
 import { EBM_GROUP } from "./ebmGroup";
 import { teamKind } from "./seatRules";
+import { ensureAdminTimPosition } from "./groupAdminTim";
+import { ADMIN_TIM_POSITION } from "./groupRules";
 
 type Db = Prisma.TransactionClient;
-
-/** Jabatan Admin Tim EBM di kelompok EBM: akses penuh (menjadwalkan rapat, menulis dan memfinalkan notulen, mengelola anggota). */
-export const EBM_ADMIN_POSITION = "Admin Tim EBM";
-/** Nama jabatan lama (hanya boleh menjadwalkan rapat). Bila ada, diubah di tempat menjadi jabatan penuh di atas. */
-const LEGACY_POSITION = "Penjadwal EBM";
-const FULL = { canSchedule: true, canWriteMinutes: true, canFinalize: true, canManageMembers: true };
 
 /** Apakah tim ini tim EBM? Dipakai untuk menentukan Admin Tim EBM. */
 export async function isEbmTeam(db: Db | typeof import("./prisma").prisma, tenantId: string, teamTypeId: string | null | undefined) {
@@ -19,9 +15,8 @@ export async function isEbmTeam(db: Db | typeof import("./prisma").prisma, tenan
 }
 
 /**
- * Masukkan orang ke kelompok EBM dengan jabatan "Admin Tim EBM" (akses penuh di kelompok itu).
- * Kelompok dan jabatannya dibuat bila belum ada; jabatan lama "Penjadwal EBM" dinaikkan di tempat; anggota yang sudah keluar
- * dimasukkan lagi. Jabatan lain milik orangnya tidak diubah.
+ * Masukkan orang ke kelompok EBM dengan jabatan wajib "Admin Tim" (akses penuh di kelompok itu).
+ * Kelompok dan jabatannya dibuat bila belum ada; anggota yang sudah keluar dimasukkan lagi. Jabatan lain milik orangnya tidak diubah.
  */
 export async function grantEbmAdmin(db: Db, tenantId: string, personId: string, userId: string | null) {
   const groups = await db.meetingGroup.findMany({ where: { tenantId, deletedAt: null }, select: { id: true, name: true, sortOrder: true } });
@@ -32,15 +27,7 @@ export async function grantEbmAdmin(db: Db, tenantId: string, personId: string, 
     await audit({ tenantId, userId, action: "group.create", entity: "MeetingGroup", entityId: group.id, payload: { name: group.name, auto: "EBM" } }, db);
   }
 
-  let position = await db.groupPosition.findFirst({ where: { groupId: group.id, name: EBM_ADMIN_POSITION } });
-  if (!position) {
-    const legacy = await db.groupPosition.findFirst({ where: { groupId: group.id, name: LEGACY_POSITION } });
-    position = legacy
-      ? await db.groupPosition.update({ where: { id: legacy.id }, data: { name: EBM_ADMIN_POSITION, deletedAt: null, ...FULL } })
-      : await db.groupPosition.create({ data: { groupId: group.id, name: EBM_ADMIN_POSITION, sortOrder: 50, seats: null, ...FULL } });
-  } else if (position.deletedAt) {
-    position = await db.groupPosition.update({ where: { id: position.id }, data: { deletedAt: null } });
-  }
+  const position = await ensureAdminTimPosition(db, group.id);
 
   let member = await db.groupMember.findUnique({ where: { groupId_personId: { groupId: group.id, personId } } });
   if (!member) member = await db.groupMember.create({ data: { groupId: group.id, personId } });
@@ -49,7 +36,7 @@ export async function grantEbmAdmin(db: Db, tenantId: string, personId: string, 
   const had = await db.groupMemberPosition.findUnique({ where: { memberId_positionId: { memberId: member.id, positionId: position.id } } });
   if (had) return false;
   await db.groupMemberPosition.create({ data: { memberId: member.id, positionId: position.id } });
-  await audit({ tenantId, userId, action: "group.member.positions", entity: "MeetingGroup", entityId: group.id, reason: "Otomatis: Admin Tim EBM", payload: { personId, position: EBM_ADMIN_POSITION } }, db);
+  await audit({ tenantId, userId, action: "group.member.positions", entity: "MeetingGroup", entityId: group.id, reason: "Otomatis: Admin Tim EBM", payload: { personId, position: ADMIN_TIM_POSITION } }, db);
   return true;
 }
 

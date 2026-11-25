@@ -18,7 +18,7 @@ type GroupRow = { id: string; name: string; quorumMin: number | null; memberCoun
 type Position = { id: string; name: string; seats: number | null; filled: number; canSchedule: boolean; canWriteMinutes: boolean; canFinalize: boolean; canManageMembers: boolean };
 type Member = { id: string; personId: string; name: string; title: string | null; positionIds: string[]; ebmMinistryIds?: string[] };
 type EbmInfo = { canEdit: boolean; ministries: { id: string; name: string }[] };
-type Detail = { id: string; name: string; quorumMin: number | null; ebm: EbmInfo | null; canAdmin: boolean; canManageMembers: boolean; positions: Position[]; members: Member[] };
+type Detail = { id: string; name: string; quorumMin: number | null; ebm: EbmInfo | null; canAdmin: boolean; canManageMembers: boolean; hasAdminTim: boolean; positions: Position[]; members: Member[] };
 type PersonHit = { id: string; name: string; title: string | null };
 
 const CAPS: { key: "canSchedule" | "canWriteMinutes" | "canFinalize" | "canManageMembers"; head: string; label: string; hint: string }[] = [
@@ -42,6 +42,16 @@ function SeatBadge({ p, text }: { p: Position; text: string }) {
 
 function Rule({ children }: { children: React.ReactNode }) {
   return <div className="flex items-center gap-2.5"><span className={eyebrow}>{children}</span><span className="h-px flex-1 bg-[#e8e4d6]" /></div>;
+}
+
+const isAdminTim = (name: string) => name.trim().toLowerCase() === "admin tim";
+
+/** Superadmin yang menjadikan Admin Tim pertama kehilangan hak mengatur anggota kelompok itu: minta persetujuan dulu. */
+async function confirmFirstAdminTim(detail: Detail, positionIds: string[], who: string) {
+  if (!detail.canAdmin || detail.hasAdminTim) return true;
+  const at = detail.positions.find((p) => isAdminTim(p.name));
+  if (!at || !positionIds.includes(at.id)) return true;
+  return askConfirm(`Jadikan ${who} Admin Tim ${detail.name}? Sesudah ini anggota kelompok hanya bisa diatur Admin Tim. Anda tidak bisa lagi menambah, mengeluarkan, atau mengubah jabatan anggota kelompok ini.`, { confirmLabel: "Ya, jadikan" });
 }
 
 export default function GroupBoard({ isSuperadmin, canAddPerson }: { isSuperadmin: boolean; canAddPerson: boolean }) {
@@ -93,7 +103,7 @@ export default function GroupBoard({ isSuperadmin, canAddPerson }: { isSuperadmi
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2A2F8F" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="flex-none"><rect x="5" y="11" width="14" height="9" rx="2.5" /><path d="M8 11V8a4 4 0 018 0v3" /></svg>
         <span className="text-[13.5px] font-semibold leading-relaxed text-[var(--primary-ink)]">
           {isSuperadmin
-            ? <>Isi rapat (notulen dan tautan dokumen) hanya terbaca oleh anggota kelompok. Anda melihat halaman ini sebagai <b>Superadmin</b>: bisa mengatur kelompok, jabatan, dan anggota, tetapi tidak bisa membaca notulen. Setiap perubahan tercatat di Log aktivitas.</>
+            ? <>Isi rapat (notulen dan tautan dokumen) hanya terbaca oleh anggota kelompok. Anda melihat halaman ini sebagai <b>Superadmin</b>: bisa mengatur kelompok dan jabatan, serta memasukkan <b>Admin Tim</b> pertama di tiap kelompok. Sesudah itu anggota kelompok diurus Admin Tim, dan Anda tidak bisa membaca notulen. Setiap perubahan tercatat di Log aktivitas.</>
             : <>Isi rapat (notulen dan tautan dokumen) hanya terbaca oleh anggota kelompok. Di sini Anda hanya melihat kelompok yang Anda ikuti.</>}
         </span>
       </div>
@@ -186,7 +196,7 @@ export default function GroupBoard({ isSuperadmin, canAddPerson }: { isSuperadmi
                               : granted.map((c) => <span key={c.key} className="whitespace-nowrap rounded-full bg-[#e3f3e7] px-2.5 py-[3px] text-xs font-bold text-[#1b6b34]">{c.label.replace(/^(Menjadwalkan|Menulis|Memfinalkan|Mengelola)/, (m) => ({ Menjadwalkan: "Jadwalkan", Menulis: "Tulis", Memfinalkan: "Finalkan", Mengelola: "Kelola" } as Record<string, string>)[m])}</span>)}
                           </span>
                         </div>
-                        {detail.canAdmin && <button type="button" onClick={() => setModal({ t: "position", pos: p })} className="h-8 flex-none rounded-lg border border-[var(--line)] bg-white px-3 text-xs font-semibold text-[var(--ink-2)] active:bg-[var(--bg)]">Ubah</button>}
+                        {detail.canAdmin && (isAdminTim(p.name) ? <span className="flex-none text-xs font-bold text-[var(--ink-2)]">Wajib</span> : <button type="button" onClick={() => setModal({ t: "position", pos: p })} className="h-8 flex-none rounded-lg border border-[var(--line)] bg-white px-3 text-xs font-semibold text-[var(--ink-2)] active:bg-[var(--bg)]">Ubah</button>)}
                       </li>
                     );
                   })}
@@ -203,7 +213,7 @@ export default function GroupBoard({ isSuperadmin, canAddPerson }: { isSuperadmi
                         {CAPS.map((c) => (
                           <span key={c.key} className={`min-w-11 justify-self-start rounded-full px-3 py-[3px] text-center text-[12.5px] font-bold ${p[c.key] ? "bg-[#e3f3e7] text-[#1b6b34]" : "bg-[var(--bg)] text-[var(--ink-2)]"}`}>{p[c.key] ? "Ya" : "–"}</span>
                         ))}
-                        {detail.canAdmin ? <button type="button" onClick={() => setModal({ t: "position", pos: p })} className="h-8 rounded-lg border border-[var(--line)] bg-white text-xs font-semibold text-[var(--ink-2)] hover:bg-[var(--bg)]">Ubah</button> : <span />}
+                        {detail.canAdmin ? (isAdminTim(p.name) ? <span className="text-center text-xs font-bold text-[var(--ink-2)]">Wajib</span> : <button type="button" onClick={() => setModal({ t: "position", pos: p })} className="h-8 rounded-lg border border-[var(--line)] bg-white text-xs font-semibold text-[var(--ink-2)] hover:bg-[var(--bg)]">Ubah</button>) : <span />}
                       </div>
                     ))}
                   </div>
@@ -220,6 +230,13 @@ export default function GroupBoard({ isSuperadmin, canAddPerson }: { isSuperadmi
                   {detail.canManageMembers && <button type="button" onClick={() => setModal({ t: "add" })} className="flex h-10 items-center gap-2 rounded-xl bg-[var(--primary)] px-4 text-[13.5px] font-bold text-white hover:brightness-110">＋ Tambah anggota</button>}
                 </div>
                 <MemberList detail={detail} posName={posName} onEdit={(m) => setModal({ t: "member", m })} onChanged={reload} />
+                {detail.canAdmin && (
+                  <span className="rounded-xl bg-[#f1f2fd] px-3.5 py-2.5 text-[12.5px] font-semibold leading-relaxed text-[var(--primary-ink)]">
+                    {detail.hasAdminTim
+                      ? "Anggota kelompok ini diurus Admin Tim. Anda tidak lagi bisa menambah, mengeluarkan, atau mengubah jabatan anggotanya."
+                      : "Kelompok ini belum punya Admin Tim. Masukkan satu anggota dengan jabatan Admin Tim; sesudah itu anggota kelompok diurus Admin Tim dan Anda tidak bisa lagi mengubahnya."}
+                  </span>
+                )}
                 <span className="text-[12.5px] font-medium leading-relaxed text-[var(--ink-2)]">Anggota yang keluar tidak lagi bisa membuka notulen, tetapi riwayat keanggotaannya tetap tersimpan.</span>
               </div>
             </section>
@@ -522,6 +539,7 @@ function AddMemberDialog({ detail, canAddPerson, onClose, onDone }: { detail: De
 
   const save = async () => {
     if (!picked) return;
+    if (!(await confirmFirstAdminTim(detail, positionIds, fullName(picked)))) return;
     setBusy(true); setErr("");
     const r = await callApi("POST", `/api/v1/groups/${detail.id}/members`, { personId: picked.id, positionIds });
     setBusy(false);
@@ -575,6 +593,7 @@ function MemberDialog({ detail, member, onClose, onDone }: { detail: Detail; mem
   const [err, setErr] = useState("");
 
   const save = async () => {
+    if (!(await confirmFirstAdminTim(detail, positionIds, fullName(member)))) return;
     setBusy(true); setErr("");
     const r = await callApi("PATCH", `/api/v1/groups/${detail.id}/members/${member.id}`, { positionIds });
     setBusy(false);

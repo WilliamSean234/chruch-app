@@ -3,7 +3,7 @@ import { prisma } from "./prisma";
 import { audit } from "./audit";
 import { badRequest, conflict, forbidden, notFound } from "./errors";
 import { can, isSuperadmin, teamScope, type AuthUser } from "./rbac";
-import { canEditGroupMembers } from "./groupRules";
+import { ADMIN_TIM_CAPS, ADMIN_TIM_POSITION, canEditGroupMembers, isAdminTimName } from "./groupRules";
 import { EBM_GROUP } from "./ebmGroup";
 import { teamKind } from "./seatRules";
 
@@ -11,8 +11,9 @@ import { teamKind } from "./seatRules";
  * Kelompok rapat (Majelis, Pengurus Pemuda, Tim EBM, ...).
  * Aturan dasarnya: isi rapat (notulen, dokumen) hanya terbaca oleh anggota kelompok. Superadmin dan Admin lain
  * yang bukan anggota TIDAK otomatis boleh membaca. Karena itu hak di sini dihitung dari keanggotaan dan jabatan,
- * bukan dari role global. Superadmin mengatur struktur (kelompok dan jabatan) dan keanggotaan (menambah, mengeluarkan, mengubah jabatan
- * anggota) di semua kelompok; mengelola rapat dan notulen hanya untuk anggota yang jabatannya berhak.
+ * bukan dari role global. Setiap kelompok punya jabatan wajib "Admin Tim" (akses penuh). Superadmin mengatur struktur (kelompok
+ * dan jabatan) dan memasukkan Admin Tim pertama; begitu ada yang memegang jabatan itu, anggota kelompok diurus Admin Tim dan
+ * Superadmin tidak lagi bisa menambah, mengeluarkan, atau mengubah jabatan anggota. Superadmin tidak membaca isi rapat.
  */
 
 export type GroupCaps = {
@@ -78,16 +79,25 @@ function requireSuperadmin(u: AuthUser) {
   if (!isSuperadmin(u)) throw forbidden("Hanya Superadmin yang boleh mengatur kelompok dan jabatan.");
 }
 
+/** Ada anggota aktif yang memegang jabatan wajib Admin Tim di kelompok ini? */
+async function hasAdminTim(groupId: string): Promise<boolean> {
+  const n = await prisma.groupMember.count({
+    where: { groupId, leftAt: null, person: { deletedAt: null }, positions: { some: { position: { name: ADMIN_TIM_POSITION, deletedAt: null } } } },
+  });
+  return n > 0;
+}
+
 /**
  * Boleh mengatur anggota kelompok ini (menambah, mengeluarkan, mengubah jabatan anggota)? Anggota yang jabatannya berhak
- * "kelola anggota", dan Superadmin di kelompok mana pun. Hak Superadmin tidak mencakup menjadwalkan rapat atau notulen.
+ * "kelola anggota" (Admin Tim selalu), dan Superadmin hanya selama kelompok belum punya Admin Tim.
  */
 async function canEditMembers(u: AuthUser, groupId: string): Promise<boolean> {
-  if (isSuperadmin(u)) return true;
-  return canEditGroupMembers({ isManagerMember: (await groupCaps(u, groupId)).canManageMembers, isSuperadmin: false });
+  const isManagerMember = (await groupCaps(u, groupId)).canManageMembers;
+  if (isManagerMember) return true;
+  return canEditGroupMembers({ isManagerMember, isSuperadmin: isSuperadmin(u), groupHasAdminTim: isSuperadmin(u) ? await hasAdminTim(groupId) : true });
 }
 async function requireManageMembers(u: AuthUser, groupId: string) {
-  if (!(await canEditMembers(u, groupId))) throw forbidden("Hanya Superadmin dan anggota yang jabatannya berhak mengatur anggota yang boleh mengubah anggota kelompok ini.");
+  if (!(await canEditMembers(u, groupId))) throw forbidden("Anggota kelompok ini diatur oleh Admin Tim kelompok. Superadmin hanya bisa memasukkan Admin Tim pertama.");
 }
 
 async function findGroup(u: AuthUser, id: string) {
@@ -173,6 +183,7 @@ export async function getGroup(u: AuthUser, id: string) {
     ebm: ebm ? { canEdit: ebm.canEdit, ministries: ebm.ministries } : null, // null = bukan kelompok EBM
     canAdmin: sa, // ubah nama/kuorum, kelola jabatan
     canManageMembers: await canEditMembers(u, id),
+    hasAdminTim: await hasAdminTim(id), // false = Superadmin masih boleh memasukkan Admin Tim pertama
     positions: positions.map((p) => ({ id: p.id, name: p.name, seats: p.seats, filled: filled.get(p.id) ?? 0, canSchedule: p.canSchedule, canWriteMinutes: p.canWriteMinutes, canFinalize: p.canFinalize, canManageMembers: p.canManageMembers })),
     members: ebm ? items.map((m) => ({ ...m, ebmMinistryIds: ebm.byPerson[m.personId] ?? [] })) : items,
   };
@@ -209,7 +220,7 @@ export async function createGroup(u: AuthUser, input: z.infer<typeof groupBody>)
   const g = await prisma.meetingGroup.create({
     data: {
       tenantId: u.tenantId, name: input.name, quorumMin: input.quorumMin ?? null, sortOrder: (last._max.sortOrder ?? 0) + 1,
-      positions: { create: [{ name: "Anggota", sortOrder: 99 }] }, // jabatan dasar tanpa hak khusus
+      positions: { create: [{ name: ADMIN_TIM_POSITION, sortOrder: 0, seats: null, ...ADMIN_TIM_CAPS }, { name: "Anggota", sortOrder: 99 }] }, // Admin Tim wajib ada; Anggota = jabatan dasar tanpa hak khusus
     },
   });
   await audit({ tenantId: u.tenantId, userId: u.userId, action: "group.create", entity: "MeetingGroup", entityId: g.id, payload: { name: g.name, quorumMin: g.quorumMin } });
@@ -243,6 +254,7 @@ export async function deleteGroup(u: AuthUser, id: string) {
 export async function createPosition(u: AuthUser, groupId: string, input: z.infer<typeof positionBody>) {
   requireSuperadmin(u);
   await findGroup(u, groupId);
+  if (isAdminTimName(input.name)) throw conflict("Jabatan Admin Tim sudah ada di setiap kelompok.");
   const dup = await prisma.groupPosition.findFirst({ where: { groupId, name: input.name } });
   if (dup) throw conflict("Jabatan itu sudah ada di kelompok ini.");
   const last = await prisma.groupPosition.aggregate({ where: { groupId, deletedAt: null, sortOrder: { lt: 99 } }, _max: { sortOrder: true } });
@@ -267,6 +279,8 @@ export async function updatePosition(u: AuthUser, groupId: string, positionId: s
   requireSuperadmin(u);
   await findGroup(u, groupId);
   const before = await findPosition(groupId, positionId);
+  if (isAdminTimName(before.name)) throw conflict("Jabatan Admin Tim wajib ada di setiap kelompok, jadi nama dan haknya tidak bisa diubah.");
+  if (input.name && isAdminTimName(input.name)) throw conflict("Nama Admin Tim dipakai jabatan wajib di setiap kelompok.");
   if (input.name && input.name !== before.name) {
     const dup = await prisma.groupPosition.findFirst({ where: { groupId, name: input.name, NOT: { id: positionId } } });
     if (dup) throw conflict("Jabatan itu sudah ada di kelompok ini.");
@@ -293,6 +307,7 @@ export async function deletePosition(u: AuthUser, groupId: string, positionId: s
   requireSuperadmin(u);
   await findGroup(u, groupId);
   const p = await findPosition(groupId, positionId);
+  if (isAdminTimName(p.name)) throw conflict("Jabatan Admin Tim wajib ada di setiap kelompok dan tidak bisa dihapus.");
   await prisma.$transaction([
     prisma.groupMemberPosition.deleteMany({ where: { positionId } }),
     prisma.groupPosition.update({ where: { id: positionId }, data: { deletedAt: new Date(), name: `${p.name} (dihapus ${positionId.slice(0, 6)})` } }),
