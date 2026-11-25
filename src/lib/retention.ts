@@ -4,6 +4,7 @@ export const RETENTION_DAYS = {
   emailToken: 30, // tautan verifikasi yang sudah terpakai atau kedaluwarsa
   registrationRejected: 90, // pendaftaran yang ditolak (menyimpan email pendaftar)
   registrationUnverified: 30, // pendaftaran yang emailnya tidak pernah diverifikasi (tidak bisa disetujui)
+  swapDecided: 180, // permintaan pengganti yang sudah diputuskan atau kedaluwarsa
   bookingReleased: 30, // jadwal orang/ruangan yang sudah dilepas (batal atau ganti orang)
 } as const;
 

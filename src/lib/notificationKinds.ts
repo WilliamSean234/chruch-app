@@ -1,5 +1,5 @@
 /** Jenis notifikasi dan untuk siapa. Aman dipakai di sisi browser (tanpa impor server). */
-export type Audience = "SEMUA" | "PELAYAN" | "PENJADWAL" | "KELOMPOK";
+export type Audience = "SEMUA" | "PELAYAN" | "PENJADWAL" | "PENGELOLA" | "KELOMPOK";
 
 export const NOTIF_KINDS = [
   { kind: "ULANG_TAHUN", audience: "SEMUA", label: "Ulang tahun jemaat", hint: "Pagi hari ketika ada jemaat yang berulang tahun. Satu pesan gabungan bila lebih dari satu orang; ulang tahun Anda sendiri tidak diberitahukan ke Anda." },
@@ -10,11 +10,13 @@ export const NOTIF_KINDS = [
   { kind: "PENJADWAL_KEHADIRAN", audience: "PENJADWAL", label: "Kehadiran belum diisi", hint: "Sekali setelah acara selesai, dan sekali lagi paling lama 3 hari kemudian." },
   { kind: "PENJADWAL_ATURAN", audience: "PENJADWAL", label: "Pelanggaran aturan baru", hint: "Hanya bila ada pelanggaran baru, maksimal sekali sehari." },
   { kind: "ONLINE_H1", audience: "SEMUA", label: "Pengingat ibadah online", hint: "Sore sebelum ibadah online yang tautannya untuk Anda (semua orang atau komunitas Anda). Penjadwal bisa mematikannya per acara. Tidak berisi tautan; buka di aplikasi." },
+  { kind: "TUKAR_MASUK", audience: "PENGELOLA", label: "Permintaan pengganti baru", hint: "Saat seorang pelayan meminta kursinya digantikan di tim Anda. Satu pesan per permintaan." },
+  { kind: "TUKAR_DITOLAK", audience: "PELAYAN", label: "Permintaan pengganti ditolak", hint: "Saat permintaan pengganti Anda ditolak. Bila disetujui, Anda menerima pemberitahuan jadwal diganti seperti biasa." },
   { kind: "KELOMPOK_H1", audience: "KELOMPOK", label: "Pengingat rapat kelompok", hint: "Sehari sebelum rapat atau acara kelompok Anda." },
 ] as const;
 
 export type NotifKind = (typeof NOTIF_KINDS)[number]["kind"];
-export const AUDIENCE_LABEL: Record<Audience, string> = { SEMUA: "Untuk semua", PELAYAN: "Sebagai pelayan", PENJADWAL: "Sebagai penjadwal", KELOMPOK: "Sebagai anggota kelompok" };
+export const AUDIENCE_LABEL: Record<Audience, string> = { SEMUA: "Untuk semua", PELAYAN: "Sebagai pelayan", PENJADWAL: "Sebagai penjadwal", PENGELOLA: "Sebagai pengelola jadwal (Penjadwal dan Admin Tim)", KELOMPOK: "Sebagai anggota kelompok" };
 
 const KINDS = new Set<string>(NOTIF_KINDS.map((k) => k.kind));
 export const isNotifKind = (v: string): v is NotifKind => KINDS.has(v);

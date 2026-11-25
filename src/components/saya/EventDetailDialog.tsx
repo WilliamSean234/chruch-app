@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { seatSections, type SeatLite, type TeamLite } from "@/lib/seatSections";
 import type { RehearsalEvent } from "@/lib/scheduleRows";
+import SwapRequestSection, { type SwapState } from "./SwapRequestSection";
 import { dayLong, hm, STATUS_LABEL } from "@/lib/ui";
 
 type Detail = {
@@ -19,6 +20,8 @@ export type DialogTarget = {
   eventId: string; title: string; kind: "SERVICE" | "REHEARSAL"; startsAt: string; endsAt: string; room: string; status: string; canAttend: boolean;
   /** Acara yang memakai sesi ini. Untuk ibadah: acaranya sendiri. */
   events: RehearsalEvent[];
+  /** Hanya baris ibadah milik sendiri: kursinya, boleh tidaknya minta pengganti, dan status permintaan terakhir. */
+  assignmentId?: string; role?: string; canSwap?: boolean; swap?: SwapState;
 };
 
 type Got = { id: string; res: "ok"; d: Detail } | { id: string; res: "gone" | "error" };
@@ -190,6 +193,10 @@ export default function EventDetailDialog({ target, myPersonId, onClose }: { tar
               </div>
             )}
           </>
+        )}
+
+        {target.kind === "SERVICE" && target.assignmentId && (target.canSwap || target.swap) && (
+          <SwapRequestSection assignmentId={target.assignmentId} role={target.role ?? "pelayan"} canSwap={!!target.canSwap} swap={target.swap ?? null} />
         )}
 
         {target.canAttend && <Link href={`/hadir/${target.eventId}`} className="flex h-11 items-center justify-center rounded-xl bg-[var(--primary)] px-4 text-sm font-extrabold text-white hover:brightness-110">Isi kehadiran</Link>}

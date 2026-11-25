@@ -7,6 +7,7 @@ const MIN = 60_000;
 /** Batas untuk aksi yang bisa disalahgunakan tetapi bukan login. Hitungannya memakai tabel pembatas login (kunci berawalan nama aksi). */
 export const LIMITS = {
   resend: { max: 10, windowMs: 15 * MIN, lockMs: 15 * MIN }, // kirim ulang verifikasi email, per alamat
+  swapRequest: { max: 10, windowMs: 60 * MIN, lockMs: 60 * MIN }, // minta pengganti, per akun
   pushTest: { max: 5, windowMs: 5 * MIN, lockMs: 5 * MIN }, // tombol tes notifikasi, per akun
 } as const satisfies Record<string, Policy>;
 

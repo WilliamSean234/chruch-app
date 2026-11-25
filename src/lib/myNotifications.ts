@@ -29,6 +29,7 @@ async function audiencesOf(u: AuthUser): Promise<Audience[]> {
   const out: Audience[] = ["SEMUA"]; // setiap pemilik akun
   if (u.personId) out.push("PELAYAN");
   if (can(u, "event.write")) out.push("PENJADWAL");
+  if (can(u, "assignment.write")) out.push("PENGELOLA"); // Penjadwal dan Admin Tim: menerima permintaan pengganti
   if (u.personId && (await prisma.groupMember.count({ where: { personId: u.personId, leftAt: null, group: { tenantId: u.tenantId, deletedAt: null } } })) > 0) out.push("KELOMPOK");
   return out;
 }

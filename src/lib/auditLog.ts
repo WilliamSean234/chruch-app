@@ -15,7 +15,7 @@ import { pageOf, pagingQuery, resolvePaging } from "./paging";
  * Isi rapat tetap rahasia: judul, nama peserta, tautan, dan isi notulen tidak pernah ditampilkan di sini (lihat auditDescribe.ts).
  */
 export const CATEGORIES: { key: string; label: string; prefixes: string[] }[] = [
-  { key: "event", label: "Jadwal acara", prefixes: ["event.", "rehearsal.", "template.", "assignment."] },
+  { key: "event", label: "Jadwal acara", prefixes: ["event.", "rehearsal.", "template.", "assignment.", "swap."] },
   { key: "meeting", label: "Rapat", prefixes: ["meeting."] },
   { key: "group", label: "Kelompok rapat", prefixes: ["group."] },
   { key: "person", label: "Orang dan pelayanan", prefixes: ["person.", "ministry.", "team.", "cg.", "positions.", "communities.", "cg-groups."] },
@@ -27,7 +27,7 @@ export const CATEGORIES: { key: string; label: string; prefixes: string[] }[] = 
 ];
 
 const LABELS: Record<string, string> = {
-  "assignment.set": "Mengatur petugas", "assignment.copy": "Menyalin personel antar acara", "assignment.upload": "Mengunggah jadwal tim", "person.alias": "Menyimpan ejaan nama jadwal", "attendance.guest": "Mencatat tamu ibadah", "attendance.batch": "Mencatat kehadiran ibadah per nama", "attendance.summary": "Mencatat jumlah kehadiran", "booking.override": "Menimpa bentrok jadwal",
+  "assignment.set": "Mengatur petugas", "swap.request": "Meminta pengganti", "swap.cancel": "Membatalkan permintaan pengganti", "swap.reject": "Menolak permintaan pengganti", "assignment.copy": "Menyalin personel antar acara", "assignment.upload": "Mengunggah jadwal tim", "person.alias": "Menyimpan ejaan nama jadwal", "attendance.guest": "Mencatat tamu ibadah", "attendance.batch": "Mencatat kehadiran ibadah per nama", "attendance.summary": "Mencatat jumlah kehadiran", "booking.override": "Menimpa bentrok jadwal",
   "cg.leaders": "Mengatur pemimpin CG", "person.ministries": "Mengubah pelayanan orang", "event.notify": "Memberi tahu pelayan",
   "positions.create": "Menambah posisi orang", "positions.update": "Mengubah posisi orang", "positions.delete": "Menghapus posisi orang",
   "communities.create": "Menambah komunitas", "communities.update": "Mengubah komunitas", "communities.delete": "Menghapus komunitas",

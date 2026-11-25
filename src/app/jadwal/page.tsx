@@ -3,6 +3,7 @@ import Fab from "@/components/ui/Fab";
 import { redirect } from "next/navigation";
 import AppShell, { currentUser } from "@/components/AppShell";
 import EventList from "@/components/jadwal/EventList";
+import SwapRequestsPanel from "@/components/jadwal/SwapRequestsPanel";
 import { can } from "@/lib/rbac";
 
 export default async function JadwalPage() {
@@ -20,6 +21,7 @@ export default async function JadwalPage() {
         </>
       }
     >
+      {can(u, "assignment.write") && <SwapRequestsPanel />}
       <EventList />
     </AppShell>
   );

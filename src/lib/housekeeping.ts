@@ -8,7 +8,7 @@ import { daysAgo, RETENTION_DAYS as R } from "./retention";
  * Tidak disentuh: log aktivitas (AuditLog), acara termasuk yang dibatalkan, kehadiran, notulen.
  */
 export async function pruneTransientData(tenantId: string, now = new Date()) {
-  const [idempotensi, tokenEmail, pendaftaran, jadwalDilepas] = await Promise.all([
+  const [idempotensi, tokenEmail, pendaftaran, jadwalDilepas, permintaanPengganti] = await Promise.all([
     prisma.idempotencyKey.deleteMany({ where: { tenantId, createdAt: { lt: daysAgo(now, R.idempotencyKey) } } }),
     prisma.emailToken.deleteMany({
       where: { tenantId, OR: [{ expiresAt: { lt: daysAgo(now, R.emailToken) } }, { usedAt: { lt: daysAgo(now, R.emailToken) } }] },
@@ -23,6 +23,7 @@ export async function pruneTransientData(tenantId: string, now = new Date()) {
       },
     }),
     prisma.booking.deleteMany({ where: { tenantId, deletedAt: { lt: daysAgo(now, R.bookingReleased) } } }),
+    prisma.swapRequest.deleteMany({ where: { tenantId, status: { not: "PENDING" }, createdAt: { lt: daysAgo(now, R.swapDecided) } } }),
   ]);
-  return { idempotensi: idempotensi.count, tokenEmail: tokenEmail.count, pendaftaran: pendaftaran.count, jadwalDilepas: jadwalDilepas.count };
+  return { idempotensi: idempotensi.count, tokenEmail: tokenEmail.count, pendaftaran: pendaftaran.count, jadwalDilepas: jadwalDilepas.count, permintaanPengganti: permintaanPengganti.count };
 }

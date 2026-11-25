@@ -11,6 +11,7 @@ import { can, canSeeDraftEvents, requirePermission, requireTeamAccess, type Auth
 import { nameKey } from "./names";
 import { afterResponse } from "./notify";
 import { notifySeatChange } from "./eventNotify";
+import { settleSwapsOnSeatChange } from "./swaps";
 
 export const assignBody = z.object({
   personId: z.string().uuid().nullable(), // null = kosongkan kursi
@@ -121,6 +122,7 @@ export async function assignCore(u: AuthUser, eventId: string, assignmentId: str
       if (seat.personId) await promoteOrphanOverrides(tx, u.tenantId, seat.personId, promoteIn);
     });
     announceSeat(seat, null, opts);
+    await settleSwapsOnSeatChange(u, assignmentId, seat.personId, null);
     return { warnings: opts.mirror === false ? [] : await mirrorToPair(u, seat, null) };
   }
 
@@ -179,6 +181,7 @@ export async function assignCore(u: AuthUser, eventId: string, assignmentId: str
   );
 
   announceSeat(seat, person.id, opts);
+  await settleSwapsOnSeatChange(u, assignmentId, seat.personId, person.id);
 
   if (found.length && body.override) {
     await audit({

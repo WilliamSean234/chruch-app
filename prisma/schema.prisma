@@ -419,6 +419,31 @@ model EventAssignment { // satu baris = satu kursi
   @@index([tenantId, personId])
 }
 
+/// Permintaan pelayan agar kursinya digantikan orang lain. Tidak mengubah jadwal sendiri: Penjadwal atau Admin Tim tim itu yang menetapkan penggantinya.
+/// Hanya kolom biasa (tanpa relasi) supaya tabel lain tidak ikut berubah; nama dan acaranya dibaca lewat id.
+model SwapRequest {
+  id                  String    @id @default(uuid())
+  tenantId            String
+  eventId             String
+  assignmentId        String
+  ministryId          String
+  teamTypeId          String
+  requesterPersonId   String
+  reason              String
+  suggestedName       String? // usulan pengganti, diketik bebas (pelayan biasa tidak bisa mencari daftar orang)
+  status              String    @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED | EXPIRED
+  pendingKey          String?   @unique // = assignmentId selama PENDING, kosong sesudahnya: satu kursi hanya punya satu permintaan terbuka
+  createdAt           DateTime  @default(now()) @db.Timestamptz(3)
+  decidedAt           DateTime? @db.Timestamptz(3)
+  decidedByUserId     String?
+  decisionNote        String? // alasan penolakan
+  replacementPersonId String? // yang akhirnya menggantikan (kosong = kursi dikosongkan)
+
+  @@index([tenantId, status, createdAt])
+  @@index([requesterPersonId, status])
+  @@index([assignmentId])
+}
+
 model RehearsalSession { // peserta = semua orang yang terjadwal di acara
   id        String    @id @default(uuid())
   tenantId  String

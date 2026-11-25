@@ -9,6 +9,8 @@ import { canSeeMeetingSchedule } from "./groups";
 import { dedupeTwinRehearsals } from "./rehearsalRules";
 import { birthdaysInRange } from "./birthdays";
 import { openOnlineUrl } from "./meetingCrypto";
+import { mySwapStates } from "./swaps";
+import { swapBlock } from "./swapRules";
 
 const safeOnlineUrl = (id: string, v: string | null) => { try { return openOnlineUrl(id, v); } catch { return null; } };
 
@@ -135,8 +137,14 @@ export async function mySchedule(u: AuthUser, range: { from?: string; to?: strin
     include: { ministry: true, event: { include: { room: true, attendanceSummary: { select: { id: true } }, attendances: { select: { id: true }, take: 1 }, rehearsals: { where: { deletedAt: null }, include: { room: true }, orderBy: { seq: "asc" } } } } },
     orderBy: { event: { startsAt: "asc" } },
   });
+  const swaps = await mySwapStates(u.tenantId, u.personId, seats.map((s) => s.id));
+  const nowDate = new Date();
   return {
     items: seats.map((s) => ({
+      assignmentId: s.id,
+      swap: swaps.get(s.id) ?? null,
+      // boleh menekan "Minta pengganti": kursinya sendiri, ibadah terbit yang belum selesai, dan belum ada permintaan terbuka
+      canSwap: swaps.get(s.id)?.status !== "PENDING" && swapBlock({ eventStatus: s.event.status, eventKind: s.event.kind, endsAt: s.event.endsAt, seatPersonId: s.personId, requesterPersonId: u.personId }, nowDate) === null,
       eventId: s.eventId, number: s.event.number, title: s.event.title, status: s.event.status,
       startsAt: s.event.startsAt.toISOString(), endsAt: s.event.endsAt.toISOString(), room: s.event.room.name,
       isOnline: s.event.isOnline,

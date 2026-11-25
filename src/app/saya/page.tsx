@@ -24,6 +24,7 @@ export default async function SayaPage() {
     rows.push({
       key: `e-${it.eventId}`, kind: "SERVICE", eventId: it.eventId, title: it.title, startsAt: it.startsAt, endsAt: it.endsAt, room: it.room,
       role: it.role, status: it.status, rehearsalRequired: it.rehearsalRequired, canAttend: it.canAttend, attendanceMode: it.attendanceMode,
+      assignmentId: it.assignmentId, canSwap: it.canSwap, swap: it.swap,
     });
     for (const h of it.rehearsals) {
       rows.push({

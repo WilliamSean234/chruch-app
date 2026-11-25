@@ -9,12 +9,15 @@ import { hm, MONTHS, REHEARSAL_TONE, toneFor, TZ, ymd } from "@/lib/ui";
 import { monthHeading } from "@/lib/seatSections";
 import type { RehearsalEvent } from "@/lib/scheduleRows";
 import EventDetailDialog, { type DialogTarget } from "./EventDetailDialog";
+import type { SwapState } from "./SwapRequestSection";
 
 export type ScheduleRow = {
   key: string; kind: "SERVICE" | "REHEARSAL"; eventId: string; title: string; startsAt: string; endsAt: string; room: string;
   role: string; status: string; rehearsalRequired: boolean; canAttend: boolean; attendanceMode: string; note?: string;
   /** Latihan: acara yang memakai sesi ini (Ibadah Minggu 1 dan 2 bisa berbagi satu latihan). */
   events?: RehearsalEvent[];
+  /** Hanya baris ibadah: kursi milik sendiri dan status permintaan penggantinya. */
+  assignmentId?: string; canSwap?: boolean; swap?: SwapState;
 };
 
 const fmt = (iso: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("id-ID", { timeZone: TZ, ...o }).format(new Date(iso));
@@ -46,7 +49,7 @@ export default function MySchedule({ rows, note, nowIso, myPersonId = null }: { 
   const [year, setYear] = useState(""); // "YYYY"
   const [role, setRole] = useState("");
   const [open, setOpen] = useState<DialogTarget | null>(null); // jadwal yang rinciannya sedang dibuka
-  const show = (r: ScheduleRow) => setOpen({ eventId: r.eventId, title: r.title, kind: r.kind, startsAt: r.startsAt, endsAt: r.endsAt, room: r.room, status: r.status, canAttend: r.canAttend, events: r.events ?? [{ id: r.eventId, title: r.title, startsAt: r.startsAt, endsAt: r.endsAt, status: r.status }] });
+  const show = (r: ScheduleRow) => setOpen({ eventId: r.eventId, title: r.title, kind: r.kind, startsAt: r.startsAt, endsAt: r.endsAt, room: r.room, status: r.status, canAttend: r.canAttend, assignmentId: r.assignmentId, role: r.role, canSwap: r.canSwap, swap: r.swap, events: r.events ?? [{ id: r.eventId, title: r.title, startsAt: r.startsAt, endsAt: r.endsAt, status: r.status }] });
 
   const months = useMemo(() => MONTHS.map((n, i) => ({ value: String(i + 1).padStart(2, "0"), label: n })), []);
   // Hanya tahun yang punya jadwal untuk orang ini.
@@ -152,6 +155,7 @@ export default function MySchedule({ rows, note, nowIso, myPersonId = null }: { 
                       {r.kind === "REHEARSAL" && <span className={`${chip} bg-[#F7EBD2] text-[#6F4304]`}>Wajib</span>}
                       {r.kind === "SERVICE" && !r.rehearsalRequired && <span className={`${chip} bg-[#ECEEF4] text-[#3A3F58]`}>Tanpa latihan</span>}
                       {r.status === "DRAFT" && <span className={`${chip} bg-[#FBEFD6] text-[#6F4304]`}>Draf</span>}
+                      {r.kind === "SERVICE" && r.swap?.status === "PENDING" && <span className={`${chip} bg-[#FBEFD6] text-[#6F4304]`}>Minta ganti</span>}
                       {r.canAttend && <Link href={`/hadir/${r.eventId}`} className={`${chip} bg-[var(--primary-soft)] text-[var(--primary-ink)] hover:brightness-95`}>Isi kehadiran</Link>}
                     </div>
                   </li>

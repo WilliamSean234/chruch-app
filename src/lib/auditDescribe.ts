@@ -209,6 +209,12 @@ export function describe(r: AuditRowIn, refs: Refs): { target: string | null; ho
       if (p.mirror === true || p.mirroredFrom) how += " · ikut ibadah pasangan";
       break;
     }
+    case "swap.request": case "swap.cancel": case "swap.reject": {
+      const who = person(p.personId);
+      const bits = [who ? `Pemohon: ${who}` : null, str(p.suggestedName) ? `Usul pengganti: ${p.suggestedName}` : null, str(r.reason) ? `Alasan: ${r.reason}` : null].filter(Boolean);
+      how = bits.join(" · ") || null;
+      break;
+    }
     case "assignment.copy": {
       const bits = [`Dari ${eventLabel(refs, str(p.sourceEventId))}`, num(p.filled) !== null ? `${p.filled} petugas disalin` : null, num(p.sessions) ? `${p.sessions} sesi latihan` : null, num(p.skipped) ? `${p.skipped} dilewati` : null].filter(Boolean);
       how = bits.join(" · ");

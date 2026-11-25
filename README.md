@@ -109,3 +109,4 @@ supaya seed dummy menolak berjalan.
 - [x] Rapat berulang, log aktivitas, profil gereja
 - [x] Tampilan HP: Jadwal saya, isi kehadiran, menu bawah; filter dan tab lengket di semua halaman
 - [x] W8 Tes unit, health check, header keamanan, panduan deploy
+- [x] Minta pengganti: pelayan meminta kursinya digantikan (alasan, usulan nama), Penjadwal atau Admin Tim tim itu mengisi penggantinya seperti biasa atau menolak; selesai otomatis saat kursi berganti. Migrasi `20261125210000_minta_pengganti`
