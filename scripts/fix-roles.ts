@@ -10,8 +10,9 @@ const TENANT_ID = "00000000-0000-4000-8000-000000000001";
 
 // Sama dengan prisma/seed.ts. Yang dicek di sini hanya izin yang ditambahkan belakangan.
 const WANT: Record<string, string[]> = {
-  PENJADWAL: ["master.write", "person.write", "event.write", "assignment.write", "rehearsal.write", "event.publish", "attendance.write", "calendar.read", "schedule.read-own"],
+  PENJADWAL: ["person.write", "event.write", "assignment.write", "rehearsal.write", "event.publish", "attendance.write", "calendar.read", "schedule.read-own"],
   ADMIN_TIM: ["person.write", "assignment.write", "rehearsal.write", "calendar.read", "schedule.read-own"],
+  ADMIN_JEMAAT: ["person.write", "person.manage", "calendar.read", "schedule.read-own"],
   PETUGAS_ABSEN: ["attendance.write", "calendar.read", "schedule.read-own"],
   PELAYAN: ["calendar.read", "schedule.read-own"],
 };

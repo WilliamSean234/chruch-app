@@ -12,8 +12,9 @@ const TENANT_ID = "00000000-0000-4000-8000-000000000001";
 // ───────── Permission & role ─────────
 const PERMISSIONS = [
   "user.manage",
-  "master.write", // TeamType, Ministry, Room, lookup
-  "person.write",
+  "master.write", // TeamType, Ministry, Room, lookup (hanya Superadmin)
+  "person.write", // lihat data lengkap orang dan atur pelayanannya
+  "person.manage", // tambah dan ubah data jemaat (Admin Jemaat dan Superadmin)
   "template.write", // hanya Superadmin
   "event.write",
   "assignment.write",
@@ -32,7 +33,6 @@ const ROLES: { code: string; name: string; isSuperadmin?: boolean; permissions: 
     code: "PENJADWAL",
     name: "Penjadwal",
     permissions: [
-      "master.write",
       "person.write",
       "event.write",
       "assignment.write",
@@ -42,6 +42,12 @@ const ROLES: { code: string; name: string; isSuperadmin?: boolean; permissions: 
       "calendar.read",
       "schedule.read-own",
     ],
+  },
+  {
+    // khusus mengurus data jemaat: tambah dan ubah orang, tanpa hak mengatur jadwal
+    code: "ADMIN_JEMAAT",
+    name: "Admin Jemaat",
+    permissions: ["person.write", "person.manage", "calendar.read", "schedule.read-own"],
   },
   {
     // permission dibatasi ke TeamType lewat UserRole.teamTypeId

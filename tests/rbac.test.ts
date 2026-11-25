@@ -56,14 +56,22 @@ test("Pengawas hanya membaca log: tanpa izin ubah dan tanpa cakupan tim", () => 
   assert.equal(can(user([role("PELAYAN")], ["calendar.read"]), "audit.read"), false);
 });
 
-test("hanya Superadmin dan Penjadwal yang boleh menambah atau mengubah data orang; Admin Tim tidak", () => {
+test("hanya Superadmin dan Admin Jemaat (izin person.manage) yang boleh menambah atau mengubah data orang", () => {
   assert.equal(canManagePeople(user([role("SUPERADMIN", null, true)])), true);
-  assert.equal(canManagePeople(user([role("PENJADWAL")], ["person.write"])), true);
+  const jemaat = user([role("ADMIN_JEMAAT")], ["person.write", "person.manage"]);
+  assert.equal(canManagePeople(jemaat), true);
+  assert.equal(teamScope(jemaat), null); // Admin Jemaat tidak dibatasi tim
+  assert.doesNotThrow(() => requireManagePeople(jemaat));
+  const penjadwal = user([role("PENJADWAL")], ["person.write", "event.write"]);
+  assert.equal(canManagePeople(penjadwal), false);
+  assert.throws(() => requireManagePeople(penjadwal), /Admin Jemaat/);
   const adminTim = user([role("ADMIN_TIM", "tim-ebm")], ["person.write"]);
   assert.equal(canManagePeople(adminTim), false);
-  assert.throws(() => requireManagePeople(adminTim), /Admin Tim/);
   assert.equal(canManagePeople(user([role("PELAYAN")])), false);
   assert.equal(canManagePeople(user([role("PETUGAS_ABSEN")], ["attendance.write"])), false);
-  // punya dua peran: bila salah satunya Penjadwal, cakupannya tidak dibatasi
-  assert.equal(canManagePeople(user([role("ADMIN_TIM", "tim-ebm"), role("PENJADWAL")], ["person.write"])), true);
+});
+
+test("Penjadwal tidak lagi punya izin master data (ruangan, tim, posisi)", () => {
+  assert.equal(can(user([role("PENJADWAL")], ["person.write", "event.write"]), "master.write"), false);
+  assert.equal(can(user([role("SUPERADMIN", null, true)]), "master.write"), true);
 });

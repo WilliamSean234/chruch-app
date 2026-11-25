@@ -50,15 +50,15 @@ export function requireTeamAccess(u: AuthUser, teamTypeId: string): void {
 }
 
 /**
- * Boleh menambah, mengubah, dan menghapus data orang (identitas). Hanya Superadmin dan Penjadwal.
- * Admin Tim tidak: ia hanya menambahkan orang yang sudah terdaftar ke pelayanan di timnya (lihat changePersonMinistries).
+ * Boleh menambah dan mengubah data orang (identitas jemaat): izin person.manage, hanya Superadmin dan Admin Jemaat.
+ * Penjadwal dan Admin Tim tidak; mereka hanya mengatur pelayanan orang yang sudah terdaftar (lihat changePersonMinistries).
  */
 export function canManagePeople(u: AuthUser): boolean {
-  return can(u, "person.write") && teamScope(u) === null;
+  return can(u, "person.manage");
 }
 
 export function requireManagePeople(u: AuthUser): void {
-  if (!canManagePeople(u)) throw forbidden("Hanya Superadmin dan Penjadwal yang boleh menambah atau mengubah data orang. Admin Tim hanya bisa menambahkan orang yang sudah terdaftar ke pelayanan di timnya.");
+  if (!canManagePeople(u)) throw forbidden("Hanya Superadmin dan Admin Jemaat yang boleh menambah atau mengubah data orang.");
 }
 
 /** Admin Tim hanya boleh mengubah data identitas orang yang punya pelayanan di tim miliknya (`personTeamIds` = tim dari pelayanan orang itu). */

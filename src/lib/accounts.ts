@@ -13,7 +13,7 @@ import { syncTkiGroup } from "./tkiGroup";
 export const accountBody = z.object({
   email: z.string().trim().toLowerCase().email(),
   password: z.string().min(8, "Kata sandi minimal 8 karakter").max(100),
-  roleCodes: z.array(z.enum(["SUPERADMIN", "PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN", "PENGAWAS"])).default([]), // kosong = hanya bisa melihat kalender dan jadwal sendiri
+  roleCodes: z.array(z.enum(["SUPERADMIN", "PENJADWAL", "ADMIN_TIM", "ADMIN_JEMAAT", "PETUGAS_ABSEN", "PELAYAN", "PENGAWAS"])).default([]), // kosong = hanya bisa melihat kalender dan jadwal sendiri
   teamTypeId: z.string().uuid().nullish(), // wajib bila ADMIN_TIM
   ebmScheduler: z.boolean().optional(), // Admin Tim EBM sekaligus jadi anggota kelompok EBM dengan jabatan Penjadwal EBM (hanya Superadmin)
 });
@@ -72,7 +72,7 @@ export async function deactivateAccount(tenantId: string, personId: string) {
 
 export const accountPatch = z
   .object({
-    roleCodes: z.array(z.enum(["SUPERADMIN", "PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN", "PENGAWAS"])).optional(),
+    roleCodes: z.array(z.enum(["SUPERADMIN", "PENJADWAL", "ADMIN_TIM", "ADMIN_JEMAAT", "PETUGAS_ABSEN", "PELAYAN", "PENGAWAS"])).optional(),
     teamTypeId: z.string().uuid().nullish(),
     isActive: z.boolean().optional(),
     ebmScheduler: z.boolean().optional(), // beri jabatan Penjadwal EBM di kelompok EBM (hanya menambah; mencabutnya lewat halaman Kelompok)
@@ -156,7 +156,7 @@ export async function changeOwnPassword(actor: AuthUser, b: z.infer<typeof passw
 
 export const accountListQuery = z.object({
   search: z.string().trim().optional(),
-  role: z.enum(["NONE", "SUPERADMIN", "PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN", "PENGAWAS"]).optional(), // NONE = akun tanpa role
+  role: z.enum(["NONE", "SUPERADMIN", "PENJADWAL", "ADMIN_TIM", "ADMIN_JEMAAT", "PETUGAS_ABSEN", "PELAYAN", "PENGAWAS"]).optional(), // NONE = akun tanpa role
   status: z.enum(["active", "inactive"]).optional(),
   groupId: z.union([z.string().uuid(), z.literal("NONE")]).optional(), // kelompok rapat; NONE = tidak di kelompok mana pun
   ...pagingQuery,

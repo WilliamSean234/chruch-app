@@ -29,9 +29,9 @@ const fullName = (x: { name: string; title?: string | null }) => (x.title && !x.
 const POS_COLORS = [["#E6E8F8", "#3037A8"], ["#FFF3D6", "#6F4304"], ["#FCE8EC", "#9B1C3A"], ["#DDF3F2", "#0F5E5A"], ["#EFE6FA", "#5B2A9E"]] as const;
 const posColor = (name: string) => POS_COLORS[[...name.toLowerCase()].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % POS_COLORS.length];
 const ROLE_TONE: Record<string, [string, string]> = {
-  SUPERADMIN: ["#FCE8EC", "#9B1C3A"], PENJADWAL: ["#E6E8F8", "#3037A8"], ADMIN_TIM: ["#EFE6FA", "#5B2A9E"], PETUGAS_ABSEN: ["#FFF3D6", "#6F4304"], PELAYAN: ["#E3F4E8", "#1B6B34"], PENGAWAS: ["#DDF3F2", "#0F5E5A"],
+  SUPERADMIN: ["#FCE8EC", "#9B1C3A"], PENJADWAL: ["#E6E8F8", "#3037A8"], ADMIN_TIM: ["#EFE6FA", "#5B2A9E"], ADMIN_JEMAAT: ["#E0F0FA", "#0B5A86"], PETUGAS_ABSEN: ["#FFF3D6", "#6F4304"], PELAYAN: ["#E3F4E8", "#1B6B34"], PENGAWAS: ["#DDF3F2", "#0F5E5A"],
 };
-const ROLE_ORDER = ["SUPERADMIN", "PENGAWAS", "PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN"];
+const ROLE_ORDER = ["SUPERADMIN", "PENGAWAS", "PENJADWAL", "ADMIN_TIM", "ADMIN_JEMAAT", "PETUGAS_ABSEN", "PELAYAN"];
 
 /** Role akun login: chip per role. Tanpa akun cukup "–"; akun nonaktif diberi tanda. */
 function RoleChips({ account }: { account: PersonDto["account"] }) {
@@ -153,7 +153,7 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
               <FSelect label="Role" value={roleF} onChange={setRoleF} allLabel="Semua role">
                 <option value="NO_ACCOUNT">Belum punya akun</option>
                 <option value="NO_ROLE">Akun tanpa role</option>
-                {["SUPERADMIN", "PENGAWAS", "PENJADWAL", "ADMIN_TIM", "PETUGAS_ABSEN", "PELAYAN"].map((c) => <option key={c} value={c}>{ROLE_LABEL[c]}</option>)}
+                {["SUPERADMIN", "PENGAWAS", "PENJADWAL", "ADMIN_TIM", "ADMIN_JEMAAT", "PETUGAS_ABSEN", "PELAYAN"].map((c) => <option key={c} value={c}>{ROLE_LABEL[c]}</option>)}
               </FSelect>
             )}
           </>
@@ -372,10 +372,10 @@ function PersonDetail({ person: p, bare, canAccount, teams, cgs, scope, canManag
           {p.ministries.map((m) => (
             <span key={m.id} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[var(--primary-soft)] pl-4 pr-2 text-[13px] font-bold text-[var(--primary-ink)]" title={m.teamName}>
               {m.name.replace(/ \(WL\)$/, "")}
-              {canManagePeople && open(m.teamTypeId) && ( // Admin Tim hanya menambah pelayanan, tidak mencabut
+              {scope === null && ( // Admin Tim hanya menambah pelayanan, tidak mencabut
                 <button type="button" disabled={busy} onClick={() => void changeMinistry("remove", m.id, m.name.replace(/ \(WL\)$/, ""))} aria-label={`Cabut ${m.name}`} className="grid size-5 place-items-center rounded-full text-xs hover:bg-white/70">✕</button>
               )}
-              {!(canManagePeople && open(m.teamTypeId)) && <span className="pr-2" />}
+              {scope !== null && <span className="pr-2" />}
             </span>
           ))}
           {!adding ? (
@@ -396,7 +396,7 @@ function PersonDetail({ person: p, bare, canAccount, teams, cgs, scope, canManag
       </div>
       {canManagePeople
         ? <button type="button" className={btnGhost} onClick={onEdit}>Ubah data lengkap</button>
-        : <p className="text-xs font-medium leading-relaxed text-[var(--ink-2)]">Anda bisa menambahkan pelayanan di tim Anda ke orang ini. Data orangnya hanya bisa diubah oleh Penjadwal atau Superadmin.</p>}
+        : <p className="text-xs font-medium leading-relaxed text-[var(--ink-2)]">Anda bisa menambahkan pelayanan ke orang ini sesuai hak Anda. Data orangnya hanya bisa diubah oleh Admin Jemaat atau Superadmin.</p>}
     </aside>
   );
 }
