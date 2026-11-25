@@ -12,6 +12,8 @@ import { canSeeMeetingSchedule, groupCaps, type GroupCaps } from "./groups";
 import { meetingMemberTitle, meetingPublicTitle } from "./meetingLabel";
 import { pageOf, pagingQuery, resolvePaging } from "./paging";
 import { eventYears } from "./years";
+import { randomUUID } from "node:crypto";
+import { openGuest, openMeetingRow, openNote, openTitle, sealGuest, sealLink, sealNote, sealReason, sealTitle } from "./meetingCrypto";
 import { describeFirst, expandDates, MAX_OCCURRENCES, PATTERNS, patternText, type Pattern } from "./recurrence";
 
 /**
@@ -110,7 +112,7 @@ type MeetingRow = Prisma.EventGetPayload<{ include: typeof withGroup }>;
 export async function loadMeeting(u: AuthUser, id: string) {
   const e = await prisma.event.findFirst({ where: { id, tenantId: u.tenantId, deletedAt: null, kind: "RAPAT" }, include: withGroup });
   if (!e || !e.group) throw notFound("Rapat");
-  return e as MeetingRow & { group: { id: string; name: string; quorumMin: number | null } };
+  return openMeetingRow(e) as MeetingRow & { group: { id: string; name: string; quorumMin: number | null } };
 }
 
 export type ParticipantDto = {
@@ -141,7 +143,7 @@ async function participantsView(groupId: string, eventId: string, quorumMin: num
   const rows: ParticipantRow[] = await prisma.meetingParticipant.findMany({
     where: { eventId }, select: { id: true, personId: true, guestName: true, status: true, note: true, person: { select: { name: true, title: true } } },
   });
-  const nameOf = (r: ParticipantRow) => (r.person ? `${r.person.title ? `${r.person.title} ` : ""}${r.person.name}` : r.guestName ?? "").trim();
+  const nameOf = (r: ParticipantRow) => (r.person ? `${r.person.title ? `${r.person.title} ` : ""}${r.person.name}` : openGuest(eventId, r.guestName) ?? "").trim();
   if (!member) {
     return { ...empty, attendeesPublic: rows.filter((r) => r.personId).map(nameOf).sort((x, y) => x.localeCompare(y)) };
   }
@@ -151,7 +153,7 @@ async function participantsView(groupId: string, eventId: string, quorumMin: num
   });
   const posOf = new Map(gm.map((m) => [m.personId, m.positions.map((x) => x.position).filter((p) => !p.deletedAt).sort((x, y) => x.sortOrder - y.sortOrder).map((p) => p.name)]));
   const participants: ParticipantDto[] = rows
-    .map((r) => ({ id: r.id, personId: r.personId, name: nameOf(r), isGuest: !r.personId, status: r.status, note: r.note, positions: r.personId ? posOf.get(r.personId) ?? [] : [] }))
+    .map((r) => ({ id: r.id, personId: r.personId, name: nameOf(r), isGuest: !r.personId, status: r.status, note: openNote(eventId, r.note), positions: r.personId ? posOf.get(r.personId) ?? [] : [] }))
     .sort((x, y) => Number(x.isGuest) - Number(y.isGuest) || x.name.localeCompare(y.name));
   return { participants, attendance: summarizeAttendance(rows, quorumMin), attendeesPublic: null };
 }
@@ -243,7 +245,7 @@ export async function listMeetings(u: AuthUser, q: { from: string; to: string; g
     ? new Set((await prisma.groupMember.findMany({ where: { personId: u.personId, leftAt: null, groupId: { in: groupIds } }, select: { groupId: true } })).map((m) => m.groupId))
     : new Set<string>();
   const global = isGlobalScheduler(u);
-  return rows.filter((e): e is ListRow => !!e.group).map((e) => listItem(e, mine.has(e.group.id), global));
+  return rows.filter((e): e is ListRow => !!e.group).map((e) => listItem(openMeetingRow(e), mine.has(e.group.id), global));
 }
 
 export const meetingListQuery = z.object({
@@ -271,10 +273,7 @@ export async function listMeetingsPaged(u: AuthUser, q: z.infer<typeof meetingLi
   const now = new Date();
   const and: Prisma.EventWhereInput[] = [];
   if (q.mine === "true") and.push({ groupId: { in: myIds } });
-  if (q.search) {
-    const titleHit: Prisma.EventWhereInput = { title: { contains: q.search, mode: "insensitive" }, ...(global ? {} : { OR: [{ showTopic: true }, { groupId: { in: myIds } }] }) };
-    and.push({ OR: [{ group: { name: { contains: q.search, mode: "insensitive" } } }, { number: { contains: q.search, mode: "insensitive" } }, { room: { name: { contains: q.search, mode: "insensitive" } } }, titleHit] });
-  }
+  // Judul rapat tersimpan terenkripsi, jadi tidak bisa dicari di database: pencarian dilakukan sesudah judul dibuka (lihat di bawah).
   const where: Prisma.EventWhereInput = {
     tenantId: u.tenantId, deletedAt: null, kind: "RAPAT", group: { is: { deletedAt: null } },
     ...(q.when === "next" ? { endsAt: { gte: now } } : q.when === "past" ? { endsAt: { lt: now } } : {}),
@@ -284,15 +283,37 @@ export async function listMeetingsPaged(u: AuthUser, q: z.infer<typeof meetingLi
     ...(q.from || q.to ? { startsAt: { ...(q.from ? { gte: zonedToUtc(q.from, "00:00") } : {}), ...(q.to ? { lte: zonedToUtc(q.to, "23:59") } : {}) } } : {}),
     ...(and.length ? { AND: and } : {}),
   };
-  const [total, rows, groups, rooms, years] = await Promise.all([
-    prisma.event.count({ where }),
-    prisma.event.findMany({ where, include: withGroup, orderBy: { startsAt: q.when === "next" ? "asc" : "desc" }, skip: pg.skip, take: pg.take }),
+  const order = { startsAt: q.when === "next" ? ("asc" as const) : ("desc" as const) };
+  // Tanpa pencarian: halaman diambil langsung dari database. Dengan pencarian: judul dibuka dulu di memori (jumlah rapat gereja kecil), baru dipotong per halaman.
+  const pageRows = async (): Promise<{ total: number; rows: ListRow[] }> => {
+    if (!q.search) {
+      const [total, rows] = await Promise.all([prisma.event.count({ where }), prisma.event.findMany({ where, include: withGroup, orderBy: order, skip: pg.skip, take: pg.take })]);
+      return { total, rows: rows.filter((e): e is ListRow => !!e.group) };
+    }
+    const needle = q.search.toLowerCase();
+    const has = (v: string | null | undefined) => !!v && v.toLowerCase().includes(needle);
+    const cand = await prisma.event.findMany({
+      where, orderBy: order,
+      select: { id: true, number: true, title: true, showTopic: true, groupId: true, group: { select: { name: true } }, room: { select: { name: true } } },
+    });
+    const hit = cand.filter((e) => {
+      if (has(e.group?.name) || has(e.number) || has(e.room?.name)) return true;
+      const titleVisible = global || e.showTopic || (!!e.groupId && myIds.includes(e.groupId));
+      return titleVisible && has(openTitle(e.id, e.title));
+    });
+    const ids = hit.slice(pg.skip, pg.skip + pg.take).map((e) => e.id);
+    const found = ids.length ? await prisma.event.findMany({ where: { id: { in: ids } }, include: withGroup }) : [];
+    const byId = new Map(found.map((e) => [e.id, e]));
+    return { total: hit.length, rows: ids.map((id) => byId.get(id)).filter((e): e is NonNullable<typeof e> => !!e && !!e.group) as ListRow[] };
+  };
+  const [{ total, rows }, groups, rooms, years] = await Promise.all([
+    pageRows(),
     prisma.meetingGroup.findMany({ where: { tenantId: u.tenantId, deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } }),
     prisma.room.findMany({ where: { tenantId: u.tenantId, deletedAt: null }, orderBy: [{ floor: { sort: "asc", nulls: "last" } }, { name: "asc" }], select: { id: true, name: true, floor: true } }),
     eventYears(u.tenantId, "RAPAT"),
   ]);
   const mine = new Set(myIds);
-  const items = rows.filter((e): e is ListRow => !!e.group).map((e) => listItem(e, mine.has(e.group.id), global));
+  const items = rows.map((e) => listItem(openMeetingRow(e), mine.has(e.group.id), global));
   return { ...pageOf(items, total, pg), options: { groups, rooms, years } };
 }
 
@@ -348,18 +369,19 @@ export async function createMeeting(u: AuthUser, b: z.infer<typeof meetingCreate
   await assertRoomFree(u.tenantId, b.roomId, startsAt, endsAt);
   const number = await nextDocNumber(u.tenantId, "RP", startsAt);
 
+  const eventId = randomUUID(); // dibuat dulu: judul, tautan, dan nama tamu dienkripsi terikat ke id rapat
   const created = await translateOverlap(() =>
     prisma.$transaction(async (tx) => {
       const e = await tx.event.create({
         data: {
-          tenantId: u.tenantId, number, kind: "RAPAT", groupId: group.id, title: b.title, startsAt, endsAt, roomId: b.roomId,
+          id: eventId, tenantId: u.tenantId, number, kind: "RAPAT", groupId: group.id, title: sealTitle(eventId, b.title), startsAt, endsAt, roomId: b.roomId,
           status: "PUBLISHED", publishedAt: new Date(), attendanceMode: "COUNT", createdById: u.userId,
           showTopic: b.showTopic, showAttendees: b.showAttendees, seriesId: opts.seriesId ?? null, seriesIndex: opts.seriesIndex ?? null,
-          links: { create: b.links.map((l) => ({ title: l.title, url: l.url, createdById: u.userId })) },
+          links: { create: b.links.map((l) => ({ ...sealLink(eventId, l), createdById: u.userId })) },
           participants: {
             create: [
               ...invitees.map((personId) => ({ personId, createdById: u.userId })),
-              ...guests.map((g) => ({ guestName: g, createdById: u.userId })),
+              ...guests.map((g) => ({ guestName: sealGuest(eventId, g), createdById: u.userId })),
             ],
           },
         },
@@ -389,14 +411,14 @@ export async function updateMeeting(u: AuthUser, id: string, b: z.infer<typeof m
 
   await translateOverlap(() =>
     prisma.$transaction(async (tx) => {
-      await tx.event.update({ where: { id }, data: { title: b.title, startsAt, endsAt, roomId, showTopic: b.showTopic, showAttendees: b.showAttendees } });
+      await tx.event.update({ where: { id }, data: { title: b.title !== undefined ? sealTitle(id, b.title) : undefined, startsAt, endsAt, roomId, showTopic: b.showTopic, showAttendees: b.showAttendees } });
       if (timeChanged || roomChanged) {
         await releaseBookings(tx, { sourceType: "EVENT", sourceId: id, resourceType: "ROOM" });
         await bookRoom(tx, { tenantId: u.tenantId, roomId, startsAt, endsAt, sourceType: "EVENT", sourceId: id });
       }
     }),
   "Ruangan sudah dipakai pada jam itu. Pilih ruangan atau jam lain.");
-  await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.update", entity: "Event", entityId: id, payload: b });
+  await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.update", entity: "Event", entityId: id, payload: { ...b, title: undefined, titleChanged: b.title !== undefined } }); // isi judul tidak dicatat di log
   return getMeeting(u, id);
 }
 
@@ -411,11 +433,11 @@ export async function cancelMeeting(u: AuthUser, id: string, reason: string, sco
     : [id];
   await prisma.$transaction(async (tx) => {
     for (const eid of ids) {
-      await tx.event.update({ where: { id: eid }, data: { status: "CANCELLED", cancelReason: reason } });
+      await tx.event.update({ where: { id: eid }, data: { status: "CANCELLED", cancelReason: sealReason(eid, reason) } });
       await releaseBookings(tx, { sourceType: "EVENT", sourceId: eid }); // ruangan langsung bebas
     }
   });
-  await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.cancel", entity: "Event", entityId: id, reason, payload: { scope, count: ids.length } });
+  await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.cancel", entity: "Event", entityId: id, payload: { scope, count: ids.length, hasReason: !!reason } }); // alasan tidak dicatat di log
   return getMeeting(u, id);
 }
 
@@ -430,9 +452,9 @@ async function requireAttach(u: AuthUser, id: string) {
 
 export async function addLink(u: AuthUser, id: string, b: z.infer<typeof linkBody>) {
   await requireAttach(u, id);
-  const l = await prisma.meetingLink.create({ data: { eventId: id, title: b.title, url: b.url, createdById: u.userId } });
-  await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.link.add", entity: "Event", entityId: id, payload: { title: b.title } });
-  return { id: l.id, title: l.title, url: l.url };
+  const l = await prisma.meetingLink.create({ data: { eventId: id, ...sealLink(id, b), createdById: u.userId } });
+  await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.link.add", entity: "Event", entityId: id, payload: {} });
+  return { id: l.id, title: b.title, url: b.url };
 }
 
 export async function removeLink(u: AuthUser, id: string, linkId: string) {
@@ -440,7 +462,7 @@ export async function removeLink(u: AuthUser, id: string, linkId: string) {
   const l = await prisma.meetingLink.findFirst({ where: { id: linkId, eventId: id, deletedAt: null } });
   if (!l) throw notFound("Tautan");
   await prisma.meetingLink.update({ where: { id: linkId }, data: { deletedAt: new Date() } });
-  await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.link.remove", entity: "Event", entityId: id, payload: { title: l.title } });
+  await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.link.remove", entity: "Event", entityId: id, payload: {} });
 }
 
 // ───────── Peringatan jadwal ganda anggota ─────────
@@ -469,12 +491,12 @@ export async function addParticipants(u: AuthUser, id: string, b: z.infer<typeof
   if (wanted.some((x) => !memberIds.has(x))) throw badRequest("Ada nama yang bukan anggota aktif kelompok ini.");
   const existing = await prisma.meetingParticipant.findMany({ where: { eventId: id }, select: { personId: true, guestName: true } });
   const haveMembers = new Set(existing.map((x) => x.personId).filter((x): x is string => !!x));
-  const haveGuests = new Set(existing.filter((x) => !x.personId).map((x) => (x.guestName ?? "").toLowerCase()));
+  const haveGuests = new Set(existing.filter((x) => !x.personId).map((x) => (openGuest(id, x.guestName) ?? "").toLowerCase()));
   const newMembers = wanted.filter((x) => !haveMembers.has(x));
   const newGuests = uniqueGuests(b.guests).filter((g) => !haveGuests.has(g.toLowerCase()));
   if (newMembers.length === 0 && newGuests.length === 0) throw badRequest("Tidak ada peserta baru untuk ditambahkan.");
   await prisma.meetingParticipant.createMany({
-    data: [...newMembers.map((personId) => ({ eventId: id, personId, createdById: u.userId })), ...newGuests.map((g) => ({ eventId: id, guestName: g, createdById: u.userId }))],
+    data: [...newMembers.map((personId) => ({ eventId: id, personId, createdById: u.userId })), ...newGuests.map((g) => ({ eventId: id, guestName: sealGuest(id, g), createdById: u.userId }))],
   });
   await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.participant.add", entity: "Event", entityId: id, payload: { members: newMembers.length, guests: newGuests.length } });
   return { added: newMembers.length + newGuests.length };
@@ -486,7 +508,7 @@ export async function setAttendance(u: AuthUser, id: string, participantId: stri
   if (!p) throw notFound("Peserta");
   await prisma.meetingParticipant.update({
     where: { id: participantId },
-    data: { status: b.status, respondedAt: b.status === "INVITED" ? null : new Date(), ...(b.note !== undefined ? { note: b.note || null } : {}) },
+    data: { status: b.status, respondedAt: b.status === "INVITED" ? null : new Date(), ...(b.note !== undefined ? { note: sealNote(id, b.note) } : {}) },
   });
   await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.participant.attend", entity: "Event", entityId: id, payload: { participantId, from: p.status, to: b.status } });
   return { id: participantId, status: b.status };
@@ -505,7 +527,7 @@ export async function removeParticipant(u: AuthUser, id: string, participantId: 
   const p = await prisma.meetingParticipant.findFirst({ where: { id: participantId, eventId: id }, include: { person: { select: { name: true } } } });
   if (!p) throw notFound("Peserta");
   await prisma.meetingParticipant.delete({ where: { id: participantId } });
-  await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.participant.remove", entity: "Event", entityId: id, payload: { name: p.person?.name ?? p.guestName } });
+  await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.participant.remove", entity: "Event", entityId: id, payload: { guest: !p.personId } }); // nama tidak dicatat di log
 }
 
 /** Simpan sekaligus semua perubahan dari halaman rapat. Semuanya berhasil atau tidak sama sekali. */
@@ -522,7 +544,7 @@ export async function applyMeetingChanges(u: AuthUser, id: string, b: z.infer<ty
   const wantMembers = b.addAllMembers ? [...memberIds].map((personId) => ({ personId, status: "INVITED" as const })) : b.addMembers;
   if (wantMembers.some((x) => !memberIds.has(x.personId))) throw badRequest("Ada nama yang bukan anggota aktif kelompok ini.");
   const keptMembers = new Set(existing.filter((x) => x.personId && !removeSet.has(x.id)).map((x) => x.personId as string));
-  const keptGuests = new Set(existing.filter((x) => !x.personId && !removeSet.has(x.id)).map((x) => (x.guestName ?? "").toLowerCase()));
+  const keptGuests = new Set(existing.filter((x) => !x.personId && !removeSet.has(x.id)).map((x) => (openGuest(id, x.guestName) ?? "").toLowerCase()));
   const newMembers = [...new Map(wantMembers.map((x) => [x.personId, x])).values()].filter((x) => !keptMembers.has(x.personId));
   const newGuests = [...new Map(b.addGuests.map((x) => [x.name.toLowerCase(), x])).values()].filter((x) => !keptGuests.has(x.name.toLowerCase()));
 
@@ -544,12 +566,12 @@ export async function applyMeetingChanges(u: AuthUser, id: string, b: z.infer<ty
       await tx.meetingParticipant.createMany({
         data: [
           ...newMembers.map((m) => ({ eventId: id, personId: m.personId, status: m.status, respondedAt: responded(m.status), createdById: u.userId })),
-          ...newGuests.map((g) => ({ eventId: id, guestName: g.name, status: g.status, respondedAt: responded(g.status), createdById: u.userId })),
+          ...newGuests.map((g) => ({ eventId: id, guestName: sealGuest(id, g.name), status: g.status, respondedAt: responded(g.status), createdById: u.userId })),
         ],
       });
     }
     if (links.length) await tx.meetingLink.updateMany({ where: { id: { in: links.map((l) => l.id) }, eventId: id }, data: { deletedAt: now } });
-    if (b.linkAdd.length) await tx.meetingLink.createMany({ data: b.linkAdd.map((l) => ({ eventId: id, title: l.title, url: l.url, createdById: u.userId })) });
+    if (b.linkAdd.length) await tx.meetingLink.createMany({ data: b.linkAdd.map((l) => ({ eventId: id, ...sealLink(id, l), createdById: u.userId })) });
   });
   const summary = { removed: removeSet.size, attendance: attendance.length, added: newMembers.length + newGuests.length, linksAdded: b.linkAdd.length, linksRemoved: links.length };
   await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.changes", entity: "Event", entityId: id, payload: summary });

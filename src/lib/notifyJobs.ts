@@ -76,10 +76,10 @@ export async function remindTomorrowMeetings(tenantId: string, now = new Date())
   const range = dayRange(tomorrow);
   const meetings = await prisma.event.findMany({
     where: { tenantId, deletedAt: null, kind: "RAPAT", status: "PUBLISHED", startsAt: range },
-    select: { title: true, startsAt: true, group: { select: { name: true } }, room: { select: { name: true } }, participants: { where: { personId: { not: null }, status: { in: ["INVITED", "PRESENT"] } }, select: { personId: true } } },
+    select: { startsAt: true, group: { select: { name: true } }, room: { select: { name: true } }, participants: { where: { personId: { not: null }, status: { in: ["INVITED", "PRESENT"] } }, select: { personId: true } } },
   });
   const by = new Map<string, Lines[]>();
-  for (const m of meetings) for (const p of m.participants) push(by, p.personId!, { at: m.startsAt, text: `${hm(m.startsAt)} ${m.title}${m.group ? ` (${m.group.name})` : ""} · ${m.room.name}` });
+  for (const m of meetings) for (const p of m.participants) push(by, p.personId!, { at: m.startsAt, text: `${hm(m.startsAt)} ${m.group ? `Rapat ${m.group.name}` : "Rapat"} · ${m.room.name}` });
   return sendPerPerson(tenantId, "KELOMPOK_H1", by, (lines) => ({ title: "Besok ada rapat", body: `${dayShort(range.gte)}: ${limitedList(lines.map((l) => l.text), 3)}.`, url: "/rapat" }), `h1:kelompok:${tomorrow}`);
 }
 
@@ -185,7 +185,7 @@ export async function monthlyDigest(tenantId: string, now = new Date()) {
     }),
     prisma.meetingParticipant.findMany({
       where: { personId: { not: null }, status: { in: ["INVITED", "PRESENT"] }, event: { tenantId, deletedAt: null, kind: "RAPAT", status: "PUBLISHED", startsAt: range } },
-      select: { personId: true, event: { select: { title: true, startsAt: true, group: { select: { name: true } } } } },
+      select: { personId: true, event: { select: { startsAt: true, group: { select: { name: true } } } } },
     }),
   ]);
 
@@ -209,7 +209,7 @@ export async function monthlyDigest(tenantId: string, now = new Date()) {
     }
   }
   for (const e of perEvent.values()) add(e.personId, { type: "acara", at: e.startsAt, text: `${shortDay(e.startsAt)} ${e.title} (${e.positions.join(", ")})` });
-  for (const m of meetings) add(m.personId!, { type: "rapat", at: m.event.startsAt, text: `${shortDay(m.event.startsAt)} rapat ${m.event.group?.name ?? m.event.title}` });
+  for (const m of meetings) add(m.personId!, { type: "rapat", at: m.event.startsAt, text: `${shortDay(m.event.startsAt)} rapat ${m.event.group?.name ?? "kelompok"}` });
 
   const accounts = await userIdsForPersons(tenantId, [...by.keys()]);
   const out = { people: by.size, sent: 0, skipped: 0 };

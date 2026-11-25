@@ -145,7 +145,7 @@ export async function reviseMinutes(u: AuthUser, id: string, reason?: string) {
     where: { id: m.id },
     data: { status: "DRAFT", version: m.version + 1, reviseReason: reason ? encryptText(reason, scope(id), "reason") : null, draftById: u.userId, draftAt: new Date(), updatedById: u.userId },
   });
-  await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.minutes.revise", entity: "Event", entityId: id, reason: reason || null, payload: { version: m.version + 1 } });
+  await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.minutes.revise", entity: "Event", entityId: id, payload: { version: m.version + 1, hasReason: !!reason } }); // alasan revisi tidak dicatat di log
   return getMinutes(u, id);
 }
 

@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { openTitle } from "./meetingCrypto";
 import { prisma } from "./prisma";
 import { conflict, badRequest, notFound } from "./errors";
 import { meetingPublicTitle } from "./meetingLabel";
@@ -32,7 +33,7 @@ export async function roomConflict(tenantId: string, roomId: string, startsAt: D
   for (const r of rows) {
     if (r.sourceType === "EVENT") {
       const ev = await prisma.event.findUnique({ where: { id: r.sourceId }, include: { group: { select: { name: true } } } });
-      const title = ev?.kind === "RAPAT" ? meetingPublicTitle(ev.group?.name ?? "", ev.title, ev.showTopic) : (ev?.title ?? "Acara");
+      const title = ev?.kind === "RAPAT" ? meetingPublicTitle(ev.group?.name ?? "", openTitle(ev.id, ev.title), ev.showTopic) : (ev?.title ?? "Acara");
       labels.push(`${title} (${ev?.number ?? "-"}, ${fmt(r.startsAt)}–${fmt(r.endsAt).slice(-5)})`);
     } else {
       const rh = await prisma.rehearsalSession.findUnique({ where: { id: r.sourceId }, include: { event: true } });
