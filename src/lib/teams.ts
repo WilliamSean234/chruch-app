@@ -2,6 +2,8 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "./prisma";
 import { badRequest, conflict, notFound } from "./errors";
+import { can, teamScope, type AuthUser } from "./rbac";
+import { teamKind } from "./seatRules";
 
 export const teamBody = z.object({ name: z.string().trim().min(1).max(80), sortOrder: z.number().int().optional() });
 export const ministryBody = z.object({
@@ -50,6 +52,18 @@ export async function deleteTeam(tenantId: string, id: string) {
     prisma.ministry.updateMany({ where: { teamTypeId: id }, data: { deletedAt: now } }),
     prisma.teamType.update({ where: { id }, data: { deletedAt: now } }),
   ]);
+}
+
+/**
+ * Tim yang boleh ditambah pelayanan barunya oleh pengguna ini: semua tim bagi yang berhak mengelola master (Superadmin);
+ * Admin Tim EBM hanya tim EBM miliknya. Admin Tim lain dan Penjadwal tidak.
+ */
+export async function ministryCreateTeamIds(u: AuthUser): Promise<string[]> {
+  if (can(u, "master.write")) return (await prisma.teamType.findMany({ where: { tenantId: u.tenantId, deletedAt: null }, select: { id: true } })).map((t) => t.id);
+  const scope = teamScope(u);
+  if (!can(u, "person.write") || scope === null || scope.length === 0) return [];
+  const teams = await prisma.teamType.findMany({ where: { tenantId: u.tenantId, deletedAt: null, id: { in: scope } }, select: { id: true, name: true } });
+  return teams.filter((t) => teamKind(t.name) === "EBM").map((t) => t.id);
 }
 
 export async function createMinistry(tenantId: string, b: z.infer<typeof ministryBody>) {

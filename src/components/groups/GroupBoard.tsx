@@ -6,6 +6,7 @@ import { showToast } from "@/components/ui/Toast";
 import Modal, { confirmDiscard, Field } from "@/components/master/Modal";
 import NewPersonInline from "@/components/master/NewPersonInline";
 import { patchMinistries } from "@/components/master/ministryApi";
+import NewMinistryDialog from "@/components/master/NewMinistryDialog";
 import { btnGhost, btnPrimary, callApi, errMsg, inputCls } from "@/components/jadwal/api";
 import { FilterBar, FSearch, FSelect } from "@/components/ui/Filters";
 import Pager from "@/components/ui/Pager";
@@ -17,7 +18,7 @@ export const NEW_GROUP_EVENT = "groups:new";
 type GroupRow = { id: string; name: string; quorumMin: number | null; memberCount: number; positionCount: number };
 type Position = { id: string; name: string; seats: number | null; filled: number; canSchedule: boolean; canWriteMinutes: boolean; canFinalize: boolean; canManageMembers: boolean };
 type Member = { id: string; personId: string; name: string; title: string | null; positionIds: string[]; ebmMinistryIds?: string[] };
-type EbmInfo = { canEdit: boolean; ministries: { id: string; name: string }[] };
+type EbmInfo = { canEdit: boolean; ministries: { id: string; name: string }[]; createTeamId: string | null };
 type Detail = { id: string; name: string; quorumMin: number | null; ebm: EbmInfo | null; canAdmin: boolean; canPositions: boolean; canManageMembers: boolean; hasAdminTim: boolean; positions: Position[]; members: Member[] };
 type PersonHit = { id: string; name: string; title: string | null };
 
@@ -336,6 +337,18 @@ function EbmPanel({ member, ebm, onChanged, flush }: { member: Member; ebm: EbmI
   const mine = member.ebmMinistryIds ?? [];
   const name = (id: string) => ebm.ministries.find((x) => x.id === id)?.name ?? "pelayanan";
   const free = ebm.ministries.filter((x) => !mine.includes(x.id));
+  const [newOpen, setNewOpen] = useState(false);
+
+  /** Pelayanan EBM yang baru dibuat langsung diberikan ke anggota ini. */
+  async function giveNew(m: { id: string; name: string }) {
+    setNewOpen(false);
+    setBusy(true);
+    const r = await patchMinistries(member.personId, fullName(member), { add: [m.id], remove: [] });
+    setBusy(false);
+    if (!r.ok) { showToast(errMsg(r.data), "error"); onChanged(); return; }
+    showToast(`Pelayanan ${m.name} dibuat dan ditambahkan`);
+    onChanged();
+  }
 
   async function change(kind: "add" | "remove", ministryId: string) {
     const label = name(ministryId);
@@ -362,13 +375,15 @@ function EbmPanel({ member, ebm, onChanged, flush }: { member: Member; ebm: EbmI
             {ebm.canEdit && <button type="button" disabled={busy} onClick={() => void change("remove", id)} aria-label={`Cabut ${name(id)}`} className="grid size-5 place-items-center rounded-full hover:bg-white/70 disabled:opacity-50">✕</button>}
           </span>
         ))}
-        {ebm.canEdit && free.length > 0 && (
-          <select aria-label="Tambah pelayanan EBM" disabled={busy} value="" onChange={(e) => { const v = e.target.value; e.target.value = ""; if (v) void change("add", v); }}
+        {ebm.canEdit && (free.length > 0 || ebm.createTeamId) && (
+          <select aria-label="Tambah pelayanan EBM" disabled={busy} value="" onChange={(e) => { const v = e.target.value; e.target.value = ""; if (v === "__new__") setNewOpen(true); else if (v) void change("add", v); }}
             className="h-8 rounded-full border border-dashed border-[var(--line)] bg-white px-3 text-[12.5px] font-bold text-[var(--ink-2)]">
             <option value="">+ pelayanan</option>
+            {ebm.createTeamId && <option value="__new__">＋ Pelayanan baru yang belum ada…</option>}
             {free.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
           </select>
         )}
+        {newOpen && ebm.createTeamId && <NewMinistryDialog teams={[{ id: ebm.createTeamId, name: "Tim EBM" }]} onClose={() => setNewOpen(false)} onCreated={giveNew} />}
       </div>
     </div>
   );

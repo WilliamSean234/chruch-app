@@ -16,6 +16,7 @@ import { useDebounced, usePagedList } from "@/components/ui/usePagedList";
 import { initials, ROLE_LABEL } from "@/lib/ui";
 import { teamKind } from "@/lib/seatRules";
 import { patchMinistries } from "./ministryApi";
+import NewMinistryDialog from "./NewMinistryDialog";
 
 export const NEW_PERSON_EVENT = "people:new";
 const PICKLISTS: Record<Exclude<LookupKind, "rooms">, { title: string; singular: string; hint: string }> = {
@@ -49,7 +50,7 @@ function RoleChips({ account }: { account: PersonDto["account"] }) {
 }
 const isPlainPosition = (name: string) => name.trim().toLowerCase() === "jemaat";
 
-export default function PeopleView({ scope, canAccount, canMaster, isSuper, canGroups, canManagePeople }: { scope: string[] | null; canAccount: boolean; canMaster: boolean; isSuper: boolean; canGroups: boolean; canManagePeople: boolean }) {
+export default function PeopleView({ scope, canAccount, canMaster, isSuper, canGroups, canManagePeople, createTeamIds = [] }: { scope: string[] | null; canAccount: boolean; canMaster: boolean; isSuper: boolean; canGroups: boolean; canManagePeople: boolean; createTeamIds?: string[] }) {
   const [lookups, setLookups] = useState<Lookups | null>(null);
   const [q, setQ] = useState("");
   const [ministryId, setMinistryId] = useState("");
@@ -264,7 +265,7 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
         {/* Detail */}
         {selected && lookups && (
           <div className="contents max-md:hidden">
-            <PersonDetail key={selected.id} canAccount={canAccount} person={selected} teams={lookups.teams} cgs={lookups.cgs} scope={scope} canManagePeople={canManagePeople} onEdit={() => setForm({ person: selected })} onChanged={() => void reload()} />
+            <PersonDetail key={selected.id} canAccount={canAccount} person={selected} teams={lookups.teams} cgs={lookups.cgs} scope={scope} canManagePeople={canManagePeople} createTeams={lookups.teams.filter((t) => createTeamIds.includes(t.id))} onLookups={loadLookups} onEdit={() => setForm({ person: selected })} onChanged={() => void reload()} />
           </div>
         )}
       </div>
@@ -282,7 +283,7 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
         const sp = items.find((x) => x.id === sheetId)!;
         return (
           <Modal title={fullName(sp)} onClose={() => setSheetId(null)} footer={<button type="button" className={btnPrimary} onClick={() => setSheetId(null)}>Tutup</button>}>
-            <PersonDetail bare canAccount={canAccount} person={sp} teams={lookups.teams} cgs={lookups.cgs} scope={scope} canManagePeople={canManagePeople} onEdit={() => { setSheetId(null); setForm({ person: sp }); }} onChanged={() => void reload()} />
+            <PersonDetail bare canAccount={canAccount} person={sp} teams={lookups.teams} cgs={lookups.cgs} scope={scope} canManagePeople={canManagePeople} createTeams={lookups.teams.filter((t) => createTeamIds.includes(t.id))} onLookups={loadLookups} onEdit={() => { setSheetId(null); setForm({ person: sp }); }} onChanged={() => void reload()} />
           </Modal>
         );
       })()}
@@ -301,7 +302,8 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
 }
 
 /** Kartu ringkasan di kanan: data orang yang dipilih, plus tambah/cabut pelayanan dengan cepat. */
-function PersonDetail({ person: p, bare, canAccount, teams, cgs, scope, canManagePeople, onEdit, onChanged }: { bare?: boolean; person: PersonDto; canAccount: boolean; teams: Team[]; cgs: CgOpt[]; scope: string[] | null; canManagePeople: boolean; onEdit: () => void; onChanged: () => void }) {
+function PersonDetail({ person: p, bare, canAccount, teams, cgs, scope, canManagePeople, createTeams, onLookups, onEdit, onChanged }: { bare?: boolean; person: PersonDto; canAccount: boolean; teams: Team[]; cgs: CgOpt[]; scope: string[] | null; canManagePeople: boolean; createTeams: Team[]; onLookups: () => Promise<void>; onEdit: () => void; onChanged: () => void }) {
+  const [newMinistry, setNewMinistry] = useState(false);
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -383,8 +385,9 @@ function PersonDetail({ person: p, bare, canAccount, teams, cgs, scope, canManag
             <button type="button" onClick={() => setAdding(true)} className="h-9 rounded-full border border-dashed border-[#B9BDDA] px-4 text-[13px] font-bold text-[var(--primary-ink)] hover:bg-[#f3f4fb]">＋ pelayanan</button>
           ) : (
             <select autoFocus aria-label="Tambah pelayanan" defaultValue="" disabled={busy} onBlur={() => setAdding(false)}
-              onChange={(e) => { const id = e.target.value; if (id) void changeMinistry("add", id, teams.flatMap((t) => t.ministries).find((m) => m.id === id)?.name ?? "pelayanan"); }} className="h-9 rounded-full border border-[var(--primary)] bg-white px-3 text-[13px] font-bold">
+              onChange={(e) => { const id = e.target.value; if (id === "__new__") { setAdding(false); setNewMinistry(true); } else if (id) void changeMinistry("add", id, teams.flatMap((t) => t.ministries).find((m) => m.id === id)?.name ?? "pelayanan"); }} className="h-9 rounded-full border border-[var(--primary)] bg-white px-3 text-[13px] font-bold">
               <option value="">Pilih…</option>
+              {createTeams.some((t) => open(t.id)) && <option value="__new__">＋ Pelayanan baru yang belum ada…</option>}
               {teams.filter((t) => open(t.id)).map((t) => {
                 const rest = t.ministries.filter((m) => !have.has(m.id));
                 return rest.length ? <optgroup key={t.id} label={t.name}>{rest.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</optgroup> : null;
@@ -393,6 +396,10 @@ function PersonDetail({ person: p, bare, canAccount, teams, cgs, scope, canManag
           )}
         </div>
         {error && <p className="text-sm font-semibold text-[#9B1C1C]" role="alert">{error}</p>}
+        {newMinistry && (
+          <NewMinistryDialog teams={createTeams.filter((t) => open(t.id))} onClose={() => setNewMinistry(false)}
+            onCreated={async (m) => { await onLookups(); setNewMinistry(false); await changeMinistry("add", m.id, m.name.replace(/ \(WL\)$/, "")); }} />
+        )}
         <p className="text-xs font-medium leading-relaxed text-[var(--ink-2)]">Nama pembicara luar disimpan di sini agar penulisannya tidak berubah atau dobel saat diundang lagi.</p>
       </div>
       {canManagePeople

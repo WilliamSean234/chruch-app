@@ -3,6 +3,7 @@ import { prisma } from "./prisma";
 import { audit } from "./audit";
 import { badRequest, conflict, forbidden, notFound } from "./errors";
 import { can, isSuperadmin, teamScope, type AuthUser } from "./rbac";
+import { ministryCreateTeamIds } from "./teams";
 import { ADMIN_TIM_CAPS, ADMIN_TIM_POSITION, canEditGroupMembers, canManageGroupPositions, isAdminTimName } from "./groupRules";
 import { EBM_GROUP } from "./ebmGroup";
 import { teamKind } from "./seatRules";
@@ -192,7 +193,7 @@ export async function getGroup(u: AuthUser, id: string) {
     id: g.id,
     name: g.name,
     quorumMin: g.quorumMin,
-    ebm: ebm ? { canEdit: ebm.canEdit, ministries: ebm.ministries } : null, // null = bukan kelompok EBM
+    ebm: ebm ? { canEdit: ebm.canEdit, ministries: ebm.ministries, createTeamId: ebm.createTeamId } : null, // null = bukan kelompok EBM
     canAdmin: sa, // ubah nama/kuorum, hapus kelompok
     canPositions: await canEditPositions(u, id), // buat/ubah/hapus jabatan
     canManageMembers: await canEditMembers(u, id),
@@ -221,7 +222,9 @@ async function ebmInfo(u: AuthUser, personIds: string[]) {
   for (const r of rows) (byPerson[r.personId] ??= []).push(r.ministryId);
   const order = new Map(ministries.map((m, i) => [m.id, i]));
   for (const k of Object.keys(byPerson)) byPerson[k]!.sort((a, b) => order.get(a)! - order.get(b)!);
-  return { canEdit, ministries, byPerson };
+  const createIds = await ministryCreateTeamIds(u);
+  const createTeamId = teams.find((t) => createIds.includes(t.id))?.id ?? null; // tim EBM tempat pengguna boleh menambah pelayanan baru
+  return { canEdit, ministries, byPerson, createTeamId };
 }
 
 // ───────── Kelompok ─────────
