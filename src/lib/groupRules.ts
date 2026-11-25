@@ -30,11 +30,18 @@ export function canManageGroupPositions(o: { isAdminTimMember: boolean; isSupera
 }
 
 /**
- * Apakah perubahan jabatan seorang anggota memberi atau mencabut Admin Tim? `adminIds` = id jabatan Admin Tim kelompok itu.
- * Perubahan seperti ini tidak boleh dilakukan hanya karena punya hak "kelola anggota": pemegang jabatan lain bisa menaikkan dirinya
- * sendiri menjadi Admin Tim, atau mencopot Admin Tim yang sebenarnya.
+ * Jabatan dengan hak khusus: Admin Tim, atau jabatan yang boleh menjadwalkan rapat, menulis atau memfinalkan notulen, atau mengelola anggota.
+ * Memberi atau mencabutnya tidak boleh dilakukan hanya karena punya hak "kelola anggota": pengelola anggota bisa menaikkan dirinya sendiri
+ * menjadi Admin Tim atau penulis notulen, atau mencopot pemegang hak yang sebenarnya. Hanya Admin Tim kelompok itu (atau Superadmin selama belum ada Admin Tim).
  */
-export function adminTimChanged(adminIds: string[], before: string[], after: string[]): boolean {
-  const admin = new Set(adminIds);
-  return before.some((id) => admin.has(id)) !== after.some((id) => admin.has(id));
+export function isElevatedPosition(p: { name: string; canSchedule: boolean; canWriteMinutes: boolean; canFinalize: boolean; canManageMembers: boolean }): boolean {
+  return isAdminTimName(p.name) || p.canSchedule || p.canWriteMinutes || p.canFinalize || p.canManageMembers;
+}
+
+/** Apakah perubahan jabatan seorang anggota (dari `before` menjadi `after`) memberi atau mencabut satu jabatan berhak khusus? */
+export function elevatedChanged(elevatedIds: string[], before: string[], after: string[]): boolean {
+  const elevated = new Set(elevatedIds);
+  const a = new Set(before.filter((id) => elevated.has(id)));
+  const b = new Set(after.filter((id) => elevated.has(id)));
+  return a.size !== b.size || [...a].some((id) => !b.has(id));
 }

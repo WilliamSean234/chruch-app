@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { adminTimChanged, canEditGroupMembers, canManageGroupPositions, isAdminTimName } from "../src/lib/groupRules";
+import { canEditGroupMembers, canManageGroupPositions, elevatedChanged, isAdminTimName, isElevatedPosition } from "../src/lib/groupRules";
 
 test("anggota berjabatan pengelola boleh; yang lain tidak", () => {
   assert.equal(canEditGroupMembers({ isManagerMember: true, isSuperadmin: false, groupHasAdminTim: true }), true);
@@ -28,12 +28,23 @@ test("jabatan kelompok: Admin Tim kelompok itu boleh; Superadmin hanya selama be
   assert.equal(canManageGroupPositions({ isAdminTimMember: false, isSuperadmin: false, groupHasAdminTim: false }), false);
 });
 
-test("memberi atau mencabut Admin Tim terdeteksi; mengubah jabatan lain tidak", () => {
-  const admin = ["adm"];
-  assert.equal(adminTimChanged(admin, [], ["adm"]), true); // dijadikan Admin Tim
-  assert.equal(adminTimChanged(admin, ["adm", "ketua"], ["ketua"]), true); // Admin Tim dicabut
-  assert.equal(adminTimChanged(admin, ["adm"], []), true); // dikeluarkan
-  assert.equal(adminTimChanged(admin, ["adm"], ["adm", "ketua"]), false); // tetap Admin Tim
-  assert.equal(adminTimChanged(admin, ["ketua"], ["sekretaris"]), false); // jabatan biasa
-  assert.equal(adminTimChanged([], ["ketua"], ["adm"]), false); // kelompok tanpa jabatan Admin Tim
+test("jabatan berhak khusus: memberi atau mencabutnya terdeteksi; jabatan biasa tidak", () => {
+  const el = ["adm", "sekr"]; // Admin Tim dan Sekretaris (boleh menulis notulen)
+  assert.equal(elevatedChanged(el, [], ["adm"]), true); // dijadikan Admin Tim
+  assert.equal(elevatedChanged(el, ["adm", "ketua"], ["ketua"]), true); // Admin Tim dicabut
+  assert.equal(elevatedChanged(el, ["adm"], []), true); // dikeluarkan
+  assert.equal(elevatedChanged(el, ["anggota"], ["sekr"]), true); // jadi penulis notulen
+  assert.equal(elevatedChanged(el, ["sekr"], ["adm"]), true); // berganti hak khusus
+  assert.equal(elevatedChanged(el, ["adm"], ["adm", "anggota"]), false); // tetap sama
+  assert.equal(elevatedChanged(el, ["anggota"], ["biasa"]), false); // jabatan biasa saja
+  assert.equal(elevatedChanged([], ["ketua"], ["adm"]), false); // tidak ada jabatan khusus
+});
+
+test("jabatan dikenali berhak khusus bila Admin Tim atau punya salah satu hak", () => {
+  const none = { canSchedule: false, canWriteMinutes: false, canFinalize: false, canManageMembers: false };
+  assert.equal(isElevatedPosition({ name: "Anggota", ...none }), false);
+  assert.equal(isElevatedPosition({ name: "admin tim ", ...none }), true);
+  assert.equal(isElevatedPosition({ name: "Sekretaris", ...none, canWriteMinutes: true }), true);
+  assert.equal(isElevatedPosition({ name: "Ketua", ...none, canManageMembers: true }), true);
+  assert.equal(isElevatedPosition({ name: "Bendahara", ...none, canSchedule: true }), true);
 });

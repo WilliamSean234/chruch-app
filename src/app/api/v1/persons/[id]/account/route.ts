@@ -21,7 +21,7 @@ export const DELETE = handle(async (req: Request, { params }: Ctx) => {
   const u = await requireUser(req);
   requirePermission(u, "user.manage");
   const { id } = await params;
-  const userId = await deactivateAccount(u.tenantId, id);
+  const userId = await deactivateAccount(u.tenantId, id, u.userId);
   await audit({ tenantId: u.tenantId, userId: u.userId, action: "user.deactivate", entity: "User", entityId: userId });
   return new Response(null, { status: 204 });
 });

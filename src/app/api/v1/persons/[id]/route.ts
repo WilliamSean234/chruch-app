@@ -30,7 +30,7 @@ export const DELETE = handle(async (req: Request, { params }: Ctx) => {
   requirePermission(u, "person.write");
   if (!isSuperadmin(u)) throw forbidden("Hanya Superadmin yang boleh menghapus orang.");
   const { id } = await params;
-  await deletePerson(u.tenantId, id);
+  await deletePerson(u.tenantId, id, u.userId);
   await audit({ tenantId: u.tenantId, userId: u.userId, action: "person.delete", entity: "Person", entityId: id });
   return new Response(null, { status: 204 });
 });

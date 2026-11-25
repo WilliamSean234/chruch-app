@@ -1,4 +1,5 @@
 import webpush from "web-push";
+import { isPushEndpoint } from "./pushRules";
 
 export type PushPayload = { title: string; body: string; url?: string; tag?: string };
 export type PushTarget = { endpoint: string; p256dh: string; auth: string };
@@ -17,6 +18,8 @@ export type PushOutcome = { result: "ok" | "gone" | "error"; status?: number; re
 export async function sendPushDetailed(t: PushTarget, p: PushPayload): Promise<PushOutcome> {
   const cfg = pushConfig();
   if (!cfg) return { result: "error", reason: "Kunci VAPID belum diisi di server" };
+  // alamat di luar layanan push resmi tidak pernah dihubungi (data lama atau yang dipalsukan): dianggap tidak berlaku dan dibuang oleh pemanggil
+  if (!isPushEndpoint(t.endpoint)) return { result: "gone", reason: "Alamat perangkat bukan layanan push resmi" };
   try {
     await webpush.sendNotification(
       { endpoint: t.endpoint, keys: { p256dh: t.p256dh, auth: t.auth } },

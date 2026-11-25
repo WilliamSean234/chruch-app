@@ -509,17 +509,20 @@ function PositionDialog({ groupId, pos, onClose, onDone }: { groupId: string; po
 }
 
 /** `held` = jabatan yang sedang dipegang orang yang diubah (ia tetap boleh mempertahankannya walau jabatannya penuh). */
-function PositionChecks({ positions, value, onChange, held = [] }: { positions: Position[]; value: string[]; onChange: (v: string[]) => void; held?: string[] }) {
+function PositionChecks({ positions, value, onChange, held = [], canElevate = true }: { positions: Position[]; value: string[]; onChange: (v: string[]) => void; held?: string[]; canElevate?: boolean }) {
   return (
     <div className="flex flex-col gap-1">
       <span className="text-[13px] font-bold">Jabatan</span>
       {positions.map((p) => {
         const full = p.seats !== null && p.filled >= p.seats && !held.includes(p.id); // penuh dan bukan miliknya
+        // jabatan berhak khusus hanya diberikan/dicabut Admin Tim kelompok (pengelola anggota biasa tidak bisa; servernya juga menolak)
+        const locked = !canElevate && (isAdminTim(p.name) || p.canSchedule || p.canWriteMinutes || p.canFinalize || p.canManageMembers);
         return (
-          <label key={p.id} className={`flex items-center gap-3 rounded-xl px-1 py-1.5 ${full ? "opacity-60" : "cursor-pointer hover:bg-[var(--surface-2)]"}`}>
-            <input type="checkbox" checked={value.includes(p.id)} disabled={full} onChange={(e) => onChange(e.target.checked ? [...value, p.id] : value.filter((x) => x !== p.id))} className="size-4 accent-[var(--primary)]" />
+          <label key={p.id} className={`flex items-center gap-3 rounded-xl px-1 py-1.5 ${full || locked ? "opacity-60" : "cursor-pointer hover:bg-[var(--surface-2)]"}`}>
+            <input type="checkbox" checked={value.includes(p.id)} disabled={full || locked} onChange={(e) => onChange(e.target.checked ? [...value, p.id] : value.filter((x) => x !== p.id))} className="size-4 accent-[var(--primary)]" />
             <span className="text-sm font-bold">{p.name}</span>
             {p.seats !== null && <span className={`text-xs font-semibold ${full ? "text-[#9b1c1c]" : "text-[var(--ink-2)]"}`}>{full ? `penuh ${p.filled}/${p.seats}` : `${p.filled}/${p.seats}`}</span>}
+            {locked && <span className="text-xs font-semibold text-[var(--ink-2)]">hanya Admin Tim</span>}
           </label>
         );
       })}
@@ -593,7 +596,7 @@ function AddMemberDialog({ detail, canAddPerson, onClose, onDone }: { detail: De
               <span className="text-sm font-extrabold text-[var(--primary-ink)]">{fullName(picked)}</span>
               <button type="button" onClick={() => setPicked(null)} className="text-xs font-bold text-[var(--ink-2)] hover:underline">Ganti</button>
             </div>
-            <PositionChecks positions={detail.positions} value={positionIds} onChange={setPositionIds} />
+            <PositionChecks positions={detail.positions} value={positionIds} onChange={setPositionIds} canElevate={detail.canPositions} />
           </>
         )}
       </div>
@@ -630,7 +633,7 @@ function MemberDialog({ detail, member, onClose, onDone }: { detail: Detail; mem
         <button type="button" onClick={onClose} className={btnGhost}>Batal</button>
         <button type="button" onClick={save} disabled={busy} className={btnPrimary}>{busy ? "Menyimpan…" : "Simpan"}</button>
       </>}>
-      <PositionChecks positions={detail.positions} value={positionIds} onChange={setPositionIds} held={member.positionIds} />
+      <PositionChecks positions={detail.positions} value={positionIds} onChange={setPositionIds} held={member.positionIds} canElevate={detail.canPositions} />
       <ErrorLine text={err} />
     </Modal>
   );

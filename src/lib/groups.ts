@@ -4,7 +4,7 @@ import { audit } from "./audit";
 import { badRequest, conflict, forbidden, notFound } from "./errors";
 import { can, isSuperadmin, teamScope, type AuthUser } from "./rbac";
 import { ministryCreateTeamIds } from "./teams";
-import { ADMIN_TIM_CAPS, ADMIN_TIM_POSITION, adminTimChanged, canEditGroupMembers, canManageGroupPositions, isAdminTimName } from "./groupRules";
+import { ADMIN_TIM_CAPS, ADMIN_TIM_POSITION, elevatedChanged, isElevatedPosition, canEditGroupMembers, canManageGroupPositions, isAdminTimName } from "./groupRules";
 import { EBM_GROUP } from "./ebmGroup";
 import { teamKind } from "./seatRules";
 
@@ -114,13 +114,14 @@ async function requireManageMembers(u: AuthUser, groupId: string) {
 }
 
 /**
- * Memberi atau mencabut jabatan Admin Tim hanya boleh oleh Admin Tim kelompok itu (atau Superadmin selama kelompok belum punya Admin Tim),
- * bukan oleh pemegang jabatan lain yang kebetulan boleh "kelola anggota". Tanpa ini, pengelola anggota bisa menaikkan dirinya menjadi Admin Tim.
+ * Memberi atau mencabut jabatan berhak khusus (Admin Tim, atau yang boleh menjadwalkan, menulis/memfinalkan notulen, mengelola anggota)
+ * hanya boleh oleh Admin Tim kelompok itu (atau Superadmin selama kelompok belum punya Admin Tim), bukan oleh pengelola anggota biasa.
+ * Tanpa ini, pengelola anggota bisa menaikkan dirinya sendiri atau mencopot pemegang hak yang sebenarnya.
  */
-async function requireAdminTimChange(u: AuthUser, groupId: string, before: string[], after: string[]) {
-  const adminIds = (await prisma.groupPosition.findMany({ where: { groupId, deletedAt: null }, select: { id: true, name: true } })).filter((p) => isAdminTimName(p.name)).map((p) => p.id);
-  if (!adminTimChanged(adminIds, before, after)) return;
-  if (!(await canEditPositions(u, groupId))) throw forbidden("Jabatan Admin Tim hanya bisa diberikan atau dicabut oleh Admin Tim kelompok ini.");
+async function requireElevatedChange(u: AuthUser, groupId: string, before: string[], after: string[]) {
+  const positions = await prisma.groupPosition.findMany({ where: { groupId, deletedAt: null }, select: { id: true, name: true, canSchedule: true, canWriteMinutes: true, canFinalize: true, canManageMembers: true } });
+  if (!elevatedChanged(positions.filter(isElevatedPosition).map((p) => p.id), before, after)) return;
+  if (!(await canEditPositions(u, groupId))) throw forbidden("Jabatan dengan hak khusus (Admin Tim, menjadwalkan rapat, menulis atau memfinalkan notulen, mengelola anggota) hanya bisa diberikan atau dicabut oleh Admin Tim kelompok ini.");
 }
 
 async function findGroup(u: AuthUser, id: string) {
@@ -375,7 +376,7 @@ export async function addMember(u: AuthUser, groupId: string, input: z.infer<typ
   const person = await prisma.person.findFirst({ where: { id: input.personId, tenantId: u.tenantId, deletedAt: null }, select: { id: true, name: true } });
   if (!person) throw badRequest("Orang tidak ditemukan.");
   const positionIds = await validPositionIds(groupId, input.positionIds);
-  await requireAdminTimChange(u, groupId, [], positionIds);
+  await requireElevatedChange(u, groupId, [], positionIds);
   const existing = await prisma.groupMember.findUnique({ where: { groupId_personId: { groupId, personId: person.id } } });
   if (existing && !existing.leftAt) throw conflict(`${person.name} sudah menjadi anggota kelompok ini.`);
   await assertSeatsFree(groupId, positionIds, existing?.id);
@@ -404,7 +405,7 @@ export async function setMemberPositions(u: AuthUser, groupId: string, memberId:
   const m = await findMember(groupId, memberId);
   const positionIds = await validPositionIds(groupId, input.positionIds);
   const current = (await prisma.groupMemberPosition.findMany({ where: { memberId }, select: { positionId: true } })).map((x) => x.positionId);
-  await requireAdminTimChange(u, groupId, current, positionIds);
+  await requireElevatedChange(u, groupId, current, positionIds);
   await assertSeatsFree(groupId, positionIds, memberId);
   await prisma.$transaction([
     prisma.groupMemberPosition.deleteMany({ where: { memberId } }),
@@ -426,7 +427,7 @@ export async function removeMember(u: AuthUser, groupId: string, memberId: strin
   await requireManageMembers(u, groupId);
   const m = await findMember(groupId, memberId);
   const current = (await prisma.groupMemberPosition.findMany({ where: { memberId }, select: { positionId: true } })).map((x) => x.positionId);
-  await requireAdminTimChange(u, groupId, current, []); // mengeluarkan Admin Tim sama dengan mencabut jabatannya
+  await requireElevatedChange(u, groupId, current, []); // mengeluarkan Admin Tim sama dengan mencabut jabatannya
   await prisma.groupMember.update({ where: { id: memberId }, data: { leftAt: new Date() } });
   await dropFromUpcomingMeetings(groupId, m.personId);
   await audit({ tenantId: u.tenantId, userId: u.userId, action: "group.member.remove", entity: "MeetingGroup", entityId: groupId, payload: { personId: m.personId, name: m.person.name } });

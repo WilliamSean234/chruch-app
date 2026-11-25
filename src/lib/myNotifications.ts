@@ -4,11 +4,12 @@ import { badRequest } from "./errors";
 import { can, type AuthUser } from "./rbac";
 import { AUDIENCE_LABEL, isNotifKind, kindsFor, type Audience } from "./notificationKinds";
 import { pushConfig, sendPushDetailed } from "./push";
+import { isPushEndpoint } from "./pushRules";
 
 const MAX_DEVICES = 5;
 
 export const subscribeBody = z.object({
-  endpoint: z.string().url().max(1000),
+  endpoint: z.string().url().max(1000).refine(isPushEndpoint, "Alamat perangkat tidak dikenal. Aktifkan notifikasi dari browser di HP ini."),
   keys: z.object({ p256dh: z.string().min(10).max(300), auth: z.string().min(5).max(300) }),
   userAgent: z.string().max(300).optional(),
 });

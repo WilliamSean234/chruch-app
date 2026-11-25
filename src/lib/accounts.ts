@@ -5,6 +5,7 @@ import { prisma } from "./prisma";
 import { badRequest, conflict, forbidden, notFound } from "./errors";
 import { isSuperadmin, type AuthUser } from "./rbac";
 import { forgetLiveUser } from "./liveUser";
+import { assertCanDeactivate } from "./accountGuards";
 import { nameKey } from "./names";
 import { pagingQuery, resolvePaging } from "./paging";
 import { membershipsOf } from "./groups";
@@ -63,9 +64,10 @@ export async function createAccountForPerson(
   }
 }
 
-export async function deactivateAccount(tenantId: string, personId: string) {
+export async function deactivateAccount(tenantId: string, personId: string, actorUserId?: string) {
   const user = await prisma.user.findFirst({ where: { personId, tenantId, deletedAt: null } });
   if (!user) throw notFound("Akun");
+  await assertCanDeactivate(tenantId, personId, actorUserId);
   await prisma.user.update({ where: { id: user.id }, data: { isActive: false } });
   forgetLiveUser(user.id);
   return user.id;

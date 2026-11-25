@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "./prisma";
 import { ApiError, badRequest, conflict, forbidden, notFound } from "./errors";
 import { ageFrom, nameKey } from "./names";
+import { assertCanDeactivate } from "./accountGuards";
 import { can, requirePermission, requireTeamAccess, teamScope, type AuthUser } from "./rbac";
 import { membershipsOf } from "./groups";
 import { ebmGroupPromptFor, syncEbmGroup } from "./ebmGroup";
@@ -280,9 +281,10 @@ export async function changePersonMinistries(u: AuthUser, id: string, b: Ministr
   return toDto(p);
 }
 
-export async function deletePerson(tenantId: string, id: string) {
+export async function deletePerson(tenantId: string, id: string, actorUserId?: string) {
   const p = await prisma.person.findFirst({ where: { id, tenantId, deletedAt: null } });
   if (!p) throw notFound("Orang");
+  await assertCanDeactivate(tenantId, id, actorUserId); // menghapus orang menonaktifkan akunnya: jangan sampai Superadmin terakhir atau diri sendiri
   const future = await prisma.eventAssignment.count({ where: { personId: id, event: { deletedAt: null, status: { not: "CANCELLED" }, endsAt: { gte: new Date() } } } });
   if (future > 0) throw conflict(`${p.name} masih punya ${future} penugasan yang akan datang. Ganti orangnya dulu.`);
   await prisma.$transaction([
