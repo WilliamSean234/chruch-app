@@ -8,9 +8,10 @@ test("setiap jenis notifikasi punya kunci unik", () => {
 
 test("jenis yang ditampilkan mengikuti peran akun", () => {
   assert.deepEqual(kindsFor(["PELAYAN"]).map((k) => k.audience), ["PELAYAN", "PELAYAN", "PELAYAN", "PELAYAN", "PELAYAN"]);
-  assert.ok(kindsFor(["SEMUA", "PELAYAN", "PENJADWAL", "PENGELOLA", "KELOMPOK"]).length === NOTIF_KINDS.length);
+  assert.ok(kindsFor(["SEMUA", "PELAYAN", "PENJADWAL", "PENGELOLA", "SUPERADMIN", "KELOMPOK"]).length === NOTIF_KINDS.length);
   assert.deepEqual(kindsFor(["SEMUA"]).map((k) => k.kind), ["ULANG_TAHUN", "ONLINE_H1"]);
   assert.deepEqual(kindsFor(["PENGELOLA"]).map((k) => k.kind), ["TUKAR_MASUK"]); // Penjadwal dan Admin Tim
+  assert.deepEqual(kindsFor(["SUPERADMIN"]).map((k) => k.kind), ["CADANGAN_BULANAN"]);
   assert.ok(kindsFor(["PELAYAN"]).some((k) => k.kind === "TUKAR_DITOLAK"));
   assert.equal(kindsFor([]).length, 0);
 });

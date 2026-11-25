@@ -172,7 +172,7 @@ export function describe(r: AuditRowIn, refs: Refs): { target: string | null; ho
     case "Ministry": target = refs.names.ministries.get(r.entityId) ?? str(p.name) ?? `Posisi ${GONE}`; break;
     case "CgGroup": target = refs.names.cg.get(r.entityId) ?? `Kelompok CG ${GONE}`; break;
     case "MeetingSeries": target = `Rapat berulang · ${refs.series.get(r.entityId) ?? "kelompok"}`; break;
-    case "Tenant": target = "Profil gereja"; break;
+    case "Tenant": target = a === "backup.download" ? "Cadangan data gereja" : "Profil gereja"; break;
     case "Import": target = "File Excel"; break;
     default: target = str(p.name); // pilihan data (posisi, komunitas, ruangan, kelompok CG)
   }
@@ -300,6 +300,7 @@ export function describe(r: AuditRowIn, refs: Refs): { target: string | null; ho
     case "meeting.minutes.create": case "meeting.minutes.save": how = num(p.chars) !== null ? `${p.chars} karakter` : null; break; // isi notulen tidak ditampilkan
     case "meeting.minutes.finalize": how = num(p.version) !== null ? `Versi ${p.version}` : null; break;
     case "meeting.minutes.revise": how = [num(p.version) !== null ? `Menjadi versi ${p.version}` : null, p.hasReason === true ? "disertai alasan" : null].filter(Boolean).join(" · ") || null; break;
+    case "backup.download": how = num(p.lembar) !== null ? `${p.lembar} lembar · ${p.baris ?? 0} baris` : null; break;
     case "church.profile.update": how = str(p.name) ? `Nama gereja: ${p.name}` : null; break;
     case "template.generate": {
       const bits = [num(p.created) !== null ? `${p.created} acara dibuat` : null, num(p.skipped) ? `${p.skipped} dilewati` : null].filter(Boolean);

@@ -284,12 +284,32 @@ export async function monthlyDigest(tenantId: string, now = new Date()) {
   return out;
 }
 
+// ───────── Pengingat cadangan ─────────
+/** Superadmin yang belum mengunduh cadangan dalam 25 hari terakhir diingatkan sekali sebulan. */
+export async function remindBackup(tenantId: string, now = new Date()) {
+  const mb = monthBounds(localParts(now).date);
+  const supers = await prisma.user.findMany({ where: { tenantId, isActive: true, deletedAt: null, roles: { some: { role: { isSuperadmin: true } } } }, select: { id: true } });
+  const since = new Date(now.getTime() - 25 * 86_400_000);
+  const out = { sent: 0, skipped: 0 };
+  for (const s of supers) {
+    const recent = await prisma.auditLog.count({ where: { tenantId, userId: s.id, action: "backup.download", createdAt: { gte: since } } });
+    if (recent > 0) { out.skipped++; continue; }
+    const r = await notifyUsers(tenantId, [s.id], {
+      kind: "CADANGAN_BULANAN", dedupeKey: `cadangan:${mb.month}`, url: "/pengaturan?tab=cadangan",
+      title: "Waktunya unduh cadangan data",
+      body: "Unduh cadangan Excel di Pengaturan > Cadangan, lalu simpan di tempat aman milik gereja.",
+    });
+    if (r.sent.length) out.sent++; else out.skipped++;
+  }
+  return out;
+}
+
 /**
  * Bersihkan catatan notifikasi lama supaya penyimpanan database tidak naik tanpa batas (satu baris per penerima per pesan).
  * Hanya jenis yang kuncinya terikat tanggal (satu pesan per hari atau bulan): setelah lewat, kunci itu tidak pernah dicek lagi.
  * Dibiarkan: pemberitahuan dan pembatalan yang terikat acara, serta "Penanda pengingat" (mencegah pengumuman ulang untuk hal yang masih berlaku).
  */
-const DATE_BOUND_KINDS: NotifKind[] = ["ULANG_TAHUN", "PELAYAN_H1", "ONLINE_H1", "KELOMPOK_H1", "PELAYAN_BULANAN", "PENJADWAL_KEHADIRAN", "PENJADWAL_ATURAN"];
+const DATE_BOUND_KINDS: NotifKind[] = ["CADANGAN_BULANAN", "ULANG_TAHUN", "PELAYAN_H1", "ONLINE_H1", "KELOMPOK_H1", "PELAYAN_BULANAN", "PENJADWAL_KEHADIRAN", "PENJADWAL_ATURAN"];
 export async function pruneNotificationLog(tenantId: string, now = new Date()) {
   const r = await prisma.notificationLog.deleteMany({
     where: { tenantId, kind: { in: DATE_BOUND_KINDS }, createdAt: { lt: logCutoff(now) }, NOT: { title: "Penanda pengingat" } },

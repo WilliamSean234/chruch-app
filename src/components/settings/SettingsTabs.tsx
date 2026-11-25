@@ -1,13 +1,14 @@
 import Link from "next/link";
 
-export const SETTINGS_TABS: readonly { key: "impor" | "akun" | "daftar" | "profil" | "log"; label: string; short: string; ready: boolean; superOnly?: boolean }[] = [
+export const SETTINGS_TABS: readonly { key: "impor" | "akun" | "daftar" | "profil" | "cadangan" | "log"; label: string; short: string; ready: boolean; superOnly?: boolean }[] = [
   { key: "impor", short: "Impor", label: "Impor data", ready: true },
   { key: "akun", short: "Akun", label: "Kelola akun", ready: true },
   { key: "daftar", short: "Daftar", label: "Permintaan daftar", ready: true },
   { key: "profil", short: "Profil", label: "Profil gereja", ready: true },
+  { key: "cadangan", short: "Backup", label: "Cadangan data", ready: true, superOnly: true },
   { key: "log", short: "Log", label: "Log aktivitas", ready: true, superOnly: true },
 ];
-export type SettingsTab = "impor" | "akun" | "daftar" | "profil" | "log";
+export type SettingsTab = "impor" | "akun" | "daftar" | "profil" | "cadangan" | "log";
 
 export default function SettingsTabs({ active, isSuper = false, pending = 0 }: { active: SettingsTab; isSuper?: boolean; pending?: number }) {
   const tabs = SETTINGS_TABS.filter((t) => !t.superOnly || isSuper);

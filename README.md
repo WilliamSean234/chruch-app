@@ -110,3 +110,4 @@ supaya seed dummy menolak berjalan.
 - [x] Tampilan HP: Jadwal saya, isi kehadiran, menu bawah; filter dan tab lengket di semua halaman
 - [x] W8 Tes unit, health check, header keamanan, panduan deploy
 - [x] Minta pengganti: pelayan meminta kursinya digantikan (alasan, usulan nama), Penjadwal atau Admin Tim tim itu mengisi penggantinya seperti biasa atau menolak; selesai otomatis saat kursi berganti. Migrasi `20261125210000_minta_pengganti`
+- [x] Cadangan data: Superadmin mengunduh satu berkas Excel (orang, tim, ruangan, CG, template, jadwal 12 bulan, akun) dari Pengaturan > Cadangan data; tanpa isi rapat, kata sandi, dan kunci; pengingat bulanan tiap tanggal 1

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { prisma } from "./prisma";
 import { badRequest } from "./errors";
-import { can, type AuthUser } from "./rbac";
+import { can, isSuperadmin, type AuthUser } from "./rbac";
 import { AUDIENCE_LABEL, isNotifKind, kindsFor, type Audience } from "./notificationKinds";
 import { pushConfig, sendPushDetailed } from "./push";
 import { isPushEndpoint } from "./pushRules";
@@ -29,6 +29,7 @@ async function audiencesOf(u: AuthUser): Promise<Audience[]> {
   const out: Audience[] = ["SEMUA"]; // setiap pemilik akun
   if (u.personId) out.push("PELAYAN");
   if (can(u, "event.write")) out.push("PENJADWAL");
+  if (isSuperadmin(u)) out.push("SUPERADMIN");
   if (can(u, "assignment.write")) out.push("PENGELOLA"); // Penjadwal dan Admin Tim: menerima permintaan pengganti
   if (u.personId && (await prisma.groupMember.count({ where: { personId: u.personId, leftAt: null, group: { tenantId: u.tenantId, deletedAt: null } } })) > 0) out.push("KELOMPOK");
   return out;

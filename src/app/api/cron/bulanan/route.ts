@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { monthlyDigest, safely } from "@/lib/notifyJobs";
+import { monthlyDigest, remindBackup, safely } from "@/lib/notifyJobs";
 import { cronGuard } from "../auth";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +12,6 @@ export async function GET(req: Request) {
   if (denied) return denied;
   const tenants = await prisma.tenant.findMany({ where: { deletedAt: null }, select: { id: true } });
   const out: Record<string, unknown> = {};
-  for (const t of tenants) out[t.id] = await safely("bulanan", () => monthlyDigest(t.id));
+  for (const t of tenants) out[t.id] = { ringkasan: await safely("bulanan", () => monthlyDigest(t.id)), cadangan: await safely("cadangan", () => remindBackup(t.id)) };
   return NextResponse.json({ ok: true, hasil: out });
 }

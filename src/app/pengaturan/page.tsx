@@ -7,6 +7,8 @@ import AuditPanel from "@/components/settings/AuditPanel";
 import RegistrationsPanel from "@/components/settings/RegistrationsPanel";
 import { pendingCount } from "@/lib/registrations";
 import ChurchProfilePanel from "@/components/settings/ChurchProfilePanel";
+import BackupPanel from "@/components/settings/BackupPanel";
+import { lastBackupInfo } from "@/lib/backup";
 import { stickyPage } from "@/components/ui/sticky";
 import { getChurchProfile } from "@/lib/church";
 import { can, isSuperadmin } from "@/lib/rbac";
@@ -27,6 +29,7 @@ export default async function PengaturanPage({ searchParams }: { searchParams: P
         {tab === "akun" && <AccountsPanel selfId={u.userId} isSuper={sup} />}
         {tab === "daftar" && <RegistrationsPanel />}
         {tab === "log" && <AuditPanel />}
+        {tab === "cadangan" && <BackupPanel last={await lastBackupInfo(u.tenantId)} />}
         {tab === "profil" && <ChurchProfilePanel initial={await getChurchProfile(u.tenantId)} />}
       </div>
     </AppShell>
