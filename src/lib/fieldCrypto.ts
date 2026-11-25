@@ -12,11 +12,22 @@ const PREFIX = "enc:v1:";
 
 export const isEncrypted = (s: string) => s.startsWith(PREFIX);
 
+/** Rapikan kesalahan tempel yang umum: spasi atau baris baru, tanda kutip, atau "MINUTES_ENC_KEY=" ikut tertempel. */
+export function normalizeKey(raw: string): string {
+  let v = raw.trim().replace(/^MINUTES_ENC_KEY\s*=\s*/, "").trim();
+  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1).trim();
+  return v.replace(/\s+/g, "");
+}
+
 function key(): Buffer {
   const raw = process.env.MINUTES_ENC_KEY;
   if (!raw) throw new ApiError(500, "ENC_KEY_MISSING", "Penyimpanan notulen belum disiapkan: kunci enkripsi belum diisi di server. Hubungi Superadmin.");
-  const k = Buffer.from(raw, "base64");
-  if (k.length !== 32) throw new ApiError(500, "ENC_KEY_INVALID", "Kunci enkripsi notulen tidak valid (harus 32 byte base64). Hubungi Superadmin.");
+  const text = normalizeKey(raw);
+  const k = Buffer.from(text, "base64");
+  if (k.length !== 32) {
+    // hanya panjang yang disebut, isi kunci tidak pernah ditampilkan
+    throw new ApiError(500, "ENC_KEY_INVALID", `Kunci enkripsi notulen tidak valid: terbaca ${text.length} karakter (${k.length} byte), seharusnya 44 karakter (32 byte) base64. Buat ulang dengan: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))". Hubungi Superadmin.`);
+  }
   return k;
 }
 

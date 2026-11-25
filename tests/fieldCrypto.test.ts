@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 
 process.env.MINUTES_ENC_KEY = randomBytes(32).toString("base64");
-const { decryptText, encryptText, ensureEncrypted, isEncrypted } = await import("../src/lib/fieldCrypto");
+const { decryptText, encryptText, ensureEncrypted, isEncrypted, normalizeKey } = await import("../src/lib/fieldCrypto");
 
 test("enkripsi bolak-balik; hasilnya bukan teks asli dan acak tiap kali", () => {
   const a = encryptText("Keputusan: beli proyektor", "minutes:e1", "decisions");
@@ -39,4 +39,15 @@ test("data diubah di database = gagal dibuka; kunci beda = gagal dibuka", () => 
 test("tanpa kunci: menulis ditolak, tidak diam-diam jadi teks biasa", () => {
   delete process.env.MINUTES_ENC_KEY;
   assert.throws(() => encryptText("rahasia", "minutes:e1", "agenda"), /kunci enkripsi/i);
+});
+
+test("kesalahan tempel umum dirapikan; panjang salah ditolak dengan petunjuk", () => {
+  const k = randomBytes(32).toString("base64");
+  assert.equal(normalizeKey(`  ${k}\r\n`), k);
+  assert.equal(normalizeKey(`"${k}"`), k);
+  assert.equal(normalizeKey(`MINUTES_ENC_KEY=${k}`), k);
+  process.env.MINUTES_ENC_KEY = `MINUTES_ENC_KEY="${k}"\n`;
+  assert.equal(decryptText(encryptText("halo", "minutes:e1", "agenda"), "minutes:e1", "agenda"), "halo");
+  process.env.MINUTES_ENC_KEY = k.slice(0, 20);
+  assert.throws(() => encryptText("halo", "minutes:e1", "agenda"), /terbaca 20 karakter/);
 });
