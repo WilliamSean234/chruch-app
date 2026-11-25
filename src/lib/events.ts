@@ -9,7 +9,7 @@ import { isSundayPair } from "./seatRules";
 import { nextDocNumber } from "./docNumber";
 import { creatorNames } from "./creators";
 import { assertNotLocked, assertTransition, isEditable, isLockedByAge } from "./eventStatusFlow";
-import { teamScope, type AuthUser } from "./rbac";
+import { canSeeDraftEvents, teamScope, type AuthUser } from "./rbac";
 import { pageOf, pagingQuery, resolvePaging } from "./paging";
 import { eventYears } from "./years";
 import { afterResponse } from "./notify";
@@ -145,14 +145,15 @@ export const eventListQuery = z.object({
 });
 
 /** Daftar acara ibadah berhalaman, lengkap dengan sesi latihan yang sudah dibentuk dan pilihan filter. */
-export async function listEvents(tenantId: string, q: z.infer<typeof eventListQuery>) {
+export async function listEvents(tenantId: string, q: z.infer<typeof eventListQuery>, seeDrafts = true) {
   const pg = resolvePaging(q);
+  if (!seeDrafts && q.status === "DRAFT") return { ...pageOf([], 0, pg), options: { templates: [], rooms: [], years: [] } }; // draf tidak untuk Admin Tim
   const and: Prisma.EventWhereInput[] = [];
   if (q.roomId) and.push({ OR: [{ roomId: q.roomId }, { rehearsals: { some: { roomId: q.roomId, deletedAt: null } } }] });
   if (q.search) and.push({ OR: [{ title: { contains: q.search, mode: "insensitive" } }, { number: { contains: q.search, mode: "insensitive" } }] });
   const where: Prisma.EventWhereInput = {
     tenantId, deletedAt: null, kind: "IBADAH",
-    ...(q.status ? { status: q.status } : {}),
+    ...(q.status ? { status: q.status } : seeDrafts ? {} : { status: { not: "DRAFT" } }),
     ...(q.templateId ? { templateId: q.templateId === "NONE" ? null : q.templateId } : {}),
     ...(q.rehearsal === "YES" ? { rehearsals: { some: { deletedAt: null } } } : {}),
     ...(q.rehearsal === "NO" ? { rehearsals: { none: { deletedAt: null } } } : {}),
@@ -304,6 +305,7 @@ export async function updateEvent(u: AuthUser, id: string, b: z.infer<typeof eve
  */
 export async function setBandMode(u: AuthUser, id: string, mode: "BAND" | "NO_BAND") {
   const e = await loadEditable(u.tenantId, id);
+  if (e.status === "DRAFT" && !canSeeDraftEvents(u)) throw notFound("Acara"); // draf belum untuk Admin Tim
   if (e.bandMode === mode) return { event: await getEvent(u.tenantId, id), removed: 0, restored: 0, released: [] as string[] };
 
   // Admin Tim hanya boleh mengubah bila mengurus tim yang punya posisi band

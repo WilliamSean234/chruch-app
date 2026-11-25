@@ -2,6 +2,7 @@ import { decode } from "next-auth/jwt";
 import { auth, SESSION_SALT } from "./auth";
 import { ApiError, unauthorized } from "./errors";
 import type { AuthUser } from "./rbac";
+import { liveUser } from "./liveUser";
 
 /**
  * Ambil user dari request: header `Authorization: Bearer <jwt>` (aplikasi native)
@@ -15,7 +16,15 @@ export async function requireUser(req?: Request, opts?: { allowMustChange?: bool
   return u;
 }
 
+/** Token/sesi hanya mengenali pemiliknya; izin dan status akun dibaca ulang dari database (liveUser). */
 async function readUser(req?: Request): Promise<AuthUser> {
+  const claims = await readClaims(req);
+  const live = await liveUser(claims);
+  if (!live) throw unauthorized();
+  return live;
+}
+
+async function readClaims(req?: Request): Promise<AuthUser> {
   const header = req?.headers.get("authorization");
   if (header?.toLowerCase().startsWith("bearer ")) {
     const token = header.slice(7).trim();
@@ -30,10 +39,11 @@ async function readUser(req?: Request): Promise<AuthUser> {
       roles: payload.roles ?? [],
       permissions: payload.permissions ?? [],
       mustChangePassword: payload.mustChangePassword ?? false,
+      authAt: payload.authAt,
     };
   }
   const session = await auth();
   const u = session?.user;
   if (!u?.userId || !u.tenantId) throw unauthorized();
-  return { userId: u.userId, tenantId: u.tenantId, personId: u.personId ?? null, roles: u.roles, permissions: u.permissions, mustChangePassword: u.mustChangePassword ?? false };
+  return { userId: u.userId, tenantId: u.tenantId, personId: u.personId ?? null, roles: u.roles, permissions: u.permissions, mustChangePassword: u.mustChangePassword ?? false, authAt: u.authAt };
 }

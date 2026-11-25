@@ -32,7 +32,7 @@ export async function submitRegistration(b: z.infer<typeof registerBody>, ip: st
 
   const since = new Date(Date.now() - 3_600_000);
   const [recent, pending, user, dup] = await Promise.all([
-    ip === "unknown" ? 0 : prisma.registrationRequest.count({ where: { ip, createdAt: { gte: since } } }),
+    prisma.registrationRequest.count({ where: { ip: ip === "unknown" ? null : ip, createdAt: { gte: since } } }), // alamat tak terbaca dihitung sebagai satu kelompok, bukan dibebaskan
     prisma.registrationRequest.count({ where: { tenantId: tenant.id, status: "PENDING" } }),
     prisma.user.findFirst({ where: { tenantId: tenant.id, email: b.email }, select: { id: true } }),
     prisma.registrationRequest.findFirst({ where: { tenantId: tenant.id, email: b.email, status: "PENDING" }, select: { id: true } }),
@@ -58,7 +58,8 @@ export async function resendRegistrationVerification(b: z.infer<typeof resendBod
   const tenant = await prisma.tenant.findFirst({ where: { deletedAt: null }, orderBy: { createdAt: "asc" }, select: { id: true } });
   if (!tenant) throw new ApiError(503, "UNAVAILABLE", "Pendaftaran belum tersedia.");
   const req = await prisma.registrationRequest.findFirst({ where: { tenantId: tenant.id, email: b.email, status: "PENDING", emailVerifiedAt: null }, select: { id: true, name: true } });
-  if (req) await sendVerification({ tenantId: tenant.id, kind: "REGISTRATION", refId: req.id, email: b.email, name: req.name });
+  // jeda per tujuan tidak ditampilkan: jawabannya selalu sama, jadi tidak bisa dipakai menebak alamat yang sedang menunggu
+  if (req) await sendVerification({ tenantId: tenant.id, kind: "REGISTRATION", refId: req.id, email: b.email, name: req.name }).catch((e) => { if (!(e instanceof ApiError && e.status === 429)) throw e; });
   return { ok: true as const };
 }
 

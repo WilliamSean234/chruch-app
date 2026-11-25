@@ -72,7 +72,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     jwt({ token, user }) {
       const u = (user as { auth?: AuthUser } | undefined)?.auth;
-      if (u) Object.assign(token, u);
+      if (u) Object.assign(token, u, { authAt: Date.now() }); // authAt: kapan sesi dibuat, untuk mencabut sesi lama saat kata sandi diganti
       return token;
     },
     session({ session, token }) {
@@ -83,6 +83,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         roles: token.roles ?? [],
         permissions: token.permissions ?? [],
         mustChangePassword: token.mustChangePassword ?? false,
+        authAt: token.authAt,
       });
       return session;
     },

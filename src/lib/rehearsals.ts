@@ -8,7 +8,7 @@ import { findPairEvent } from "./events";
 import { isTwinSlot, rehearsalLimit, rehearsalTimingError } from "./rehearsalRules";
 import { audit } from "./audit";
 import { judgePair } from "./seatRules";
-import { can, requirePermission, requireTeamAccess, teamScope, type AuthUser } from "./rbac";
+import { can, canSeeDraftEvents, requirePermission, requireTeamAccess, teamScope, type AuthUser } from "./rbac";
 
 const overrideSchema = z.object({ reason: z.string().trim().min(5, "Alasan override minimal 5 karakter").max(300) }).optional();
 
@@ -102,11 +102,24 @@ function conflictError(people: { personId: string; name: string }[], map: Map<st
 }
 
 /**
+ * Sesi latihan berlaku untuk seluruh acara (semua tim). Penjadwal dan Superadmin bebas; Admin Tim hanya bila acara itu punya posisi dari timnya,
+ * dan tidak untuk acara yang masih draf (belum untuk Admin Tim).
+ */
+async function requireRehearsalAccess(u: AuthUser, ev: { id: string; status: string }) {
+  const scope = teamScope(u);
+  if (scope === null) return;
+  if (ev.status === "DRAFT" && !canSeeDraftEvents(u)) throw notFound("Acara");
+  const mine = await prisma.eventAssignment.count({ where: { eventId: ev.id, tenantId: u.tenantId, teamTypeId: { in: scope } } });
+  if (!mine) throw new ApiError(403, "FORBIDDEN_TEAM", "Sesi latihan hanya bisa diatur untuk acara yang punya posisi dari tim Anda.");
+}
+
+/**
  * Tambah sesi latihan. Ruangan dan semua peserta wajib dikunci; bentrok = ditolak (kecuali override Superadmin).
  * Latihan harus dimulai sebelum ibadah. Bila ada Ibadah Minggu 1/2 pasangan di hari yang sama, latihan yang sama otomatis dibuat di keduanya.
  */
 export async function createRehearsal(u: AuthUser, eventId: string, b: z.infer<typeof rehearsalBody>) {
   const ev = await loadEvent(u.tenantId, eventId);
+  await requireRehearsalAccess(u, ev);
   const startsAt = zonedToUtc(b.date, b.startTime);
   const endsAt = addMinutes(startsAt, b.durationMin);
   const pair = await pairFor(u.tenantId, ev);
@@ -169,6 +182,7 @@ export async function createRehearsal(u: AuthUser, eventId: string, b: z.infer<t
 
 export async function updateRehearsal(u: AuthUser, eventId: string, rid: string, b: z.infer<typeof rehearsalPatch>) {
   const ev = await loadEvent(u.tenantId, eventId);
+  await requireRehearsalAccess(u, ev);
   const cur = await prisma.rehearsalSession.findFirst({ where: { id: rid, eventId, tenantId: u.tenantId, deletedAt: null } });
   if (!cur) throw notFound("Sesi latihan");
 
@@ -231,6 +245,7 @@ export async function updateRehearsal(u: AuthUser, eventId: string, rid: string,
 
 export async function deleteRehearsal(u: AuthUser, eventId: string, rid: string) {
   const ev = await loadEvent(u.tenantId, eventId);
+  await requireRehearsalAccess(u, ev);
   const cur = await prisma.rehearsalSession.findFirst({ where: { id: rid, eventId, tenantId: u.tenantId, deletedAt: null } });
   if (!cur) throw notFound("Sesi latihan");
   const pair = await pairFor(u.tenantId, ev);
@@ -290,6 +305,7 @@ export async function mirrorSessionsFrom(u: AuthUser, targetEventId: string, sou
 /** Aktif/nonaktifkan "wajib latihan" untuk satu kursi. Mengaktifkan akan mengunci jam semua sesi latihan untuk orangnya. */
 export async function setSeatRequired(u: AuthUser, eventId: string, assignmentId: string, required: boolean, ov?: { reason: string }) {
   const ev = await loadEvent(u.tenantId, eventId);
+  if (ev.status === "DRAFT" && !canSeeDraftEvents(u)) throw notFound("Acara"); // draf belum untuk Admin Tim
   const seat = await prisma.eventAssignment.findFirst({ where: { id: assignmentId, eventId, tenantId: u.tenantId }, include: { person: true, ministry: { include: { teamType: true } } } });
   if (!seat) throw notFound("Kursi");
   requireTeamAccess(u, seat.teamTypeId);

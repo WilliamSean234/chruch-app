@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { can, canManagePeople, isSuperadmin, requireManagePeople, requirePermission, requirePersonInScope, teamScope, type AuthUser } from "../src/lib/rbac";
+import { can, canManagePeople, canSeeDraftEvents, isSuperadmin, requireManagePeople, requirePermission, requirePersonInScope, teamScope, type AuthUser } from "../src/lib/rbac";
 
 const user = (roles: AuthUser["roles"], permissions: string[] = []): AuthUser => ({ userId: "u", tenantId: "t", personId: null, roles, permissions });
 const role = (code: string, teamTypeId: string | null = null, isSuperadmin = false) => ({ code, isSuperadmin, teamTypeId });
@@ -74,4 +74,11 @@ test("hanya Superadmin dan Admin Jemaat (izin person.manage) yang boleh menambah
 test("Penjadwal tidak lagi punya izin master data (ruangan, tim, posisi)", () => {
   assert.equal(can(user([role("PENJADWAL")], ["person.write", "event.write"]), "master.write"), false);
   assert.equal(can(user([role("SUPERADMIN", null, true)]), "master.write"), true);
+});
+
+test("acara DRAFT hanya terlihat oleh yang mengatur acara (Superadmin dan Penjadwal), bukan Admin Tim", () => {
+  assert.equal(canSeeDraftEvents(user([role("SUPERADMIN", null, true)])), true);
+  assert.equal(canSeeDraftEvents(user([role("PENJADWAL")], ["event.write"])), true);
+  assert.equal(canSeeDraftEvents(user([role("ADMIN_TIM", "tim-1")], ["assignment.write", "rehearsal.write", "person.write"])), false);
+  assert.equal(canSeeDraftEvents(user([role("PELAYAN")])), false);
 });

@@ -11,6 +11,8 @@ export type AuthUser = {
   permissions: string[];
   /** true = akun harus ganti kata sandi dulu sebelum memakai aplikasi. */
   mustChangePassword?: boolean;
+  /** Kapan sesi/token ini dibuat (ms). Dipakai untuk mencabut sesi lama setelah kata sandi diganti. */
+  authAt?: number;
 };
 
 export const isSuperadmin = (u: AuthUser) => u.roles.some((r) => r.isSuperadmin);
@@ -40,6 +42,9 @@ export function teamScope(u: AuthUser): string[] | null {
   if (adminTim.some((r) => r.teamTypeId === null)) return null;
   return adminTim.map((r) => r.teamTypeId as string);
 }
+
+/** Acara DRAFT belum untuk umum: hanya yang boleh mengatur acara (event.write: Superadmin dan Penjadwal). Admin Tim baru melihat acara setelah diterbitkan. */
+export const canSeeDraftEvents = (u: AuthUser): boolean => can(u, "event.write");
 
 /** Pastikan user boleh mengubah posisi dari tim tertentu (assignment/latihan). */
 export function requireTeamAccess(u: AuthUser, teamTypeId: string): void {

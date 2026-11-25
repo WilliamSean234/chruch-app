@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "./prisma";
 import { badRequest, conflict, forbidden, notFound } from "./errors";
 import { isSuperadmin, type AuthUser } from "./rbac";
+import { forgetLiveUser } from "./liveUser";
 import { nameKey } from "./names";
 import { pagingQuery, resolvePaging } from "./paging";
 import { membershipsOf } from "./groups";
@@ -66,6 +67,7 @@ export async function deactivateAccount(tenantId: string, personId: string) {
   const user = await prisma.user.findFirst({ where: { personId, tenantId, deletedAt: null } });
   if (!user) throw notFound("Akun");
   await prisma.user.update({ where: { id: user.id }, data: { isActive: false } });
+  forgetLiveUser(user.id);
   return user.id;
 }
 
@@ -107,6 +109,7 @@ export async function updateAccount(actor: AuthUser, target: string | { userId: 
   if (b.newPassword) {
     data.passwordHash = await bcrypt.hash(b.newPassword, 10);
     data.mustChangePassword = true; // kata sandi dari admin selalu wajib diganti
+    data.sessionsValidFrom = new Date(); // sesi lama dengan kata sandi sebelumnya tidak berlaku lagi
     data.passwordChangedAt = null;
   }
 
@@ -128,6 +131,7 @@ export async function updateAccount(actor: AuthUser, target: string | { userId: 
     if (ebmAdmin) await grantEbmAdmin(tx, actor.tenantId, user.personId!, actor.userId); // Admin Tim EBM: akses penuh di kelompok EBM
     if (user.personId && b.roleCodes?.includes("PENJADWAL")) await syncTkiGroup(tx, actor.tenantId, { only: [user.personId], rejoin: true, userId: actor.userId });
   });
+  forgetLiveUser(user.id);
   return { id: user.id, email: user.email };
 }
 
@@ -144,8 +148,9 @@ export async function changeOwnPassword(actor: AuthUser, b: z.infer<typeof passw
   if (b.currentPassword === b.newPassword) throw badRequest("Kata sandi baru harus berbeda dari yang lama.");
   await prisma.user.update({
     where: { id: user.id },
-    data: { passwordHash: await bcrypt.hash(b.newPassword, 10), mustChangePassword: false, passwordChangedAt: new Date() },
+    data: { passwordHash: await bcrypt.hash(b.newPassword, 10), mustChangePassword: false, passwordChangedAt: new Date(), sessionsValidFrom: new Date() }, // sesi lama ikut dicabut; masuk ulang memakai kata sandi baru
   });
+  forgetLiveUser(user.id);
   return user.id;
 }
 

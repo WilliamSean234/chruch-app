@@ -28,6 +28,7 @@ model User {
   isActive     Boolean    @default(true)
   mustChangePassword Boolean @default(false) // true = wajib ganti kata sandi saat login berikutnya (akun baru / direset admin)
   passwordChangedAt  DateTime?
+  sessionsValidFrom  DateTime? // sesi/token yang dibuat sebelum waktu ini ditolak (diisi saat kata sandi diganti atau direset admin)
   notifyOff    String[]   @default([]) // jenis notifikasi yang dimatikan pemilik akun (lihat lib/notificationKinds)
   emailVerifiedAt DateTime? // kapan pemilik membuktikan emailnya lewat tautan; kosong = belum terverifikasi (email tidak dipakai untuk notifikasi)
   createdAt    DateTime   @default(now())

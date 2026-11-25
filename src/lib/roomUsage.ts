@@ -14,8 +14,9 @@ export type UsageItem = {
 /**
  * Pemakaian semua ruangan aktif pada satu tanggal (acara dan sesi latihan), diambil dari buku pemesanan ruangan.
  * `seeDrafts` false: acara yang belum terbit tetap menandai ruangan terpakai, tetapi judulnya disembunyikan (seperti di kalender).
+ * `seeMeetings` false (bukan anggota kelompok dan bukan penjadwal): rapat tetap menandai ruangan terpakai, tetapi nama kelompok dan topiknya tidak ditampilkan, sama seperti daftar Rapat yang disembunyikan dari mereka.
  */
-export async function roomUsage(tenantId: string, date: string, seeDrafts = true) {
+export async function roomUsage(tenantId: string, date: string, seeDrafts = true, seeMeetings = true) {
   if (!DATE_RE.test(date)) throw badRequest("Format tanggal YYYY-MM-DD.");
   const dayStart = zonedToUtc(date, "00:00");
   const dayEnd = zonedToUtc(date, "23:59");
@@ -43,7 +44,7 @@ export async function roomUsage(tenantId: string, date: string, seeDrafts = true
         const e = evById.get(b.sourceId);
         if (!e) return [];
         const meeting = e.kind === "RAPAT";
-        return [{ kind: "EVENT", eventId: e.id, title: meeting ? meetingPublicTitle(e.group?.name ?? "", openTitleSafe(e.id, e.title), e.showTopic) : e.title, number: e.number, status: e.status, seq: null, startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString(), meeting }];
+        return [{ kind: "EVENT", eventId: e.id, title: meeting ? (seeMeetings ? meetingPublicTitle(e.group?.name ?? "", openTitleSafe(e.id, e.title), e.showTopic) : "Ruangan terpakai") : e.title, number: meeting && !seeMeetings ? "" : e.number, status: e.status, seq: null, startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString(), meeting }];
       }
       const r = rhById.get(b.sourceId);
       return r ? [{ kind: "REHEARSAL", eventId: r.eventId, title: r.event.title, number: r.event.number, status: r.event.status, seq: r.seq, startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString() }] : [];
@@ -53,7 +54,7 @@ export async function roomUsage(tenantId: string, date: string, seeDrafts = true
 }
 
 /** Cek apakah satu ruangan kosong pada rentang jam tertentu. */
-export async function roomAvailability(tenantId: string, q: { roomId: string; date: string; start: string; end: string }) {
+export async function roomAvailability(tenantId: string, q: { roomId: string; date: string; start: string; end: string }, seeMeetings = true) {
   if (!DATE_RE.test(q.date) || !TIME_RE.test(q.start) || !TIME_RE.test(q.end)) throw badRequest("Tanggal atau jam tidak valid.");
   const startsAt = zonedToUtc(q.date, q.start);
   const endsAt = zonedToUtc(q.date, q.end);
@@ -62,5 +63,6 @@ export async function roomAvailability(tenantId: string, q: { roomId: string; da
   if (!room) throw notFound("Ruangan");
   if (!room.isActive) return { available: false, roomName: room.name, conflicts: [] as string[], inactive: true };
   const busy = await roomConflict(tenantId, room.id, startsAt, endsAt);
-  return { available: !busy, roomName: room.name, conflicts: busy ?? [], inactive: false };
+  // yang tidak boleh melihat rapat hanya diberi tahu bahwa ruangannya terpakai, tanpa nama acara atau kelompok
+  return { available: !busy, roomName: room.name, conflicts: busy ? (seeMeetings ? busy : ["Ruangan sudah terpakai pada jam itu"]) : [], inactive: false };
 }

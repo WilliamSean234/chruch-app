@@ -1,6 +1,6 @@
 import { prisma } from "./prisma";
 import { zonedToUtc } from "./time";
-import { can, isSuperadmin, teamScope, type AuthUser } from "./rbac";
+import { can, canSeeDraftEvents, isSuperadmin, teamScope, type AuthUser } from "./rbac";
 
 export type SummaryLevel = "all" | "team" | "self";
 
@@ -26,7 +26,7 @@ export async function serviceSummary(u: AuthUser, q: { month: string; teamTypeId
   let teamIds: string[] | null = null; // null = semua tim
   if (level === "team") teamIds = q.teamTypeId && scope!.includes(q.teamTypeId) ? [q.teamTypeId] : scope!;
   else if (level === "all" && q.teamTypeId) teamIds = [q.teamTypeId];
-  const statuses = level === "self" ? ["PUBLISHED"] : ["DRAFT", "PUBLISHED"];
+  const statuses = level === "self" || !canSeeDraftEvents(u) ? ["PUBLISHED"] : ["DRAFT", "PUBLISHED"]; // draf hanya untuk yang mengatur acara
 
   const seats = await prisma.eventAssignment.findMany({
     where: {

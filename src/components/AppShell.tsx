@@ -4,6 +4,7 @@ import { getChurchProfile } from "@/lib/church";
 import { redirect } from "next/navigation";
 import { auth, signOut } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { liveUser } from "@/lib/liveUser";
 import { can, isSuperadmin, type AuthUser } from "@/lib/rbac";
 import { canScheduleInAnyGroup, isInAnyGroup } from "@/lib/groups";
 import { initials, ROLE_LABEL } from "@/lib/ui";
@@ -47,10 +48,13 @@ const NAV: { key: NavKey; label: string; href: string; ready: boolean; show: (u:
 
 export async function currentUser(): Promise<AuthUser> {
   const s = await auth();
-  const u = s?.user;
-  if (!u?.userId || !u.tenantId) redirect("/login");
+  const c = s?.user;
+  if (!c?.userId || !c.tenantId) redirect("/login");
+  // izin dan status akun dibaca ulang dari database: akun nonaktif atau sesi yang sudah dicabut kembali ke halaman masuk
+  const u = await liveUser({ userId: c.userId, tenantId: c.tenantId, personId: c.personId ?? null, roles: c.roles, permissions: c.permissions, authAt: c.authAt });
+  if (!u) redirect("/login");
   if (u.mustChangePassword) redirect("/ganti-password");
-  return { userId: u.userId, tenantId: u.tenantId, personId: u.personId ?? null, roles: u.roles, permissions: u.permissions };
+  return { userId: u.userId, tenantId: u.tenantId, personId: u.personId, roles: u.roles, permissions: u.permissions };
 }
 
 /** Gelembung angka kecil untuk penanda di menu. */

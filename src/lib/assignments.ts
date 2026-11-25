@@ -7,7 +7,7 @@ import { assertNotLocked, isEditable, isLockedByAge } from "./eventStatusFlow";
 import { audit } from "./audit";
 import { findPairEvent, getEvent } from "./events";
 import { mirrorSessionsFrom, setSeatRequired, twinInfo } from "./rehearsals";
-import { can, requirePermission, requireTeamAccess, type AuthUser } from "./rbac";
+import { can, canSeeDraftEvents, requirePermission, requireTeamAccess, type AuthUser } from "./rbac";
 import { nameKey } from "./names";
 import { afterResponse } from "./notify";
 import { notifySeatChange } from "./eventNotify";
@@ -22,6 +22,7 @@ export const assignBody = z.object({
 async function loadSeat(u: AuthUser, eventId: string, assignmentId: string) {
   const seat = await prisma.eventAssignment.findFirst({ where: { id: assignmentId, eventId, tenantId: u.tenantId }, include: { ministry: { include: { teamType: true } }, event: true } });
   if (!seat) throw notFound("Kursi");
+  if (seat.event.status === "DRAFT" && !canSeeDraftEvents(u)) throw notFound("Acara"); // draf belum untuk Admin Tim
   requireTeamAccess(u, seat.teamTypeId); // Admin Tim hanya tim miliknya
   return seat;
 }
@@ -300,6 +301,7 @@ export async function copyPersonnel(u: AuthUser, targetEventId: string, sourceEv
     prisma.event.findFirst({ where: where(sourceEventId), include: { assignments: { include: { person: true } } } }),
   ]);
   if (!target || !source) throw notFound("Acara");
+  if ((target.status === "DRAFT" || source.status === "DRAFT") && !canSeeDraftEvents(u)) throw notFound("Acara"); // draf belum untuk Admin Tim
   if (!isEditable(target.status)) throw conflict("Acara yang sudah dibatalkan tidak bisa diubah.");
   assertNotLocked(target.startsAt);
 

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { prisma } from "./prisma";
-import { teamScope, type AuthUser } from "./rbac";
+import { canSeeDraftEvents, teamScope, type AuthUser } from "./rbac";
 import { pageOf, pagingQuery, resolvePaging } from "./paging";
 import { localParts, zonedToUtc } from "./time";
 import { teamKind } from "./seatRules";
@@ -24,7 +24,7 @@ export async function listViolations(u: AuthUser, q: z.infer<typeof violationQue
   const pg = resolvePaging(q);
   const today = zonedToUtc(localParts(new Date()).date, "00:00");
   const events = await prisma.event.findMany({
-    where: { tenantId: u.tenantId, deletedAt: null, kind: "IBADAH", status: { not: "CANCELLED" }, ...(q.past ? {} : { startsAt: { gte: today } }) },
+    where: { tenantId: u.tenantId, deletedAt: null, kind: "IBADAH", status: canSeeDraftEvents(u) ? { not: "CANCELLED" } : "PUBLISHED", ...(q.past ? {} : { startsAt: { gte: today } }) },
     include: { room: { select: { name: true } }, assignments: { include: { ministry: { include: { teamType: { select: { id: true, name: true } } } }, person: { select: { id: true, name: true } } } } },
     orderBy: { startsAt: q.past ? "desc" : "asc" },
     take: MAX_EVENTS,

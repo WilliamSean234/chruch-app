@@ -19,6 +19,6 @@ export const POST = handle(async (req: Request) => {
   const secret = process.env.AUTH_SECRET;
   if (!secret) throw new Error("AUTH_SECRET belum diisi");
   const { email, ...claims } = u;
-  const token = await encode({ token: { ...claims, email, sub: u.userId }, secret, salt: SESSION_SALT, maxAge: SESSION_MAX_AGE });
+  const token = await encode({ token: { ...claims, email, sub: u.userId, authAt: Date.now() }, secret, salt: SESSION_SALT, maxAge: SESSION_MAX_AGE });
   return NextResponse.json({ token, expiresIn: SESSION_MAX_AGE });
 });
