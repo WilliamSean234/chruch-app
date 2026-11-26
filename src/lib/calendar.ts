@@ -123,7 +123,7 @@ function canRecordAttendance(u: AuthUser, e: { kind: string; status: string; sta
 
 /** "Jadwal saya": tugas dan latihan wajib milik orang yang terhubung ke akun ini. */
 export async function mySchedule(u: AuthUser, range: { from?: string; to?: string }) {
-  if (!u.personId) return { items: [], note: "Akun ini belum dihubungkan ke data orang." };
+  if (!u.personId) return { items: [], meetings: [] as Awaited<ReturnType<typeof myMeetings>>, note: "Akun ini belum dihubungkan ke data orang." };
   const from = range.from ? zonedToUtc(range.from, "00:00") : new Date();
   const to = range.to ? zonedToUtc(range.to, "23:59") : addMinutes(new Date(), 60 * 24 * 90);
   const seats = await prisma.eventAssignment.findMany({

@@ -35,7 +35,7 @@ export default async function SayaPage() {
     }
   }
   // rapat kelompok yang saya ikuti dan saya diundang: dibuka ke halaman rapatnya
-  for (const m of "meetings" in r ? r.meetings : []) {
+  for (const m of r.meetings) {
     rows.push({
       key: `m-${m.eventId}`, kind: "MEETING", eventId: m.eventId, title: m.title, startsAt: m.startsAt, endsAt: m.endsAt, room: m.room,
       role: "Rapat", status: "PUBLISHED", rehearsalRequired: false, canAttend: false, attendanceMode: "COUNT", note: m.fullMeeting ? undefined : "Hanya jadwal",
