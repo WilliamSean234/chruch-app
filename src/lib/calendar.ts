@@ -5,7 +5,6 @@ import { addMinutes, zonedToUtc } from "./time";
 import { can, type AuthUser } from "./rbac";
 import { listMeetings } from "./meetings";
 import { attendanceWriteBlock } from "./eventStatusFlow";
-import { canSeeMeetingSchedule } from "./groups";
 import { dedupeTwinRehearsals } from "./rehearsalRules";
 import { birthdaysInRange } from "./birthdays";
 import { openOnlineUrl } from "./meetingCrypto";
@@ -64,8 +63,8 @@ export async function listCalendar(u: AuthUser, q: CalendarQuery) {
     take: 500,
   });
 
-  // Rapat kelompok: tampil untuk Penjadwal, Superadmin, dan anggota kelompok (waktu, ruangan, kelompok; judul disamarkan bagi yang bukan anggota).
-  // Pelayan biasa yang bukan anggota kelompok tidak menerima data rapat sama sekali (dicek di listMeetings). Tidak ikut bila kalender difilter per orang/tim,
+  // Rapat kelompok: tampil untuk Penjadwal, Superadmin, anggota kelompok, dan semua orang bila rapatnya diatur "semua orang" (waktu, ruangan, kelompok;
+  // judul disamarkan bagi yang bukan anggota). Rapat khusus anggota tidak dikirim ke yang lain sama sekali (dicek di listMeetings). Tidak ikut bila kalender difilter per orang/tim,
   // karena itu akan membuka siapa saja anggota sebuah kelompok. "Jadwal saya" hanya memuat rapat kelompok sendiri.
   let meetings: Awaited<ReturnType<typeof listMeetings>> = [];
   const wantsMeetings = !q.teamTypeId && !(q.personId && !q.mine) && (!q.status || q.status === "PUBLISHED");
@@ -74,10 +73,8 @@ export async function listCalendar(u: AuthUser, q: CalendarQuery) {
     if (q.mine) meetings = meetings.filter((m) => m.isMember);
   }
 
-  // Daftar kelompok untuk filter "kelompok rapat" di kalender (nama kelompok sudah terlihat di kalender, jadi aman); kosong bila tidak berhak melihat rapat.
-  const meetingGroups = (await canSeeMeetingSchedule(u))
-    ? await prisma.meetingGroup.findMany({ where: { tenantId: u.tenantId, deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } })
-    : [];
+  // Daftar kelompok untuk filter "kelompok rapat" di kalender: kelompok dari rapat yang memang terlihat pada rentang ini (nama kelompok rapat khusus anggota tidak bocor).
+  const meetingGroups = [...new Map(meetings.map((m) => [m.group.id, { id: m.group.id, name: m.group.name }])).values()].sort((a, b) => a.name.localeCompare(b.name, "id"));
 
   // Ulang tahun jemaat (hanya tanggal dan nama). Tidak ikut bila kalender difilter per tim, orang, atau status; "Jadwal saya" hanya ulang tahun sendiri.
   let birthdays: { date: string; personId: string; name: string; fullName: string; communities: string[] }[] = [];

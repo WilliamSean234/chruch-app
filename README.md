@@ -109,6 +109,7 @@ supaya seed dummy menolak berjalan.
 - [x] Kunci notulen: isi notulen (baca, tulis, finalkan, revisi, cetak) baru terbuka setelah pemilik akun memasukkan kata sandinya lagi; berlaku 60 menit (cookie bertanda tangan terikat akun dan sesi), salah 5 kali dalam 15 menit dikunci 15 menit, tombol "Kunci sekarang", dan dialog kata sandi bila waktunya habis saat menulis (isian tidak hilang); pembukaan tercatat di log aktivitas; tanpa migrasi
 - [x] Rapat berulang, log aktivitas, profil gereja
 - [x] Jenis rapat saat membuat: "Hanya jadwal" (agenda atau pinjam ruangan; seluruh anggota tetap menerima pengingat, tanpa daftar hadir, notulen, lampiran) atau "Rapat lengkap". Bawaan rapat baru: hanya jadwal; rapat lama tetap lengkap. Bisa diubah di Ubah jadwal selama belum ada notulen
+- [x] Tampil di kalender: tiap rapat dipilih "Anggota kelompok saja" (juga Penjadwal/Superadmin; yang lain hanya melihat "Ruangan terpakai" di papan ruangan) atau "Semua orang" (termasuk pelayan yang bukan anggota kelompok mana pun: waktu, ruangan, nama kelompok; topik bila diizinkan). Bawaan rapat baru: anggota kelompok saja; rapat lama tetap semua orang
 - [x] Tampilan HP: Jadwal saya, isi kehadiran, menu bawah; filter dan tab lengket di semua halaman
 - [x] W8 Tes unit, health check, header keamanan, panduan deploy
 - [x] Minta pengganti: pelayan meminta kursinya digantikan (alasan, usulan nama), Penjadwal atau Admin Tim tim itu mengisi penggantinya seperti biasa atau menolak; selesai otomatis saat kursi berganti. Migrasi `20261125210000_minta_pengganti`

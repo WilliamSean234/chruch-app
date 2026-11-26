@@ -11,7 +11,7 @@ import { useClientPaging } from "@/components/ui/usePagedList";
 import { stickyPage } from "@/components/ui/sticky";
 import { floorText, MONTHS, REHEARSAL_TONE, toneFor, ymd } from "@/lib/ui";
 
-type Item = { kind: "EVENT" | "REHEARSAL"; eventId: string; title: string; number: string; status: string; seq: number | null; startsAt: string; endsAt: string; meeting?: boolean };
+type Item = { kind: "EVENT" | "REHEARSAL"; eventId: string; title: string; number: string; status: string; seq: number | null; startsAt: string; endsAt: string; meeting?: boolean; restricted?: boolean };
 type Room = { id: string; name: string; floor: number | null; isActive: boolean; items: Item[] };
 type Avail = { available: boolean; roomName: string; conflicts: string[]; inactive: boolean };
 
@@ -275,7 +275,7 @@ function RoomRow({ room, date, canOpenEvents, canOpenMeetings }: { room: Room; d
             const tone = it.kind === "REHEARSAL" ? REHEARSAL_TONE : toneFor(it.title);
             const label = it.kind === "REHEARSAL" ? `Latihan ${it.seq} · ${it.title.replace(/^ibadah\s+/i, "")}` : toneFor(it.title).short;
             const time = `${dot(hmInput(it.startsAt))}–${dot(hmInput(it.endsAt))}`;
-            const clickable = it.meeting ? canOpenMeetings : canOpenEvents;
+            const clickable = !it.restricted && (it.meeting ? canOpenMeetings : canOpenEvents);
             const cls = `absolute flex flex-col justify-center overflow-hidden rounded-[10px] px-2.5 leading-tight ${clickable ? "hover:brightness-95" : "cursor-default"}`;
             const style = {
               left: `${((s - FROM) / SPAN) * 100}%`, width: `${Math.max(((e - s) / SPAN) * 100, 3)}%`, top: 6 + lane * (H + 6), height: H,
@@ -346,7 +346,7 @@ function RoomCardMobile({ room, date, canOpenEvents, canOpenMeetings }: { room: 
           const tone = it.kind === "REHEARSAL" ? REHEARSAL_TONE : toneFor(it.title);
           const label = it.kind === "REHEARSAL" ? `Latihan ${it.seq} · ${it.title.replace(/^ibadah\s+/i, "")}` : toneFor(it.title).short;
           const time = `${dot(hmInput(it.startsAt))}–${dot(hmInput(it.endsAt))}`;
-          const clickable = it.meeting ? canOpenMeetings : canOpenEvents;
+          const clickable = !it.restricted && (it.meeting ? canOpenMeetings : canOpenEvents);
           const draft = it.status === "DRAFT";
           const cls = "flex items-center gap-2.5 rounded-lg px-2.5 py-2";
           const style = { background: tone.bg, color: tone.fg, border: `1.5px ${draft ? "dashed" : "solid"} ${tone.dot}` };

@@ -19,7 +19,7 @@ export type MeetingDto = {
   id: string; number: string; status: string; cancelReason: string | null; startsAt: string; endsAt: string;
   room: { id: string; name: string }; group: { id: string; name: string; quorumMin: number | null };
   title: string | null; displayTitle: string; showTopic: boolean; showAttendees: boolean; createdBy: string | null;
-  locked: boolean; fullMeeting: boolean; links: LinkRow[];
+  locked: boolean; fullMeeting: boolean; calendarAudience: "MEMBERS" | "ALL"; links: LinkRow[];
   isOnline?: boolean; online?: OnlineDto | null;
   participants: Participant[]; attendance: Attendance | null; attendeesPublic: string[] | null;
   minutes: { status: string; version: number } | null;
@@ -146,7 +146,7 @@ export default function MeetingDetail({ meeting: m }: { meeting: MeetingDto }) {
               {m.createdBy && <div className="flex justify-between gap-3 border-t border-[var(--line-2)] py-2.5"><span className="font-medium text-[var(--ink-2)]">Dijadwalkan oleh</span><span className="font-bold">{m.createdBy}</span></div>}
               {m.attendeesPublic && m.attendeesPublic.length > 0 && <div className="flex justify-between gap-3 border-t border-[var(--line-2)] py-2.5"><span className="font-medium text-[var(--ink-2)]">Peserta</span><span className="text-right font-bold">{m.attendeesPublic.join(", ")}</span></div>}
               <div className="flex justify-between gap-3 border-t border-[var(--line-2)] py-2.5"><span className="font-medium text-[var(--ink-2)]">Di kalender umum</span>
-                <span className="text-right font-bold">Waktu, ruangan{m.showTopic ? ", topik" : ""}{m.showAttendees ? ", peserta" : ""}</span></div>
+                <span className="text-right font-bold">{m.calendarAudience === "MEMBERS" ? `Anggota ${m.group.name} saja` : `Semua orang: waktu, ruangan${m.showTopic ? ", topik" : ""}${m.showAttendees ? ", peserta" : ""}`}</span></div>
             </div>
           </div>
 

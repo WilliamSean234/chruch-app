@@ -19,6 +19,8 @@ export type MeetingInit = {
   id: string; title: string; date: string; startTime: string; endTime: string; roomId: string; groupId: string; showTopic: boolean; showAttendees: boolean;
   /** Mode rapat: false = hanya jadwal. hasMinutes: sudah punya notulen, jadi tidak bisa diubah menjadi hanya jadwal. */
   fullMeeting?: boolean; hasMinutes?: boolean;
+  /** Siapa yang melihat rapat di kalender dan daftar. */
+  calendarAudience?: "MEMBERS" | "ALL";
   /** Rapat yang sedang diubah: isian online dari server (null/kosong bila offline, atau bila yang membuka bukan anggota kelompok). */
   online?: OnlineValue; wasOnline?: boolean;
 };
@@ -72,6 +74,8 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
   const [onl, setOnl] = useState<OnlineValue>(meeting?.online ?? emptyOnline);
   // bawaan rapat baru: hanya jadwal (tujuan utama aplikasi: menjadwalkan dan memberi pengingat); fitur lengkap dipilih sengaja
   const [fullMeeting, setFullMeeting] = useState(meeting?.fullMeeting ?? false);
+  // bawaan rapat baru: hanya anggota kelompok yang melihatnya di kalender (rapat lama: semua orang, seperti sebelumnya)
+  const [audience, setAudience] = useState<"MEMBERS" | "ALL">(meeting?.calendarAudience ?? "MEMBERS");
   const [showTopic, setShowTopic] = useState(meeting?.showTopic ?? false);
   const [showAttendees, setShowAttendees] = useState(meeting?.showAttendees ?? false);
   const [links, setLinks] = useState<Link[]>([{ title: "", url: "" }]);
@@ -187,6 +191,7 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
   const chipPublic = group ? meetingPublicTitle(group.name, title || "…", showTopic) : "Rapat";
   const chipMember = group ? meetingMemberTitle(group.name, title || "…") : "Rapat";
   const canAttach = !edit && fullMeeting && !!group?.isMember;
+  const everyone = audience === "ALL"; // topik dan peserta di kalender hanya berarti bila orang di luar kelompok ikut melihat rapat ini
 
   async function save() {
     if (!groupId) return setError("Pilih kelompok.");
@@ -203,9 +208,9 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
     if (canAttach && cleanLinks.some((l) => !l.title || !l.url)) return setError("Lengkapi judul dan alamat tautan, atau kosongkan barisnya.");
     setBusy(true); setError("");
     const r = edit
-      ? await callApi("PATCH", `/api/v1/meetings/${meeting!.id}`, { title: title.trim(), date, startTime, endTime, ...(isOnline || (meeting?.wasOnline && !canOnline) ? {} : { roomId }), ...(canOnline ? onlineBody(onl, "RAPAT") : {}), showTopic, showAttendees: fullMeeting && showAttendees, fullMeeting })
+      ? await callApi("PATCH", `/api/v1/meetings/${meeting!.id}`, { title: title.trim(), date, startTime, endTime, ...(isOnline || (meeting?.wasOnline && !canOnline) ? {} : { roomId }), ...(canOnline ? onlineBody(onl, "RAPAT") : {}), showTopic: everyone && showTopic, showAttendees: everyone && fullMeeting && showAttendees, fullMeeting, calendarAudience: audience })
       : await callApi("POST", "/api/v1/meetings", {
-        groupId, title: title.trim(), date, startTime, endTime, ...(isOnline ? {} : { roomId }), ...(canOnline ? onlineBody(onl, "RAPAT") : {}), showTopic, showAttendees: fullMeeting && showAttendees, fullMeeting, links: canAttach ? cleanLinks : [],
+        groupId, title: title.trim(), date, startTime, endTime, ...(isOnline ? {} : { roomId }), ...(canOnline ? onlineBody(onl, "RAPAT") : {}), showTopic: everyone && showTopic, showAttendees: everyone && fullMeeting && showAttendees, fullMeeting, calendarAudience: audience, links: canAttach ? cleanLinks : [],
         invite: fullMeeting ? { mode: inviteMode, personIds: inviteMode === "SELECT" ? [...picked] : [], guests: group?.isMember ? guests : [] } : { mode: "ALL", personIds: [], guests: [] },
         repeat: repeating ? { pattern: repeat, ...(endMode === "COUNT" ? { count: repCount } : { until: repUntil }) } : undefined,
       });
@@ -439,9 +444,15 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
 
         <div className={card}>
           <Rule>TAMPILAN DI KALENDER</Rule>
-          <Switch on={showTopic} onChange={setShowTopic} label="Tampilkan topik di kalender" hint={`Bawaan: mati. Orang di luar kelompok hanya melihat “Rapat ${group?.name ?? "…"}”.`} />
-          {fullMeeting && <Switch on={showAttendees} onChange={setShowAttendees} label="Tampilkan peserta di kalender" hint="Bawaan: mati. Daftar nama anggota tidak ikut terlihat." />}
+          <div role="radiogroup" aria-label="Siapa yang melihat di kalender" className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2.5">
+            <Choice on={!everyone} onClick={() => setAudience("MEMBERS")} title="Anggota kelompok saja"
+              hint={`Hanya anggota ${group?.name ?? "kelompok"} (dan Penjadwal) yang melihat rapat ini di kalender dan daftar.`} />
+            <Choice on={everyone} onClick={() => setAudience("ALL")} title="Semua orang" hint="Semua yang masuk ke aplikasi melihat waktu, ruangan, dan nama kelompok." />
+          </div>
+          {everyone && <Switch on={showTopic} onChange={setShowTopic} label="Tampilkan topik di kalender" hint={`Bawaan: mati. Orang di luar kelompok hanya melihat “Rapat ${group?.name ?? "…"}”.`} />}
+          {everyone && fullMeeting && <Switch on={showAttendees} onChange={setShowAttendees} label="Tampilkan peserta di kalender" hint="Bawaan: mati. Daftar nama anggota tidak ikut terlihat." />}
           {fullMeeting && <span className="rounded-[10px] bg-[#f1f2fd] px-3.5 py-2.5 text-[12.5px] font-semibold leading-relaxed text-[var(--primary-ink)]">Notulen dan tautan dokumen tetap tertutup apa pun pilihan di atas.</span>}
+          {!everyone && <span className="rounded-[10px] bg-[#f1f2fd] px-3.5 py-2.5 text-[12.5px] font-semibold leading-relaxed text-[var(--primary-ink)]">Ruangan tetap tercatat terpakai pada jam ini, tetapi orang di luar kelompok hanya melihat “Ruangan terpakai”, tanpa nama kelompok.</span>}
         </div>
 
         {canAttach && (
@@ -470,7 +481,8 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
 
       <aside className="flex min-w-[300px] max-md:min-w-0 max-w-[400px] flex-[1_1_320px] flex-col gap-5">
         <div className="flex flex-col gap-4 rounded-[20px] border border-[var(--line)] bg-white p-[22px]">
-          <div className="flex flex-col gap-1"><span className={eyebrow}>DILIHAT ORANG DI LUAR KELOMPOK</span><span className="text-[12.5px] font-medium text-[var(--ink-2)]">Begini rapat ini muncul di kalender mereka.</span></div>
+          <div className="flex flex-col gap-1"><span className={eyebrow}>DILIHAT ORANG DI LUAR KELOMPOK</span><span className="text-[12.5px] font-medium text-[var(--ink-2)]">{everyone ? "Begini rapat ini muncul di kalender mereka." : "Rapat ini tidak muncul di kalender dan daftar mereka."}</span></div>
+          {everyone && <>
           <div className="flex min-h-[34px] items-center gap-1.5 rounded-lg bg-[#f8e6dd] px-2.5 py-1 text-[12.5px] font-bold leading-tight text-[#7a3a1e]">
             <span className="size-[7px] flex-none rounded-full bg-[#c0562d]" aria-hidden="true" /><span className="min-w-0">{dotTime(startTime)} {chipPublic}</span>
           </div>
@@ -483,6 +495,7 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
             <div className="flex justify-between gap-3 border-y border-[var(--line-2)] py-2.5"><span className="font-medium text-[var(--ink-2)]">Notulen dan dokumen</span>
               <span className="flex items-center gap-1.5 font-bold text-[var(--ink-2)]"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2.5" /><path d="M8 11V8a4 4 0 018 0v3" /></svg>Tertutup</span></div>
           </div>
+          </>}
         </div>
         <div className="flex flex-col gap-3 rounded-[20px] border border-[var(--line)] bg-white p-[22px]">
           <span className={eyebrow}>DILIHAT ANGGOTA {(group?.name ?? "KELOMPOK").toUpperCase()}</span>

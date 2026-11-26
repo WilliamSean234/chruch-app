@@ -53,15 +53,6 @@ export async function isInAnyGroup(u: AuthUser): Promise<boolean> {
   return n > 0;
 }
 
-/**
- * Boleh melihat jadwal rapat (di kalender dan daftar): Penjadwal global, Superadmin, atau anggota kelompok mana pun.
- * Pelayan biasa yang bukan anggota kelompok tidak melihat rapat sama sekali.
- */
-export async function canSeeMeetingSchedule(u: AuthUser): Promise<boolean> {
-  if (isSuperadmin(u) || u.permissions.includes("event.write")) return true;
-  return isInAnyGroup(u);
-}
-
 /** Apakah orang ini punya jabatan berhak "menjadwalkan" di kelompok mana pun (penjadwal kelompok). */
 export async function canScheduleInAnyGroup(u: AuthUser): Promise<boolean> {
   if (!u.personId) return false;

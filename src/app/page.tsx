@@ -3,12 +3,11 @@ import Fab from "@/components/ui/Fab";
 import CalendarView from "@/components/calendar/CalendarView";
 import Link from "next/link";
 import { can, teamScope } from "@/lib/rbac";
-import { canSeeMeetingSchedule } from "@/lib/groups";
 
 export default async function KalenderPage() {
   const u = await currentUser();
-  // Rapat hanya terlihat oleh Penjadwal, Superadmin, dan anggota kelompok. Pelayan biasa tidak melihat rapat maupun tombolnya.
-  const canSeeMeetings = await canSeeMeetingSchedule(u);
+  // Rapat yang tampil di kalender ditentukan per rapat oleh server: khusus anggota kelompok, atau semua orang (lihat meetingViewer).
+  const canSeeMeetings = true;
   return (
     <AppShell
       active="kalender" title="Kalender pelayanan" subtitle="Semua jadwal pelayanan dalam satu tampilan"

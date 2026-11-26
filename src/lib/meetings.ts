@@ -8,7 +8,7 @@ import { addMinutes, DATE_RE, localParts, TIME_RE, zonedToUtc } from "./time";
 import { assertRoomFree, assertRoomUsable, bookRoom, personConflicts, releaseBookings, translateOverlap } from "./booking";
 import { nextDocNumber } from "./docNumber";
 import { creatorNames } from "./creators";
-import { canSeeMeetingSchedule, groupCaps, type GroupCaps } from "./groups";
+import { groupCaps, type GroupCaps } from "./groups";
 import { meetingMemberTitle, meetingPublicTitle } from "./meetingLabel";
 import { pageOf, pagingQuery, resolvePaging } from "./paging";
 import { eventYears } from "./years";
@@ -26,6 +26,8 @@ import { describeFirst, expandDates, MAX_OCCURRENCES, PATTERNS, patternText, typ
  * - Notulen, tautan lampiran, dan rincian lain hanya untuk anggota kelompok. Superadmin dan Penjadwal global
  *   yang bukan anggota tidak ikut membaca; mereka hanya mengatur judul, waktu, ruangan, dan kelompok.
  */
+
+const AUDIENCES = ["MEMBERS", "ALL"] as const;
 
 const url = z.string().trim().max(500).refine((v) => /^https?:\/\/\S+$/i.test(v), "Tautan harus diawali http:// atau https://");
 export const linkBody = z.object({ title: z.string().trim().min(1, "Judul tautan wajib diisi").max(120), url });
@@ -74,6 +76,7 @@ export const meetingCreateBody = z.object({
   theme: z.string().trim().max(600).nullish(), // tema rapat online (terenkripsi)
   showTopic: z.boolean().default(false),
   showAttendees: z.boolean().default(false),
+  calendarAudience: z.enum(AUDIENCES).default("ALL"), // MEMBERS = hanya anggota kelompok yang melihat rapat di kalender dan daftar; ALL = semua orang
   fullMeeting: z.boolean().default(true), // false = hanya jadwal: tanpa kehadiran, notulen, dan lampiran (pengingat tetap ke seluruh anggota)
   links: z.array(linkBody).max(20).default([]),
   invite: inviteBody.default({ mode: "ALL", personIds: [], guests: [] }),
@@ -91,6 +94,7 @@ export const meetingUpdateBody = z.object({
   showTopic: z.boolean().optional(),
   showAttendees: z.boolean().optional(),
   fullMeeting: z.boolean().optional(),
+  calendarAudience: z.enum(AUDIENCES).optional(),
 });
 
 export const cancelBody = z.object({
@@ -112,6 +116,23 @@ export async function accessTo(u: AuthUser, groupId: string): Promise<Access> {
   const global = isGlobalScheduler(u);
   return { caps, global, canManage: caps.canSchedule };
 }
+
+/**
+ * Siapa boleh melihat sebuah rapat di kalender, daftar, dan halamannya: Penjadwal global dan Superadmin, anggota kelompoknya,
+ * atau semua orang yang masuk bila rapat itu diatur "semua orang". Yang melihatnya tanpa menjadi anggota hanya mendapat bentuk
+ * yang disamarkan (waktu, ruangan, nama kelompok; topik bila diizinkan). Isi rapat tetap hanya untuk anggota.
+ */
+export type MeetingViewer = { global: boolean; groupIds: Set<string>; canSee: (e: { groupId: string | null; calendarAudience: string }) => boolean };
+export async function meetingViewer(u: AuthUser): Promise<MeetingViewer> {
+  const global = isGlobalScheduler(u);
+  const rows = u.personId
+    ? await prisma.groupMember.findMany({ where: { personId: u.personId, leftAt: null, group: { tenantId: u.tenantId, deletedAt: null } }, select: { groupId: true } })
+    : [];
+  const groupIds = new Set(rows.map((m) => m.groupId));
+  return { global, groupIds, canSee: (e) => global || e.calendarAudience === "ALL" || (!!e.groupId && groupIds.has(e.groupId)) };
+}
+/** Syarat database yang sama dengan `canSee`, untuk daftar. */
+const visibleMeetingWhere = (v: MeetingViewer): Prisma.EventWhereInput => (v.global ? {} : { OR: [{ calendarAudience: "ALL" }, { groupId: { in: [...v.groupIds] } }] });
 
 const withGroup = { group: { select: { id: true, name: true, quorumMin: true } }, room: true, links: { where: { deletedAt: null }, orderBy: { createdAt: "asc" as const } } } satisfies Prisma.EventInclude;
 type MeetingRow = Prisma.EventGetPayload<{ include: typeof withGroup }>;
@@ -198,6 +219,7 @@ async function toDto(u: AuthUser, e: MeetingRow & { group: { id: string; name: s
     showTopic: e.showTopic,
     showAttendees: e.showAttendees,
     fullMeeting: full,
+    calendarAudience: e.calendarAudience as (typeof AUDIENCES)[number],
     createdBy: member || a.global ? ((e.createdById && names.get(e.createdById)) || null) : null,
     // isi rapat: hanya anggota kelompok
     locked: !member,
@@ -234,8 +256,9 @@ async function onlineMeetingView(e: MeetingRow) {
 }
 
 export async function getMeeting(u: AuthUser, id: string) {
-  if (!(await canSeeMeetingSchedule(u))) throw notFound("Rapat"); // bukan anggota kelompok mana pun dan bukan penjadwal: rapat tidak terlihat sama sekali, sama seperti daftarnya
-  return toDto(u, await loadMeeting(u, id));
+  const e = await loadMeeting(u, id);
+  if (!(await meetingViewer(u)).canSee(e)) throw notFound("Rapat"); // rapat khusus anggota kelompok: bagi yang lain seolah tidak ada, sama seperti di daftar
+  return toDto(u, e);
 }
 
 type ListRow = MeetingRow & { group: { id: string; name: string; quorumMin: number | null } };
@@ -256,10 +279,10 @@ function listItem(e: ListRow, member: boolean, global: boolean) {
 
 /** Daftar rapat pada rentang tanggal (untuk kalender). Semua orang melihat bentuk yang disamarkan; anggota melihat lengkap. */
 export async function listMeetings(u: AuthUser, q: { from: string; to: string; groupId?: string; includeCancelled?: boolean }) {
-  if (!(await canSeeMeetingSchedule(u))) return []; // bukan anggota kelompok dan bukan penjadwal: tidak melihat rapat sama sekali
+  const viewer = await meetingViewer(u);
   const rows = await prisma.event.findMany({
     where: {
-      tenantId: u.tenantId, deletedAt: null, kind: "RAPAT",
+      tenantId: u.tenantId, deletedAt: null, kind: "RAPAT", ...visibleMeetingWhere(viewer),
       ...(q.includeCancelled ? {} : { status: { not: "CANCELLED" } }),
       ...(q.groupId ? { groupId: q.groupId } : {}),
       startsAt: { gte: zonedToUtc(q.from, "00:00"), lte: zonedToUtc(q.to, "23:59") },
@@ -268,12 +291,7 @@ export async function listMeetings(u: AuthUser, q: { from: string; to: string; g
     orderBy: { startsAt: "asc" },
     take: 500,
   });
-  const groupIds = [...new Set(rows.map((r) => r.groupId).filter((x): x is string => !!x))];
-  const mine = u.personId
-    ? new Set((await prisma.groupMember.findMany({ where: { personId: u.personId, leftAt: null, groupId: { in: groupIds } }, select: { groupId: true } })).map((m) => m.groupId))
-    : new Set<string>();
-  const global = isGlobalScheduler(u);
-  return rows.filter((e): e is ListRow => !!e.group).map((e) => listItem(openMeetingRow(e, true), mine.has(e.group.id), global));
+  return rows.filter((e): e is ListRow => !!e.group).map((e) => listItem(openMeetingRow(e, true), viewer.groupIds.has(e.group.id), viewer.global));
 }
 
 export const meetingListQuery = z.object({
@@ -294,12 +312,11 @@ export const meetingListQuery = z.object({
  */
 export async function listMeetingsPaged(u: AuthUser, q: z.infer<typeof meetingListQuery>) {
   const pg = resolvePaging(q);
-  const global = isGlobalScheduler(u);
-  const myIds = u.personId
-    ? (await prisma.groupMember.findMany({ where: { personId: u.personId, leftAt: null, group: { deletedAt: null } }, select: { groupId: true } })).map((m) => m.groupId)
-    : [];
+  const viewer = await meetingViewer(u);
+  const global = viewer.global;
+  const myIds = [...viewer.groupIds];
   const now = new Date();
-  const and: Prisma.EventWhereInput[] = [];
+  const and: Prisma.EventWhereInput[] = [visibleMeetingWhere(viewer)];
   if (q.mine === "true") and.push({ groupId: { in: myIds } });
   // Judul rapat tersimpan terenkripsi, jadi tidak bisa dicari di database: pencarian dilakukan sesudah judul dibuka (lihat di bawah).
   const where: Prisma.EventWhereInput = {
@@ -414,7 +431,7 @@ export async function createMeeting(u: AuthUser, b: z.infer<typeof meetingCreate
         data: {
           id: eventId, tenantId: u.tenantId, number, kind: "RAPAT", groupId: group.id, title: sealTitle(eventId, b.title), startsAt, endsAt, roomId, ...(onl ?? {}), theme: online ? sealTheme(eventId, b.theme) : null,
           status: "PUBLISHED", publishedAt: new Date(), attendanceMode: "COUNT", createdById: u.userId,
-          showTopic: b.showTopic, showAttendees: b.fullMeeting && b.showAttendees, fullMeeting: b.fullMeeting, seriesId: opts.seriesId ?? null, seriesIndex: opts.seriesIndex ?? null,
+          showTopic: b.showTopic, showAttendees: b.fullMeeting && b.showAttendees, fullMeeting: b.fullMeeting, calendarAudience: b.calendarAudience, seriesId: opts.seriesId ?? null, seriesIndex: opts.seriesIndex ?? null,
           links: { create: b.links.map((l) => ({ ...sealLink(eventId, l), createdById: u.userId })) },
           participants: {
             create: [
@@ -428,7 +445,7 @@ export async function createMeeting(u: AuthUser, b: z.infer<typeof meetingCreate
       return e;
     }),
   "Ruangan sudah dipakai pada jam itu. Pilih ruangan atau jam lain.");
-  await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.create", entity: "Event", entityId: created.id, payload: { number, group: group.name, startsAt: startsAt.toISOString(), online, fullMeeting: b.fullMeeting, onBehalf: !a.caps.isMember, invited: invitees.length, guests: guests.length } });
+  await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.create", entity: "Event", entityId: created.id, payload: { number, group: group.name, startsAt: startsAt.toISOString(), online, fullMeeting: b.fullMeeting, audience: b.calendarAudience, onBehalf: !a.caps.isMember, invited: invitees.length, guests: guests.length } });
   return getMeeting(u, created.id);
 }
 
@@ -468,7 +485,7 @@ export async function updateMeeting(u: AuthUser, id: string, b: z.infer<typeof m
 
   await translateOverlap(() =>
     prisma.$transaction(async (tx) => {
-      await tx.event.update({ where: { id }, data: { title: b.title !== undefined ? sealTitle(id, b.title) : undefined, startsAt, endsAt, roomId, ...(onl ?? {}), theme: themeData, showTopic: b.showTopic, showAttendees: b.fullMeeting === false ? false : b.showAttendees, fullMeeting: b.fullMeeting } });
+      await tx.event.update({ where: { id }, data: { title: b.title !== undefined ? sealTitle(id, b.title) : undefined, startsAt, endsAt, roomId, ...(onl ?? {}), theme: themeData, showTopic: b.showTopic, showAttendees: b.fullMeeting === false ? false : b.showAttendees, fullMeeting: b.fullMeeting, calendarAudience: b.calendarAudience } });
       if (timeChanged || roomChanged) {
         await releaseBookings(tx, { sourceType: "EVENT", sourceId: id, resourceType: "ROOM" });
         if (!willBeOnline) await bookRoom(tx, { tenantId: u.tenantId, roomId, startsAt, endsAt, sourceType: "EVENT", sourceId: id });

@@ -23,7 +23,7 @@ export default async function UbahRapatPage({ params }: Props) {
   return (
     <AppShell active="rapat" title="Ubah rapat" subtitle={`${m.group.name} · ${m.number}`}>
       <MeetingForm groups={groups.some((g) => g.id === m.group.id) ? groups : [...groups, { id: m.group.id, name: m.group.name, memberCount: 0, isMember: m.viewer.isMember }]} rooms={rooms}
-        meeting={{ id: m.id, title: m.title, date: start.date, startTime: start.time, endTime: end.time, roomId: m.room.id, groupId: m.group.id, showTopic: m.showTopic, showAttendees: m.showAttendees, fullMeeting: m.fullMeeting, hasMinutes: !!m.minutes, wasOnline: m.isOnline, online: onlineFromDto(m.online) }} />
+        meeting={{ id: m.id, title: m.title, date: start.date, startTime: start.time, endTime: end.time, roomId: m.room.id, groupId: m.group.id, showTopic: m.showTopic, showAttendees: m.showAttendees, fullMeeting: m.fullMeeting, calendarAudience: m.calendarAudience, hasMinutes: !!m.minutes, wasOnline: m.isOnline, online: onlineFromDto(m.online) }} />
     </AppShell>
   );
 }
