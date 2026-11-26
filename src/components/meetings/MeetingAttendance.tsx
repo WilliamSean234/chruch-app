@@ -124,7 +124,7 @@ export default function MeetingAttendance({ groupId, groupName, rows, attendance
             {paging.slice.map((p) => {
               const st = STATUS[p.status] ?? STATUS.INVITED;
               return (
-                <div key={p.id} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-[var(--line-2)] px-4 py-3 first:border-t-0 ${p.removed ? "bg-[#fdf6f6]" : p.isNew || p.changed ? "bg-[#fffdf5]" : ""}`}>
+                <div key={p.id} className={`grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2.5 border-t border-[var(--line-2)] px-4 py-3 first:border-t-0 sm:items-center ${p.removed ? "bg-[#fdf6f6]" : p.isNew || p.changed ? "bg-[#fffdf5]" : ""}`}>
                   <div className="flex min-w-0 flex-col gap-0.5">
                     <span className={`flex flex-wrap items-center gap-2 text-sm font-bold ${p.removed ? "text-[var(--ink-2)] line-through" : ""}`}>
                       {p.name}
@@ -138,20 +138,20 @@ export default function MeetingAttendance({ groupId, groupName, rows, attendance
                   {canRecord && p.removed ? (
                     <button type="button" onClick={() => actions.undoRemove(p)} className="h-8 rounded-lg px-3 text-[12.5px] font-bold text-[var(--primary-ink)] hover:bg-[var(--primary-soft)]">Urungkan</button>
                   ) : canRecord || canMark(p) ? (
-                    <div className="flex items-center gap-1.5">
-                      {canMark(p) ? <div role="group" aria-label={`Kehadiran ${p.name}`} className="flex gap-1 rounded-xl bg-[#ECEEF4] p-1">
+                    <div className={canMark(p) ? "contents sm:flex sm:items-center sm:gap-1.5" : "flex items-center gap-1.5"}>
+                      {canMark(p) ? <div role="group" aria-label={`Kehadiran ${p.name}`} className="order-3 col-span-2 grid grid-cols-3 gap-1 rounded-xl bg-[#ECEEF4] p-1 sm:order-none sm:col-span-1 sm:w-[276px]">
                         {(["PRESENT", "EXCUSED", "ABSENT"] as const).map((k) => {
                           const on = p.status === k;
                           return (
                             <button key={k} type="button" onClick={() => actions.mark(p, k)} aria-pressed={on} title={on ? "Klik lagi untuk mengosongkan" : undefined}
-                              className="h-8 rounded-lg px-3 text-[12.5px] font-bold"
+                              className={`h-10 whitespace-nowrap rounded-lg px-2 text-[13px] font-bold transition-colors sm:h-9 ${on ? "" : "hover:bg-white/70"}`}
                               style={on ? { background: STATUS[k].bg, color: STATUS[k].fg, boxShadow: `inset 0 0 0 1.5px ${STATUS[k].fg}55` } : { color: "#565B76" }}>
                               {STATUS[k].label}
                             </button>
                           );
                         })}
                       </div> : <span className="whitespace-nowrap rounded-full px-2.5 py-[3px] text-xs font-bold" style={{ background: st.bg, color: st.fg }}>{st.label}</span>}
-                      {canRecord && <button type="button" onClick={() => actions.removeRow(p)} aria-label={`Hapus ${p.name}`} className="h-8 rounded-lg px-2.5 text-sm font-bold text-[var(--ink-2)] hover:bg-[var(--bg)]">✕</button>}
+                      {canRecord && <button type="button" onClick={() => actions.removeRow(p)} aria-label={`Hapus ${p.name}`} className="order-2 grid size-10 place-items-center self-start rounded-lg text-sm font-bold text-[var(--ink-2)] hover:bg-[var(--bg)] sm:order-none sm:size-9 sm:self-auto">✕</button>}
                     </div>
                   ) : (
                     <span className="whitespace-nowrap rounded-full px-2.5 py-[3px] text-xs font-bold" style={{ background: st.bg, color: st.fg }}>{st.label}</span>
