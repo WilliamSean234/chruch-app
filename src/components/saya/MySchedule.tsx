@@ -12,7 +12,7 @@ import EventDetailDialog, { type DialogTarget } from "./EventDetailDialog";
 import type { SwapState } from "./SwapRequestSection";
 
 export type ScheduleRow = {
-  key: string; kind: "SERVICE" | "REHEARSAL"; eventId: string; title: string; startsAt: string; endsAt: string; room: string;
+  key: string; kind: "SERVICE" | "REHEARSAL" | "MEETING"; eventId: string; title: string; startsAt: string; endsAt: string; room: string;
   role: string; status: string; rehearsalRequired: boolean; canAttend: boolean; attendanceMode: string; note?: string;
   /** Latihan: acara yang memakai sesi ini (Ibadah Minggu 1 dan 2 bisa berbagi satu latihan). */
   events?: RehearsalEvent[];
@@ -38,6 +38,8 @@ function DateChip({ iso, bg, fg, big }: { iso: string; bg: string; fg: string; b
   );
 }
 
+// warna rapat, sama dengan kalender
+const MEETING_TONE = { bg: "#f8e6dd", fg: "#7a3a1e", dot: "#c0562d", short: "Rapat" };
 const chip = "whitespace-nowrap rounded-full px-2.5 py-1 text-[11.5px] font-extrabold";
 
 export default function MySchedule({ rows, note, nowIso, myPersonId = null }: { rows: ScheduleRow[]; note?: string; nowIso: string; myPersonId?: string | null }) {
@@ -49,7 +51,7 @@ export default function MySchedule({ rows, note, nowIso, myPersonId = null }: { 
   const [year, setYear] = useState(""); // "YYYY"
   const [role, setRole] = useState("");
   const [open, setOpen] = useState<DialogTarget | null>(null); // jadwal yang rinciannya sedang dibuka
-  const show = (r: ScheduleRow) => setOpen({ eventId: r.eventId, title: r.title, kind: r.kind, startsAt: r.startsAt, endsAt: r.endsAt, room: r.room, status: r.status, canAttend: r.canAttend, assignmentId: r.assignmentId, role: r.role, canSwap: r.canSwap, swap: r.swap, events: r.events ?? [{ id: r.eventId, title: r.title, startsAt: r.startsAt, endsAt: r.endsAt, status: r.status }] });
+  const show = (r: ScheduleRow) => setOpen({ eventId: r.eventId, title: r.title, kind: r.kind === "REHEARSAL" ? "REHEARSAL" : "SERVICE", startsAt: r.startsAt, endsAt: r.endsAt, room: r.room, status: r.status, canAttend: r.canAttend, assignmentId: r.assignmentId, role: r.role, canSwap: r.canSwap, swap: r.swap, events: r.events ?? [{ id: r.eventId, title: r.title, startsAt: r.startsAt, endsAt: r.endsAt, status: r.status }] });
 
   const months = useMemo(() => MONTHS.map((n, i) => ({ value: String(i + 1).padStart(2, "0"), label: n })), []);
   // Hanya tahun yang punya jadwal untuk orang ini.
@@ -117,7 +119,7 @@ export default function MySchedule({ rows, note, nowIso, myPersonId = null }: { 
 
       <FilterBar active={filtered} onReset={reset} moreCount={moreCount}
         more={<>
-          <FSelect label="Jenis" value={kind} onChange={setKind} options={[{ value: "SERVICE", label: "Pelayanan" }, { value: "REHEARSAL", label: "Latihan" }]} />
+          <FSelect label="Jenis" value={kind} onChange={setKind} options={[{ value: "SERVICE", label: "Pelayanan" }, { value: "REHEARSAL", label: "Latihan" }, { value: "MEETING", label: "Rapat" }]} />
           <FSelect label="Peran" value={role} onChange={setRole} options={roles} />
         </>}>
         <FSearch value={q} onChange={setQ} placeholder="Acara, peran, atau ruangan" />
@@ -135,24 +137,30 @@ export default function MySchedule({ rows, note, nowIso, myPersonId = null }: { 
         ) : (
           <ul className="m-0 list-none p-0">
             {pg.slice.map((r, i) => {
-              const tone = r.kind === "REHEARSAL" ? REHEARSAL_TONE : toneFor(r.title);
+              const tone = r.kind === "REHEARSAL" ? REHEARSAL_TONE : r.kind === "MEETING" ? MEETING_TONE : toneFor(r.title);
+              const rowCls = "-m-1 flex min-w-0 flex-1 items-center gap-3.5 rounded-xl p-1 text-left hover:bg-[var(--bg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]";
               const group = ymd(r.startsAt).slice(0, 7);
               const newGroup = i === 0 || ymd(pg.slice[i - 1].startsAt).slice(0, 7) !== group;
               return (
                 <Fragment key={r.key}>
                   {newGroup && <li className="border-b border-[var(--line-2)] bg-[#FAF8F1] px-3.5 py-2 text-[11.5px] font-extrabold tracking-[0.07em] text-[#8A6119]">{monthHeading(`${group}-01`, MONTHS)}</li>}
                   <li className="flex items-center gap-3.5 border-b border-[var(--line-2)] p-3.5 last:border-b-0">
-                    <button type="button" onClick={() => show(r)} aria-haspopup="dialog" title="Lihat petugas dan rincian"
-                      className="-m-1 flex min-w-0 flex-1 items-center gap-3.5 rounded-xl p-1 text-left hover:bg-[var(--bg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]">
+                    {(() => {
+                      const body = (<>
                       <DateChip iso={r.startsAt} bg={tone.bg} fg={tone.fg} />
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <span className="text-[15px] font-extrabold leading-snug">{r.title}</span>
                         <span className="text-[13px] font-medium text-[var(--ink-2)]">{r.kind === "SERVICE" ? `${r.role} · ` : ""}{hm(r.startsAt)}–{hm(r.endsAt)} · {r.room}</span>
                         {r.note && <span className="text-xs font-medium text-[var(--ink-2)]">{r.note}</span>}
                       </span>
-                    </button>
+                      </>);
+                      return r.kind === "MEETING"
+                        ? <Link href={`/rapat/${r.eventId}`} title="Buka rapat" className={rowCls}>{body}</Link>
+                        : <button type="button" onClick={() => show(r)} aria-haspopup="dialog" title="Lihat petugas dan rincian" className={rowCls}>{body}</button>;
+                    })()}
                     <div className="flex flex-none flex-col items-end gap-1.5">
                       {r.kind === "REHEARSAL" && <span className={`${chip} bg-[#F7EBD2] text-[#6F4304]`}>Wajib</span>}
+                      {r.kind === "MEETING" && <span className={`${chip} bg-[#f8e6dd] text-[#7a3a1e]`}>Rapat</span>}
                       {r.kind === "SERVICE" && !r.rehearsalRequired && <span className={`${chip} bg-[#ECEEF4] text-[#3A3F58]`}>Tanpa latihan</span>}
                       {r.status === "DRAFT" && <span className={`${chip} bg-[#FBEFD6] text-[#6F4304]`}>Draf</span>}
                       {r.kind === "SERVICE" && r.swap?.status === "PENDING" && <span className={`${chip} bg-[#FBEFD6] text-[#6F4304]`}>Minta ganti</span>}

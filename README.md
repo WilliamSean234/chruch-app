@@ -111,6 +111,7 @@ supaya seed dummy menolak berjalan.
 - [x] Jenis rapat saat membuat: "Hanya jadwal" (agenda atau pinjam ruangan; seluruh anggota tetap menerima pengingat, tanpa daftar hadir, notulen, lampiran) atau "Rapat lengkap". Bawaan rapat baru: hanya jadwal; rapat lama tetap lengkap. Bisa diubah di Ubah jadwal selama belum ada notulen
 - [x] Tampil di kalender: tiap rapat dipilih "Anggota kelompok saja" (juga Penjadwal/Superadmin; yang lain hanya melihat "Ruangan terpakai" di papan ruangan) atau "Semua orang" (termasuk pelayan yang bukan anggota kelompok mana pun: waktu, ruangan, nama kelompok; topik bila diizinkan). Bawaan rapat baru: anggota kelompok saja; rapat lama tetap semua orang
 - [x] Satu kelompok tidak bisa punya dua rapat yang jamnya beririsan (ruangan berbeda atau online pun ditolak); berlaku saat membuat dan saat mengubah jam. Anggota yang sudah diundang ke rapat kelompok lain pada jam yang sama diperingatkan di form
+- [x] Jadwal saya juga memuat rapat kelompok yang saya ikuti dan saya diundang (filter Jenis: Rapat); barisnya membuka halaman rapat. Rapat yang dibatalkan tidak tampil
 - [x] Tampilan HP: Jadwal saya, isi kehadiran, menu bawah; filter dan tab lengket di semua halaman
 - [x] W8 Tes unit, health check, header keamanan, panduan deploy
 - [x] Minta pengganti: pelayan meminta kursinya digantikan (alasan, usulan nama), Penjadwal atau Admin Tim tim itu mengisi penggantinya seperti biasa atau menolak; selesai otomatis saat kursi berganti. Migrasi `20261125210000_minta_pengganti`

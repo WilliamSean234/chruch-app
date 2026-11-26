@@ -294,6 +294,31 @@ export async function listMeetings(u: AuthUser, q: { from: string; to: string; g
   return rows.filter((e): e is ListRow => !!e.group).map((e) => listItem(openMeetingRow(e, true), viewer.groupIds.has(e.group.id), viewer.global));
 }
 
+/**
+ * Rapat untuk "Jadwal saya": rapat kelompok yang saya ikuti (anggota aktif) dan saya diundang, yang belum dibatalkan.
+ * (Undangan tidak mencakup anggota yang tidak dipilih pada rapat berpeserta pilihan, dan itu memang bukan jadwalnya.)
+ */
+export async function myMeetings(u: AuthUser, from: Date, to: Date) {
+  if (!u.personId) return [];
+  const groupIds = [...(await meetingViewer(u)).groupIds];
+  if (!groupIds.length) return [];
+  const rows = await prisma.event.findMany({
+    where: {
+      tenantId: u.tenantId, kind: "RAPAT", deletedAt: null, status: { not: "CANCELLED" }, groupId: { in: groupIds },
+      startsAt: { gte: from, lte: to }, participants: { some: { personId: u.personId } },
+    },
+    include: { group: { select: { id: true, name: true } }, room: { select: { name: true } } },
+    orderBy: { startsAt: "asc" },
+    take: 300,
+  });
+  return rows.filter((e): e is typeof e & { group: { id: string; name: string } } => !!e.group).map((e) => ({
+    eventId: e.id, number: e.number, groupName: e.group.name,
+    title: meetingMemberTitle(e.group.name, openTitleSafe(e.id, e.title)),
+    startsAt: e.startsAt.toISOString(), endsAt: e.endsAt.toISOString(),
+    room: e.isOnline ? "Online" : e.room.name, isOnline: e.isOnline, fullMeeting: e.fullMeeting,
+  }));
+}
+
 export const meetingListQuery = z.object({
   when: z.enum(["next", "past", "all"]).default("next"),
   from: z.string().regex(DATE_RE).optional(),

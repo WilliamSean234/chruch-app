@@ -3,7 +3,7 @@ import { prisma } from "./prisma";
 import { creatorNames } from "./creators";
 import { addMinutes, zonedToUtc } from "./time";
 import { can, type AuthUser } from "./rbac";
-import { listMeetings } from "./meetings";
+import { listMeetings, myMeetings } from "./meetings";
 import { attendanceWriteBlock } from "./eventStatusFlow";
 import { dedupeTwinRehearsals } from "./rehearsalRules";
 import { birthdaysInRange } from "./birthdays";
@@ -137,6 +137,7 @@ export async function mySchedule(u: AuthUser, range: { from?: string; to?: strin
   const swaps = await mySwapStates(u.tenantId, u.personId, seats.map((s) => s.id));
   const nowDate = new Date();
   return {
+    meetings: await myMeetings(u, from, to), // rapat kelompok yang saya ikuti dan saya diundang
     items: seats.map((s) => ({
       assignmentId: s.id,
       swap: swaps.get(s.id) ?? null,
