@@ -18,7 +18,7 @@ export type UsageItem = {
  * `seeDrafts` false: acara yang belum terbit tetap menandai ruangan terpakai, tetapi judulnya disembunyikan (seperti di kalender).
  * `canSeeMeeting` (aturan lihat rapat): rapat yang tidak boleh dilihat penanya (khusus anggota kelompok) tetap menandai ruangan terpakai, tetapi nama kelompok dan topiknya tidak ditampilkan dan barisnya tidak bisa dibuka.
  */
-export async function roomUsage(tenantId: string, date: string, seeDrafts = true, canSeeMeeting: (e: { groupId: string | null; calendarAudience: string }) => boolean = () => true) {
+export async function roomUsage(tenantId: string, date: string, seeDrafts = true, canSeeMeeting: (e: { groupId: string | null; calendarAudience: string; isOnline: boolean }) => boolean = () => true) {
   if (!DATE_RE.test(date)) throw badRequest("Format tanggal YYYY-MM-DD.");
   const dayStart = zonedToUtc(date, "00:00");
   const dayEnd = zonedToUtc(date, "23:59");

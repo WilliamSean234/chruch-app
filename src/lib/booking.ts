@@ -85,12 +85,40 @@ export const rangesOverlap = overlaps;
  * `excludeAssignmentId` = kursi yang sedang diisi (supaya tidak bentrok dengan dirinya sendiri).
  * Termasuk bentrok di acara yang sama (orang yang sama tidak boleh dua posisi sekaligus).
  */
-export async function personConflicts(
-  tenantId: string,
-  personIds: string[],
-  ranges: Range[],
-  opts: { excludeAssignmentId?: string; currentEventId?: string; excludeSource?: { sourceType: string; sourceId: string } | { sourceType: string; sourceId: string }[] } = {},
-): Promise<Map<string, PersonConflict[]>> {
+type PersonConflictOpts = { excludeAssignmentId?: string; currentEventId?: string; excludeSource?: { sourceType: string; sourceId: string } | { sourceType: string; sourceId: string }[] };
+
+/**
+ * Bentrok orang: pemakaian lain (tugas dan latihan) ditambah rapat lengkap yang orang itu diundang. Rapat "hanya jadwal" tidak dihitung
+ * (undangannya hanya untuk pengingat), begitu pula yang dibatalkan atau yang ia tandai izin atau tidak hadir. Rapat khusus anggota kelompok
+ * tetap dihitung tetapi labelnya disamarkan ("Rapat kelompok"), walaupun penanyanya tidak boleh melihat rapat itu.
+ */
+export async function personConflicts(tenantId: string, personIds: string[], ranges: Range[], opts: PersonConflictOpts = {}): Promise<Map<string, PersonConflict[]>> {
+  const out = await bookedPersonConflicts(tenantId, personIds, ranges, opts);
+  if (!personIds.length || !ranges.length) return out;
+  const excluded = (Array.isArray(opts.excludeSource) ? opts.excludeSource : opts.excludeSource ? [opts.excludeSource] : []).filter((x) => x.sourceType === "EVENT").map((x) => x.sourceId);
+  const parts = await prisma.meetingParticipant.findMany({
+    where: {
+      personId: { in: personIds }, status: { in: ["INVITED", "PRESENT"] },
+      event: {
+        tenantId, kind: "RAPAT", fullMeeting: true, deletedAt: null, status: { not: "CANCELLED" },
+        OR: ranges.map((r) => ({ startsAt: { lt: r.endsAt }, endsAt: { gt: r.startsAt } })),
+        ...(excluded.length ? { id: { notIn: excluded } } : {}),
+      },
+    },
+    select: { personId: true, event: { select: { startsAt: true, endsAt: true, calendarAudience: true, group: { select: { name: true } } } } },
+  });
+  for (const p of parts) {
+    if (!p.personId) continue;
+    const ev = p.event;
+    const name = ev.calendarAudience === "ALL" && ev.group ? `Rapat ${ev.group.name}` : "Rapat kelompok";
+    const list = out.get(p.personId) ?? [];
+    list.push({ label: `${name} (${fmt(ev.startsAt)}–${fmt(ev.endsAt).slice(-5)})`, startsAt: ev.startsAt, endsAt: ev.endsAt, sameEvent: false, assignmentId: null });
+    out.set(p.personId, list);
+  }
+  return out;
+}
+
+async function bookedPersonConflicts(tenantId: string, personIds: string[], ranges: Range[], opts: PersonConflictOpts): Promise<Map<string, PersonConflict[]>> {
   const out = new Map<string, PersonConflict[]>();
   if (!personIds.length || !ranges.length) return out;
   const rows = await prisma.booking.findMany({

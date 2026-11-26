@@ -118,21 +118,25 @@ export async function accessTo(u: AuthUser, groupId: string): Promise<Access> {
 }
 
 /**
- * Siapa boleh melihat sebuah rapat di kalender, daftar, dan halamannya: Penjadwal global dan Superadmin, anggota kelompoknya,
- * atau semua orang yang masuk bila rapat itu diatur "semua orang". Yang melihatnya tanpa menjadi anggota hanya mendapat bentuk
- * yang disamarkan (waktu, ruangan, nama kelompok; topik bila diizinkan). Isi rapat tetap hanya untuk anggota.
+ * Siapa boleh melihat sebuah rapat di kalender, daftar, dan halamannya: anggota kelompoknya, atau semua orang yang masuk bila rapat itu
+ * diatur "semua orang". Rapat "anggota kelompok saja" juga terlihat oleh Penjadwal global dan Superadmin, tetapi hanya bila offline (memakai
+ * ruangan, supaya pemakaian ruangan bisa diatur); bila online, Penjadwal pun tidak melihatnya sama sekali. Yang melihatnya tanpa menjadi anggota
+ * hanya mendapat bentuk yang disamarkan (waktu, ruangan, nama kelompok; topik bila diizinkan). Isi rapat tetap hanya untuk anggota.
+ * Ini hanya soal tampilan: pemeriksaan bentrok jam (kelompok, ruangan, anggota) tetap membaca semua rapat.
  */
-export type MeetingViewer = { global: boolean; groupIds: Set<string>; canSee: (e: { groupId: string | null; calendarAudience: string }) => boolean };
+export type MeetingViewer = { global: boolean; groupIds: Set<string>; canSee: (e: { groupId: string | null; calendarAudience: string; isOnline: boolean }) => boolean };
 export async function meetingViewer(u: AuthUser): Promise<MeetingViewer> {
   const global = isGlobalScheduler(u);
   const rows = u.personId
     ? await prisma.groupMember.findMany({ where: { personId: u.personId, leftAt: null, group: { tenantId: u.tenantId, deletedAt: null } }, select: { groupId: true } })
     : [];
   const groupIds = new Set(rows.map((m) => m.groupId));
-  return { global, groupIds, canSee: (e) => global || e.calendarAudience === "ALL" || (!!e.groupId && groupIds.has(e.groupId)) };
+  return { global, groupIds, canSee: (e) => e.calendarAudience === "ALL" || (!!e.groupId && groupIds.has(e.groupId)) || (global && !e.isOnline) };
 }
 /** Syarat database yang sama dengan `canSee`, untuk daftar. */
-const visibleMeetingWhere = (v: MeetingViewer): Prisma.EventWhereInput => (v.global ? {} : { OR: [{ calendarAudience: "ALL" }, { groupId: { in: [...v.groupIds] } }] });
+const visibleMeetingWhere = (v: MeetingViewer): Prisma.EventWhereInput => ({
+  OR: [{ calendarAudience: "ALL" }, { groupId: { in: [...v.groupIds] } }, ...(v.global ? [{ isOnline: false }] : [])],
+});
 
 const withGroup = { group: { select: { id: true, name: true, quorumMin: true } }, room: true, links: { where: { deletedAt: null }, orderBy: { createdAt: "asc" as const } } } satisfies Prisma.EventInclude;
 type MeetingRow = Prisma.EventGetPayload<{ include: typeof withGroup }>;
@@ -589,7 +593,7 @@ async function assertGroupFree(tenantId: string, group: { id: string; name: stri
 
 // ───────── Peringatan jadwal ganda anggota ─────────
 /**
- * Anggota kelompok yang sudah bertugas di acara lain, atau sudah diundang ke rapat lain, pada jam itu. Hanya peringatan; rapat tetap boleh disimpan.
+ * Anggota kelompok yang sudah bertugas di acara lain, atau sudah diundang ke rapat lengkap lain, pada jam itu. Hanya peringatan; rapat tetap boleh disimpan.
  * Nama hanya dibuka untuk anggota kelompok; Penjadwal global hanya melihat jumlahnya.
  */
 export async function memberClashes(u: AuthUser, q: { groupId: string; date: string; startTime: string; endTime: string; excludeEventId?: string; personIds?: string[] }) {
@@ -601,15 +605,7 @@ export async function memberClashes(u: AuthUser, q: { groupId: string; date: str
     select: { personId: true, person: { select: { name: true } } },
   });
   const map = await personConflicts(u.tenantId, members.map((m) => m.personId), [{ startsAt, endsAt }], q.excludeEventId ? { excludeSource: { sourceType: "EVENT", sourceId: q.excludeEventId } } : {});
-  // anggota yang sudah diundang ke rapat lain (kelompok mana pun) pada jam yang sama juga ikut diperingatkan
-  const inMeetings = new Set((await prisma.meetingParticipant.findMany({
-    where: {
-      personId: { in: members.map((m) => m.personId) },
-      event: { tenantId: u.tenantId, kind: "RAPAT", deletedAt: null, status: { not: "CANCELLED" }, startsAt: { lt: endsAt }, endsAt: { gt: startsAt }, ...(q.excludeEventId ? { id: { not: q.excludeEventId } } : {}) },
-    },
-    select: { personId: true },
-  })).map((p) => p.personId));
-  const busy = members.filter((m) => map.has(m.personId) || inMeetings.has(m.personId));
+  const busy = members.filter((m) => map.has(m.personId)); // personConflicts sudah memuat rapat lengkap lain yang mereka diundang
   return { count: busy.length, total: members.length, names: a.caps.isMember ? busy.map((m) => m.person.name).sort((x, y) => x.localeCompare(y)) : null };
 }
 
