@@ -1,5 +1,6 @@
 import { badgeCounts } from "@/lib/badges";
 import { PresenceBeat } from "@/components/ui/Presence";
+import SessionWatch from "@/components/ui/SessionWatch";
 import { logoutAction } from "@/lib/logoutAction";
 import { BadgeLive, LiveNavBadge, LiveNavDot } from "@/components/ui/LiveBadges";
 import Link from "next/link";
@@ -103,6 +104,7 @@ export default async function AppShell({ active, title, subtitle, actions, back,
     <div className="flex min-h-screen flex-wrap bg-[var(--bg)]">
       <BadgeLive initial={initialBadges} watch={watchBadges} />
       <PresenceBeat />
+      <SessionWatch userId={user.userId} />
       <aside className="relative hidden w-full flex-none flex-col gap-7 overflow-hidden border-r border-[var(--line)] bg-white px-[18px] pb-6 pt-7 md:sticky md:top-0 md:flex md:h-screen md:w-60 md:self-start">
         <div className="flex items-center gap-3 px-2">
           <BrandMark />

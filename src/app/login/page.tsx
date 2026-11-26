@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import BrandMark from "@/components/ui/BrandMark";
+import { announceSessionChange } from "@/components/ui/SessionWatch";
 
 export default function LoginPage() {
   const [error, setError] = useState("");
@@ -12,6 +13,8 @@ export default function LoginPage() {
   const [step, setStep] = useState<"login" | "code">("login");
   const [creds, setCreds] = useState({ email: "", password: "" });
   const [recovery, setRecovery] = useState(false);
+  // membuka halaman masuk bisa berarti baru keluar: tab lain di browser ini memeriksa sesinya
+  useEffect(() => { announceSessionChange(); }, []);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -28,7 +31,7 @@ export default function LoginPage() {
     else if (res?.code === "2fa_required") { setCreds({ email, password }); setStep("code"); setRecovery(false); }
     else if (res?.code === "2fa_invalid") setError(recovery ? "Kode cadangan salah atau sudah pernah dipakai." : "Kode salah atau sudah kedaluwarsa. Kode berganti tiap 30 detik: tunggu kode baru muncul lalu coba lagi. Pastikan jam HP Anda diatur otomatis.");
     else if (res?.error) { setStep("login"); setError("Email atau kata sandi salah."); }
-    else window.location.href = "/";
+    else { announceSessionChange(); window.location.href = "/"; } // tab lain yang masih membuka akun sebelumnya otomatis keluar
   }
 
   return (
