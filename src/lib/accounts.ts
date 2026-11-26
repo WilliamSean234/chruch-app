@@ -170,6 +170,7 @@ export async function listAccounts(tenantId: string, q: z.infer<typeof accountLi
   const where: Prisma.UserWhereInput = {
     tenantId,
     deletedAt: null,
+    AND: [{ OR: [{ personId: null }, { person: { is: { deletedAt: null } } }] }], // akun milik orang yang sudah dihapus tidak ikut ditampilkan (akunnya sudah dinonaktifkan saat orangnya dihapus)
     ...(q.status ? { isActive: q.status === "active" } : {}),
     ...(q.role === "NONE" ? { roles: { none: {} } } : q.role ? { roles: { some: { role: { code: q.role } } } } : {}),
     ...(q.search ? { OR: [{ email: { contains: q.search, mode: "insensitive" } }, { person: { nameKey: { contains: nameKey(q.search) } } }] } : {}),

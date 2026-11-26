@@ -4,6 +4,7 @@ import { prisma } from "./prisma";
 import { ApiError, badRequest, conflict, forbidden, notFound } from "./errors";
 import { ageFrom, nameKey } from "./names";
 import { assertCanDeactivate } from "./accountGuards";
+import { forgetLiveUser } from "./liveUser";
 import { can, requirePermission, requireTeamAccess, teamScope, type AuthUser } from "./rbac";
 import { membershipsOf } from "./groups";
 import { ebmGroupPromptFor, syncEbmGroup } from "./ebmGroup";
@@ -287,8 +288,10 @@ export async function deletePerson(tenantId: string, id: string, actorUserId?: s
   await assertCanDeactivate(tenantId, id, actorUserId); // menghapus orang menonaktifkan akunnya: jangan sampai Superadmin terakhir atau diri sendiri
   const future = await prisma.eventAssignment.count({ where: { personId: id, event: { deletedAt: null, status: { not: "CANCELLED" }, endsAt: { gte: new Date() } } } });
   if (future > 0) throw conflict(`${p.name} masih punya ${future} penugasan yang akan datang. Ganti orangnya dulu.`);
+  const accounts = await prisma.user.findMany({ where: { personId: id }, select: { id: true } });
   await prisma.$transaction([
     prisma.user.updateMany({ where: { personId: id }, data: { isActive: false } }),
     prisma.person.update({ where: { id }, data: { deletedAt: new Date() } }),
   ]);
+  for (const a of accounts) forgetLiveUser(a.id); // sesi yang sedang berjalan langsung ditolak, tanpa menunggu cache habis
 }
