@@ -6,8 +6,9 @@ import { prisma } from "./prisma";
 import type { AuthUser } from "./rbac";
 import { assertNotLocked, clearFailures, LoginLocked, recordFailure } from "./loginThrottle";
 import { clientIp } from "./throttle";
+import { checkSecondFactor, TwoFactorInvalid, TwoFactorRequired } from "./twoFactor";
 
-const credsSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
+const credsSchema = z.object({ email: z.string().email(), password: z.string().min(1), code: z.string().max(40).optional() }); // code: kode 2 langkah (hanya akun yang memakainya)
 
 /** Verifikasi email+password dan susun isi JWT. Dipakai login web dan token native. */
 export async function authorizeCredentials(raw: unknown, ip = "unknown"): Promise<(AuthUser & { email: string }) | null> {
@@ -24,6 +25,15 @@ export async function authorizeCredentials(raw: unknown, ip = "unknown"): Promis
   if (!user || !(await bcrypt.compare(parsed.data.password, user.passwordHash))) {
     await recordFailure(email, ip);
     return null;
+  }
+  if (user.totpEnabledAt) {
+    // Kata sandi benar, tetapi akun ini memakai verifikasi 2 langkah: butuh kode dari aplikasi autentikator (atau kode cadangan).
+    const code = parsed.data.code?.trim();
+    if (!code) throw new TwoFactorRequired();
+    if (!(await checkSecondFactor(user, code))) {
+      await recordFailure(email, ip); // kode salah dihitung seperti sandi salah: dibatasi dan bisa terkunci sementara
+      throw new TwoFactorInvalid();
+    }
   }
   await clearFailures(email, ip);
 
@@ -49,6 +59,20 @@ class LockedSignin extends CredentialsSignin {
   }
 }
 
+/** Kode kesalahan untuk halaman login: butuh kode 2 langkah. */
+class TwoFactorRequiredSignin extends CredentialsSignin {
+  constructor() {
+    super();
+    this.code = "2fa_required";
+  }
+}
+class TwoFactorInvalidSignin extends CredentialsSignin {
+  constructor() {
+    super();
+    this.code = "2fa_invalid";
+  }
+}
+
 export const SESSION_SALT = "authjs.session-token";
 export const SESSION_MAX_AGE = 60 * 60 * 24 * 30; // 30 hari
 
@@ -57,13 +81,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   pages: { signIn: "/login" },
   providers: [
     Credentials({
-      credentials: { email: {}, password: {} },
+      credentials: { email: {}, password: {}, code: {} },
       authorize: async (c, request) => {
         try {
           const u = await authorizeCredentials(c, clientIp(request.headers));
           return u ? ({ id: u.userId, email: u.email, auth: u } as unknown as { id: string }) : null;
         } catch (e) {
           if (e instanceof LoginLocked) throw new LockedSignin(e.minutes);
+          if (e instanceof TwoFactorRequired) throw new TwoFactorRequiredSignin();
+          if (e instanceof TwoFactorInvalid) throw new TwoFactorInvalidSignin();
           throw e;
         }
       },

@@ -11,6 +11,7 @@ export const LIMITS = {
   unlockFail: { max: 5, windowMs: 15 * MIN, lockMs: 15 * MIN }, // salah kata sandi saat membuka notulen, per akun (hanya yang salah dihitung)
   loadReport: { max: 30, windowMs: 60 * MIN, lockMs: 15 * MIN }, // unduh statistik beban pelayan, per akun
   swapRequest: { max: 10, windowMs: 60 * MIN, lockMs: 60 * MIN }, // minta pengganti, per akun
+  twoFactor: { max: 8, windowMs: 15 * MIN, lockMs: 15 * MIN }, // konfirmasi, matikan, dan kode cadangan baru verifikasi 2 langkah, per akun
   pushTest: { max: 5, windowMs: 5 * MIN, lockMs: 5 * MIN }, // tombol tes notifikasi, per akun
 } as const satisfies Record<string, Policy>;
 

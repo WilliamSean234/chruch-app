@@ -91,6 +91,9 @@ export default async function AppShell({ active, title, subtitle, actions, back,
   const email = (await auth())?.user?.email ?? "";
   const name = person?.name ?? (email.split("@")[0] || "Pengguna");
   const roleText = isSuperadmin(user) ? ROLE_LABEL.SUPERADMIN : [...new Set(user.roles.map((r) => ROLE_LABEL[r.code] ?? r.code))].join(", ") || "Anggota";
+  // Superadmin yang belum memakai verifikasi 2 langkah diingatkan di setiap halaman (kecuali halaman pengaturannya sendiri).
+  const needs2fa = isSuperadmin(user) && title !== "Keamanan akun"
+    && !(await prisma.user.findUnique({ where: { id: user.userId }, select: { totpEnabledAt: true } }).then((r) => !!r?.totpEnabledAt).catch(() => true));
 
   return (
     <div className="flex min-h-screen flex-wrap bg-[var(--bg)]">
@@ -141,6 +144,7 @@ export default async function AppShell({ active, title, subtitle, actions, back,
                 <span className="text-xs text-[var(--ink-2)]">{roleText}</span>
               </span>
               <Link href="/ganti-password" className="ml-1 whitespace-nowrap rounded-lg px-2 py-1 text-xs font-bold text-[var(--ink-2)] hover:bg-[#ecedf8]">Ganti sandi</Link>
+              {isSuperadmin(user) && <Link href="/profil/keamanan" className="whitespace-nowrap rounded-lg px-2 py-1 text-xs font-bold text-[var(--ink-2)] hover:bg-[#ecedf8]">Keamanan</Link>}
               <form action={async () => { "use server"; await signOut({ redirectTo: "/login" }); }}>
                 <button className="rounded-lg rounded-lg px-2 py-1 text-xs font-bold text-[var(--ink-2)] hover:bg-[#ecedf8]" type="submit">Keluar</button>
               </form>
@@ -148,6 +152,12 @@ export default async function AppShell({ active, title, subtitle, actions, back,
           </div>
         </header>
         <div className={`flex flex-col gap-[22px] px-5 pt-5 md:px-8 md:pb-10 ${hideTabs ? "pb-6" : "pb-36"}`}>
+        {needs2fa && (
+          <Link href="/profil/keamanan" className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-2xl border border-[#E7C27A] bg-[#FFFBF0] px-4 py-3 text-sm font-semibold text-[#6F4304] hover:bg-[#FFF6DD]">
+            <span>Akun Superadmin Anda belum memakai verifikasi 2 langkah. Aktifkan supaya akun ini aman walau kata sandinya bocor.</span>
+            <span className="whitespace-nowrap font-extrabold text-[var(--primary-ink)]">Aktifkan sekarang ›</span>
+          </Link>
+        )}
         {children}
         </div>
       </main>

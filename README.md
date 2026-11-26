@@ -58,6 +58,10 @@ Dokumen desain, schema, dan roadmap (W1T1 dst.) ada di dokumen "Desain Arsitektu
 - Semua orang bisa mengganti kata sandi sendiri lewat tombol **Ganti sandi** di pojok kanan atas.
 - Superadmin bisa **mengubah role**, **mereset kata sandi**, **menonaktifkan/mengaktifkan** akun (`PATCH /api/v1/persons/{id}/account`).
   Akun Superadmin hanya bisa diubah Superadmin, dan harus selalu tersisa minimal satu Superadmin aktif.
+- **Verifikasi 2 langkah (khusus Superadmin)**: **Profil → Keamanan akun** (`/profil/keamanan`) memandu 3 langkah: pasang aplikasi autentikator (Google/Microsoft Authenticator, Authy), pindai kode QR (atau ketik kunci manual), lalu ketik 6 angka untuk mengaktifkan. Setelah itu masuk butuh kata sandi **dan** kode 6 angka.
+  Tiap akun punya kunci sendiri. Kunci disimpan terenkripsi dengan `MINUTES_ENC_KEY` (sama seperti notulen, jadi kunci itu tidak boleh berubah). Kode 6 angka hanya berlaku sekali. Kode salah dihitung seperti sandi salah (dibatasi, bisa terkunci sementara).
+  Saat diaktifkan, 8 **kode cadangan** sekali pakai ditampilkan satu kali (disimpan sebagai hash). Kalau HP hilang: pakai kode cadangan di halaman masuk, atau Superadmin lain menekan **Reset 2 langkah** di Pengaturan → Kelola akun (sesi akun itu dicabut, tercatat di Log aktivitas).
+  Darurat dari terminal: `npm run db:reset-2fa -- email@contoh.com` (simulasi), tambah `--apply` untuk mereset. Belum diwajibkan: Superadmin tanpa 2 langkah hanya melihat banner pengingat. Aplikasi native: `POST /api/v1/auth/token` menjawab `401 TWO_FACTOR_REQUIRED`; kirim ulang dengan field `code`.
 - Akun dummy dan akun seed tidak dipaksa ganti kata sandi.
 - Setelah memperbarui kode ini jalankan `npx prisma migrate dev --name user_password_flag` (menambah kolom `mustChangePassword` dan `passwordChangedAt`).
 

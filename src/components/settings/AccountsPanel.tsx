@@ -12,7 +12,7 @@ import Pager from "@/components/ui/Pager";
 import MembershipChips, { type Membership } from "@/components/ui/MembershipChips";
 import { FilterBar, FSearch, FSelect } from "@/components/ui/Filters";
 
-type Acc = { id: string; personId: string | null; name: string | null; email: string; isActive: boolean; mustChangePassword: boolean; roleCodes: string[]; teamTypeId: string | null; teamName: string | null; memberships?: Membership[] };
+type Acc = { id: string; personId: string | null; name: string | null; email: string; isActive: boolean; mustChangePassword: boolean; twoFactor?: boolean; roleCodes: string[]; teamTypeId: string | null; teamName: string | null; memberships?: Membership[] };
 type Team = { id: string; name: string };
 const rolesText = (a: Acc) => (a.roleCodes.length ? a.roleCodes.map((c) => ROLE_LABEL[c] ?? c).join(", ") + (a.teamName ? ` · ${a.teamName}` : "") : "Anggota (tanpa role)");
 
@@ -54,6 +54,15 @@ export default function AccountsPanel({ selfId, isSuper }: { selfId: string; isS
     const r = await callApi("PATCH", `/api/v1/accounts/${a.id}`, body);
     if (r.ok) await load();
     return r;
+  }
+  async function resetTwoFactor(a: Acc) {
+    const ok = await askConfirm(`Reset verifikasi 2 langkah ${a.name ?? a.email}? Semua sesinya dikeluarkan. Ia masuk dengan kata sandi saja, lalu perlu mengaktifkan 2 langkah lagi. Lakukan hanya bila ia sendiri yang meminta (HP hilang dan kode cadangan habis).`, { confirmLabel: "Reset 2 langkah", danger: true });
+    if (!ok) return;
+    setMsg(""); setError("");
+    const r = await callApi("DELETE", `/api/v1/accounts/${a.id}/2fa`);
+    if (!r.ok) return setError(errMsg(r.data));
+    setMsg(`Verifikasi 2 langkah ${a.name ?? a.email} direset.`);
+    await load();
   }
   async function toggle(a: Acc, on: boolean) {
     const ok = on
@@ -107,12 +116,14 @@ export default function AccountsPanel({ selfId, isSuper }: { selfId: string; isS
                   {a.name && <Detail label="Email"><span className="break-all">{a.email}</span></Detail>}
                   {!a.personId && <p className="text-xs font-medium text-[var(--ink-2)]">Tidak terhubung ke data orang</p>}
                   {a.mustChangePassword && <Detail label="Sandi"><span className="whitespace-nowrap rounded-full bg-[var(--gold-soft)] px-2.5 py-0.5 text-xs font-bold text-[#6F4304]">Belum ganti sandi</span></Detail>}
+                  {a.twoFactor && <Detail label="2 langkah"><span className="whitespace-nowrap rounded-full bg-[#E3F4E8] px-2.5 py-0.5 text-xs font-bold text-[#1B6B34]">Aktif</span></Detail>}
                   {a.memberships && a.memberships.length > 0 && <Detail label="Kelompok"><MembershipChips items={a.memberships} /></Detail>}
                   {locked ? <p className="text-xs font-medium text-[var(--ink-2)]">Hanya Superadmin yang bisa mengubah akun ini.</p> : (
                     <div className="flex flex-wrap gap-0.5">
                       <button type="button" className={link} onClick={() => { setMsg(""); setDlg({ kind: "role", acc: a }); }}>Ubah role</button>
                       <button type="button" className={link} onClick={() => { setMsg(""); setDlg({ kind: "email", acc: a }); }}>Ubah email</button>
                       <button type="button" className={link} onClick={() => { setMsg(""); setDlg({ kind: "reset", acc: a }); }}>Reset sandi</button>
+                      {a.twoFactor && isSuper && !self && <button type="button" className={link} onClick={() => void resetTwoFactor(a)}>Reset 2 langkah</button>}
                       {a.isActive
                         ? <button type="button" disabled={self} onClick={() => void toggle(a, false)} className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-[#9B1C1C] hover:bg-[#FFF5F5] disabled:cursor-not-allowed disabled:opacity-40">Nonaktifkan</button>
                         : <button type="button" className={link} onClick={() => void toggle(a, true)}>Aktifkan</button>}
@@ -145,6 +156,7 @@ export default function AccountsPanel({ selfId, isSuper }: { selfId: string; isS
                       <div className="flex flex-wrap gap-1.5">
                         <span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-bold ${a.isActive ? "bg-[#E3F4E8] text-[#1B6B34]" : "bg-[#ECEEF4] text-[#565b76]"}`}>{a.isActive ? "Aktif" : "Nonaktif"}</span>
                         {a.mustChangePassword && <span className="whitespace-nowrap rounded-full bg-[var(--gold-soft)] px-2.5 py-0.5 text-xs font-bold text-[#6F4304]">Belum ganti sandi</span>}
+                        {a.twoFactor && <span className="whitespace-nowrap rounded-full bg-[#E3F4E8] px-2.5 py-0.5 text-xs font-bold text-[#1B6B34]">2 langkah</span>}
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -154,6 +166,7 @@ export default function AccountsPanel({ selfId, isSuper }: { selfId: string; isS
                             <button type="button" className={link} onClick={() => { setMsg(""); setDlg({ kind: "role", acc: a }); }}>Ubah role</button>
                             <button type="button" className={link} onClick={() => { setMsg(""); setDlg({ kind: "email", acc: a }); }}>Ubah email</button>
                             <button type="button" className={link} onClick={() => { setMsg(""); setDlg({ kind: "reset", acc: a }); }}>Reset sandi</button>
+                            {a.twoFactor && isSuper && !self && <button type="button" className={link} onClick={() => void resetTwoFactor(a)}>Reset 2 langkah</button>}
                             {a.isActive
                               ? <button type="button" disabled={self} title={self ? "Anda tidak bisa menonaktifkan akun sendiri" : undefined} onClick={() => void toggle(a, false)} className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-[#9B1C1C] hover:bg-[#FFF5F5] disabled:cursor-not-allowed disabled:opacity-40">Nonaktifkan</button>
                               : <button type="button" className={link} onClick={() => void toggle(a, true)}>Aktifkan</button>}

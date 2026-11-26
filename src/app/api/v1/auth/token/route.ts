@@ -4,8 +4,9 @@ import { authorizeCredentials, SESSION_MAX_AGE, SESSION_SALT } from "@/lib/auth"
 import { ApiError, handle, unauthorized } from "@/lib/errors";
 import { LoginLocked } from "@/lib/loginThrottle";
 import { clientIp } from "@/lib/throttle";
+import { TwoFactorInvalid, TwoFactorRequired } from "@/lib/twoFactor";
 
-/** Login untuk aplikasi native: kirim email+password, terima Bearer token. */
+/** Login untuk aplikasi native: kirim email+password (dan "code" bila akunnya memakai verifikasi 2 langkah), terima Bearer token. */
 export const POST = handle(async (req: Request) => {
   const body = await req.json().catch(() => null);
   let u;
@@ -13,6 +14,8 @@ export const POST = handle(async (req: Request) => {
     u = await authorizeCredentials(body, clientIp(req.headers));
   } catch (e) {
     if (e instanceof LoginLocked) throw new ApiError(429, "TOO_MANY_ATTEMPTS", e.message, { retryAfterMinutes: e.minutes });
+    if (e instanceof TwoFactorRequired) throw new ApiError(401, "TWO_FACTOR_REQUIRED", e.message); // kirim ulang dengan field "code"
+    if (e instanceof TwoFactorInvalid) throw new ApiError(401, "TWO_FACTOR_INVALID", e.message);
     throw e;
   }
   if (!u) throw unauthorized();

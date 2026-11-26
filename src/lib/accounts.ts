@@ -198,7 +198,7 @@ export async function listAccounts(tenantId: string, q: z.infer<typeof accountLi
       skip: pg.skip,
       take: pg.take,
       select: {
-        id: true, email: true, isActive: true, mustChangePassword: true, passwordChangedAt: true, createdAt: true,
+        id: true, email: true, isActive: true, mustChangePassword: true, passwordChangedAt: true, createdAt: true, totpEnabledAt: true,
         person: { select: { id: true, name: true, title: true } },
         roles: { select: { teamTypeId: true, teamType: { select: { name: true } }, role: { select: { code: true } } } },
       },
@@ -214,6 +214,7 @@ export async function listAccounts(tenantId: string, q: z.infer<typeof accountLi
       email: u.email,
       isActive: u.isActive,
       mustChangePassword: u.mustChangePassword,
+      twoFactor: !!u.totpEnabledAt,
       passwordChangedAt: u.passwordChangedAt?.toISOString() ?? null,
       createdAt: u.createdAt.toISOString(),
       roleCodes: u.roles.map((r) => r.role.code),
