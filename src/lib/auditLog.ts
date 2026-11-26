@@ -50,7 +50,7 @@ const LABELS: Record<string, string> = {
   "team.create": "Membuat tim", "team.update": "Mengubah tim", "team.delete": "Menghapus tim",
   "template.create": "Membuat template", "template.update": "Mengubah template", "template.delete": "Menghapus template", "template.generate": "Membuat jadwal dari template",
   "registration.submit": "Permintaan daftar akun masuk", "registration.approve": "Menyetujui permintaan daftar", "registration.reject": "Menolak permintaan daftar",
-  "user.create": "Membuat akun", "user.update": "Mengubah akun", "user.deactivate": "Menonaktifkan akun", "user.password.change": "Mengganti kata sandi",
+  "user.create": "Membuat akun", "user.update": "Mengubah akun", "user.role.transfer": "Memindahkan role antar akun", "user.deactivate": "Menonaktifkan akun", "user.password.change": "Mengganti kata sandi",
   "user.2fa.enable": "Mengaktifkan verifikasi 2 langkah", "user.2fa.disable": "Mematikan verifikasi 2 langkah", "user.2fa.recovery": "Membuat kode cadangan 2 langkah baru", "user.2fa.reset": "Mereset verifikasi 2 langkah akun",
 };
 export const actionLabel = (a: string) => LABELS[a] ?? a;

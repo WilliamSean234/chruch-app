@@ -255,6 +255,7 @@ export function describe(r: AuditRowIn, refs: Refs): { target: string | null; ho
       how = bits.join(" · ") || null;
       break;
     }
+    case "user.role.transfer": how = `${roleText([p.role]) || str(p.role) || "Role"}: ${str(p.fromEmail) ?? "-"} → ${str(p.toEmail) ?? "-"}`; break;
     case "registration.submit": how = str(p.email); break;
     case "registration.approve": how = [`Ditautkan ke ${person(p.personId) ?? "-"}`, roleText(p.roles) ? `Role: ${roleText(p.roles)}` : "Tanpa role"].join(" · "); break;
     case "group.create": how = [num(p.quorumMin) ? `Kuorum ${p.quorumMin}` : null, str(p.auto) ? `Otomatis (${p.auto})` : null].filter(Boolean).join(" · ") || null; break;

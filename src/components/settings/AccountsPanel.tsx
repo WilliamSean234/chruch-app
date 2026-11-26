@@ -185,7 +185,7 @@ export default function AccountsPanel({ selfId, isSuper }: { selfId: string; isS
         <Pager page={page} pageSize={pageSize} total={total} onPage={setPage} onPageSize={(n) => { setPageSize(n); setPage(1); }} noun="akun" />
       </section>
 
-      {dlg?.kind === "role" && <RoleDialog acc={dlg.acc} teams={teams} isSuper={isSuper} self={dlg.acc.id === selfId} onClose={() => setDlg(null)} patch={(b) => patch(dlg.acc, b)} onDone={() => { setMsg(`Role ${dlg.acc.email} diperbarui. Berlaku saat orang itu masuk lagi.`); setDlg(null); }} />}
+      {dlg?.kind === "role" && <RoleDialog acc={dlg.acc} teams={teams} isSuper={isSuper} self={dlg.acc.id === selfId} onClose={() => setDlg(null)} patch={(b) => patch(dlg.acc, b)} onDone={() => { setMsg(`Role ${dlg.acc.email} diperbarui. Berlaku saat orang itu masuk lagi.`); setDlg(null); }} onTransferred={(m) => { setMsg(m); setDlg(null); void load(); }} />}
       {dlg?.kind === "email" && <EmailDialog acc={dlg.acc} self={dlg.acc.id === selfId} onClose={() => setDlg(null)} patch={(b) => patch(dlg.acc, b)} onDone={(to) => { setMsg(`Email akun diubah dari ${dlg.acc.email} menjadi ${to}. Pakai email baru untuk masuk.`); setDlg(null); }} />}
       {dlg?.kind === "reset" && <ResetDialog acc={dlg.acc} onClose={() => setDlg(null)} patch={(b) => patch(dlg.acc, b)} />}
     </div>
@@ -194,32 +194,118 @@ export default function AccountsPanel({ selfId, isSuper }: { selfId: string; isS
 
 type PatchFn = (b: unknown) => Promise<{ ok: boolean; data: { error?: { message?: string; code?: string } } | null }>;
 
-function RoleDialog({ acc, teams, isSuper, self, onClose, patch, onDone }: { acc: Acc; teams: Team[]; isSuper: boolean; self: boolean; onClose: () => void; patch: PatchFn; onDone: () => void }) {
+type Holder = { id: string; name: string | null; email: string; isOwner: boolean; teamName: string | null; locked: boolean };
+type RoleInfo = { code: string; count: number; max: number | null; holders: Holder[]; canTransfer: boolean; transferNote: string | null };
+type RoleSummary = { roles: RoleInfo[]; viewerTwoFactor: boolean };
+
+function RoleDialog({ acc, teams, isSuper, self, onClose, patch, onDone, onTransferred }: { acc: Acc; teams: Team[]; isSuper: boolean; self: boolean; onClose: () => void; patch: PatchFn; onDone: () => void; onTransferred: (message: string) => void }) {
   const options = ["PENJADWAL", "ADMIN_TIM", "ADMIN_JEMAAT", "PETUGAS_ABSEN", "PELAYAN", ...(isSuper ? ["PENGAWAS", "SUPERADMIN"] : [])];
   const [sel, setSel] = useState<string[]>(acc.roleCodes);
   const [teamId, setTeamId] = useState(acc.teamTypeId ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const toggle = (c: string) => setSel((p) => (p.includes(c) ? p.filter((x) => x !== c) : [...p, c]));
+  const link = "rounded-lg px-2.5 py-1.5 text-xs font-bold text-[var(--primary-ink)] hover:bg-[var(--primary-soft)] disabled:cursor-not-allowed disabled:opacity-40";
+  const [sum, setSum] = useState<RoleSummary | null>(null);
+  const [focus, setFocus] = useState<string | null>(null); // role yang daftar pemegangnya sedang ditampilkan
+  const [xfer, setXfer] = useState<Holder | null>(null); // pemegang yang rolenya akan dipindahkan ke akun ini
+  const [pw, setPw] = useState("");
+  const [code, setCode] = useState("");
+  const [xBusy, setXBusy] = useState(false);
+  const [xError, setXError] = useState("");
+  useEffect(() => { void callApi("GET", "/api/v1/accounts/roles").then((r) => { if (r.ok) setSum(r.data as unknown as RoleSummary); }); }, []);
+  const info = (c: string) => sum?.roles.find((r) => r.code === c);
+  /** Penuh = ada batas, semua terpakai, dan akun ini belum memegangnya (yang sudah memegang tetap boleh mencabut). */
+  const isFull = (c: string) => { const i = info(c); return !!i && i.max !== null && i.count >= i.max && !acc.roleCodes.includes(c); };
   const needTeam = sel.includes("ADMIN_TIM");
   const isEbmTeam = needTeam && /\bebm\b/i.test(teams.find((t) => t.id === teamId)?.name ?? "");
+  function pick(c: string) {
+    setFocus(c); setXfer(null); setXError("");
+    if (isFull(c)) return; // penuh: hanya menampilkan daftar pemegangnya
+    setSel((p) => (p.includes(c) ? p.filter((x) => x !== c) : [...p, c]));
+  }
   async function save() {
     setBusy(true); setError("");
     const r = await patch({ roleCodes: sel, teamTypeId: needTeam ? teamId || null : null });
     setBusy(false);
     if (!r.ok) setError(errMsg(r.data)); else onDone();
   }
+  const fi = focus ? info(focus) : undefined;
+  const strict = focus === "SUPERADMIN"; // Superadmin diperketat: kata sandi (dan kode 2 langkah) dimasukkan lagi
+  const who = acc.name ?? acc.email;
+  async function transfer() {
+    if (!focus || !xfer) return;
+    setXBusy(true); setXError("");
+    const r = await callApi("POST", "/api/v1/accounts/transfer-role", { role: focus, fromUserId: xfer.id, toUserId: acc.id, ...(strict ? { password: pw, ...(sum?.viewerTwoFactor ? { code } : {}) } : {}) });
+    setXBusy(false);
+    if (!r.ok) return setXError(errMsg(r.data));
+    onTransferred(`Role ${ROLE_LABEL[focus]} dipindahkan dari ${xfer.name ?? xfer.email} ke ${who}. Berlaku saat keduanya masuk lagi.`);
+  }
   return (
     <Modal title="Ubah role" onClose={onClose} footer={<><button type="button" className={btnGhost} onClick={onClose}>Batal</button><button type="button" className={btnPrimary} disabled={busy || (needTeam && !teamId)} onClick={() => void save()}>{busy ? "Menyimpan…" : "Simpan role"}</button></>}>
       <div className="flex flex-col gap-4">
-        <p className="text-sm font-semibold">{acc.name ?? acc.email}<span className="block text-xs font-medium text-[var(--ink-2)]">{acc.email}</span></p>
+        <p className="text-sm font-semibold">{who}<span className="block text-xs font-medium text-[var(--ink-2)]">{acc.email}</span></p>
         <div className="flex flex-wrap gap-2" role="group" aria-label="Role">
           {options.map((c) => {
             const on = sel.includes(c);
-            return <button key={c} type="button" role="checkbox" aria-checked={on} onClick={() => toggle(c)} className={`h-9 rounded-full border px-3.5 text-[13px] font-bold ${on ? "border-[var(--primary)] bg-[var(--primary)] text-white" : "border-[#D0D3E8] bg-white text-[var(--ink-2)] hover:bg-[#f3f4f9]"}`}>{on ? "✓ " : ""}{ROLE_LABEL[c]}</button>;
+            const i = info(c);
+            const full = isFull(c);
+            const cls = full
+              ? "border-dashed border-[#D0D3E8] bg-[#f3f4f9] text-[var(--ink-2)]"
+              : on ? "border-[var(--primary)] bg-[var(--primary)] text-white" : "border-[#D0D3E8] bg-white text-[var(--ink-2)] hover:bg-[#f3f4f9]";
+            return (
+              <button key={c} type="button" role="checkbox" aria-checked={on} aria-disabled={full} onClick={() => pick(c)} className={`h-9 rounded-full border px-3.5 text-[13px] font-bold ${cls} ${focus === c ? "ring-2 ring-[var(--primary)]/30" : ""}`}>
+                {on ? "✓ " : ""}{full ? "🔒 " : ""}{ROLE_LABEL[c]}{i && <span className="ml-1.5 text-[11px] font-semibold opacity-80">{i.count}{i.max !== null ? `/${i.max}` : ""}</span>}
+              </button>
+            );
           })}
         </div>
-        <p className="text-xs font-medium text-[var(--ink-2)]">{sel.length ? "Role yang dipilih berlaku bersamaan." : "Tanpa role: orang ini hanya bisa melihat kalender dan jadwalnya sendiri."}</p>
+        <p className="text-xs font-medium text-[var(--ink-2)]">{sel.length ? "Role yang dipilih berlaku bersamaan." : "Tanpa role: orang ini hanya bisa melihat kalender dan jadwalnya sendiri."} Angka di tiap role = jumlah akun aktif yang memegangnya{isSuper ? " (Superadmin dibatasi, role lain tanpa batas)" : ""}. Ketuk role untuk melihat siapa pemegangnya.</p>
+
+        {focus && fi && (
+          <section className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3.5" aria-label={`Pemegang ${ROLE_LABEL[focus]}`}>
+            <p className="text-[13px] font-bold">{ROLE_LABEL[focus]} · {fi.count}{fi.max !== null ? `/${fi.max}` : ""} akun aktif</p>
+            {isFull(focus) && <p className="mt-1 text-xs font-medium leading-relaxed text-[#a12b2b]">Sudah penuh, jadi tidak bisa dipilih. Untuk memberikannya ke {who}, pindahkan dari salah satu pemegang di bawah (pemegang itu kehilangan role-nya), atau cabut dulu dari salah satunya.</p>}
+            {fi.holders.length === 0 ? <p className="mt-2 text-xs font-medium text-[var(--ink-2)]">Belum ada akun aktif yang memegang role ini.</p> : (
+              <ul className="mt-2 flex max-h-52 flex-col divide-y divide-[var(--line)] overflow-y-auto">
+                {fi.holders.map((h) => {
+                  const mine = h.id === acc.id;
+                  const can = !mine && fi.canTransfer && !h.locked && !sel.includes(focus) && !acc.roleCodes.includes(focus) && acc.isActive && !(focus === "SUPERADMIN" && h.isOwner);
+                  return (
+                    <li key={h.id} className="flex items-center justify-between gap-3 py-2">
+                      <span className="min-w-0 text-[13px] font-semibold">
+                        <span className="block truncate">{h.name ?? h.email}{mine && <span className="ml-1.5 text-xs font-medium text-[var(--ink-2)]">(akun ini)</span>}{h.isOwner && <span className="ml-1.5 rounded-full bg-[#e6e9fb] px-2 py-0.5 text-[10px] font-bold text-[var(--primary)]">Utama</span>}</span>
+                        <span className="block truncate text-xs font-medium text-[var(--ink-2)]">{h.name ? h.email : ""}{h.teamName ? `${h.name ? " · " : ""}${h.teamName}` : ""}</span>
+                      </span>
+                      {can && <button type="button" className={`${link} shrink-0 text-xs`} onClick={() => { setXfer(h); setPw(""); setCode(""); setXError(""); }}>Pindahkan ke {who.split(" ")[0]}</button>}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {fi.count > fi.holders.length && <p className="mt-2 text-xs font-medium text-[var(--ink-2)]">Menampilkan {fi.holders.length} dari {fi.count} akun.</p>}
+            {!fi.canTransfer && fi.transferNote && <p className="mt-2 text-xs font-medium text-[var(--ink-2)]">{fi.transferNote}</p>}
+            {fi.canTransfer && !acc.isActive && <p className="mt-2 text-xs font-medium text-[var(--ink-2)]">Akun ini nonaktif, jadi belum bisa menerima role. Aktifkan dulu.</p>}
+
+            {xfer && (
+              <div className="mt-3 flex flex-col gap-3 rounded-xl border border-[#E3C9A0] bg-white p-3.5">
+                <p className="text-[13px] font-semibold leading-relaxed">Pindahkan role <b>{ROLE_LABEL[focus]}</b> dari <b>{xfer.name ?? xfer.email}</b> ke <b>{who}</b>?{strict ? " Akun asal langsung keluar dari semua sesinya dan bukan Superadmin lagi. Akun tujuan menjadi Superadmin penuh." : " Akun asal kehilangan role ini."}</p>
+                {strict && (
+                  <>
+                    <Field label="Kata sandi Anda"><input type="password" autoComplete="current-password" className={inputCls} value={pw} onChange={(e) => setPw(e.target.value)} /></Field>
+                    {sum?.viewerTwoFactor && <Field label="Kode 2 langkah Anda (6 angka)"><input inputMode="numeric" autoComplete="one-time-code" className={inputCls} value={code} onChange={(e) => setCode(e.target.value)} placeholder="123456" /></Field>}
+                  </>
+                )}
+                {xError && <p role="alert" className="rounded-xl bg-[#fdecec] px-3.5 py-2.5 text-sm font-semibold text-[#a12b2b]">{xError}</p>}
+                <div className="flex gap-2">
+                  <button type="button" className={btnGhost} onClick={() => setXfer(null)}>Batal</button>
+                  <button type="button" className={btnPrimary} disabled={xBusy || (strict && (!pw || (!!sum?.viewerTwoFactor && !code.trim())))} onClick={() => void transfer()}>{xBusy ? "Memindahkan…" : "Ya, pindahkan"}</button>
+                </div>
+                <p className="text-[11px] font-medium text-[var(--ink-2)]">Perubahan role lain yang belum disimpan di jendela ini tidak ikut tersimpan.</p>
+              </div>
+            )}
+          </section>
+        )}
+
         {needTeam && (
           <Field label="Tim yang dikelola">
             <select className={inputCls} value={teamId} onChange={(e) => setTeamId(e.target.value)}><option value="">Pilih tim…</option>{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
