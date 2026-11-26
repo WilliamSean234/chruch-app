@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import AppShell, { currentUser } from "@/components/AppShell";
 import EventList from "@/components/jadwal/EventList";
 import SwapRequestsPanel from "@/components/jadwal/SwapRequestsPanel";
-import { can } from "@/lib/rbac";
+import { can, teamScope } from "@/lib/rbac";
 
 export default async function JadwalPage() {
   const u = await currentUser();
@@ -23,7 +23,7 @@ export default async function JadwalPage() {
       }
     >
       {can(u, "assignment.write") && <SwapRequestsPanel />}
-      <EventList />
+      <EventList scope={teamScope(u)} />
     </AppShell>
   );
 }

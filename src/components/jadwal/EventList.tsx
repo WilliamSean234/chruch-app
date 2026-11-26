@@ -12,7 +12,7 @@ import { dayShort, floorText, hm, monthRange, REHEARSAL_TONE, STATUS_LABEL, tone
 type Rehearsal = { id: string; seq: number; startsAt: string; endsAt: string; room: { id: string; name: string; floor: number | null }; note: string | null };
 type Row = {
   id: string; number: string; title: string; status: string; startsAt: string; endsAt: string; templateId: string | null; templateName: string | null;
-  room: { id: string; name: string; floor: number | null }; seatsTotal: number; seatsFilled: number; createdBy: string | null; rehearsals: Rehearsal[];
+  room: { id: string; name: string; floor: number | null }; seatsTotal: number; seatsFilled: number; createdBy: string | null; teamTypeIds: string[]; rehearsals: Rehearsal[];
 };
 type Options = { templates: { id: string; name: string }[]; rooms: { id: string; name: string; floor: number | null }[]; years: number[] };
 
@@ -26,7 +26,9 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
-export default function EventList() {
+/** `scope`: tim yang boleh diatur akun ini (null = semua). Acara yang tidak memuat tim itu tidak punya tombol buka, karena tidak ada yang bisa diatur di sana. */
+export default function EventList({ scope = null }: { scope?: string[] | null }) {
+  const canOpen = (e: { teamTypeIds: string[] }) => scope === null || e.teamTypeIds.some((t) => scope.includes(t));
   const today = ymd(new Date());
   const def = monthRange(today);
   const [from, setFrom] = useState(def.from);
@@ -104,7 +106,7 @@ export default function EventList() {
                       {r.note && <span className="block font-medium">{r.note}</span>}
                     </div>
                   ))}
-                  <Link href={`/jadwal/${e.id}`} className="h-9 self-start rounded-xl bg-[var(--primary)] px-4 text-[13px] font-bold leading-9 text-white">Buka acara</Link>
+                  {canOpen(e) && <Link href={`/jadwal/${e.id}`} className="h-9 self-start rounded-xl bg-[var(--primary)] px-4 text-[13px] font-bold leading-9 text-white">Buka acara</Link>}
                 </CompactRow>
               );
             })}
@@ -140,7 +142,7 @@ export default function EventList() {
                     <td className="px-4 py-3 font-semibold">{e.room.name}{e.room.floor !== null && <span className="block text-xs font-medium text-[var(--ink-2)]">{floorText(e.room.floor)}</span>}</td>
                     <td className="px-4 py-3 font-semibold">{e.seatsFilled}/{e.seatsTotal}</td>
                     <td className="px-4 py-3"><span className="whitespace-nowrap rounded-full px-2.5 py-[3px] text-xs font-bold" style={{ background: st.bg, color: st.fg }}>{st.text}</span></td>
-                    <td className="px-4 py-3 text-right"><Link href={`/jadwal/${e.id}`} className="whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] font-bold text-[var(--primary-ink)] hover:bg-[var(--primary-soft)]">Buka</Link></td>
+                    <td className="px-4 py-3 text-right">{canOpen(e) && <Link href={`/jadwal/${e.id}`} className="whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] font-bold text-[var(--primary-ink)] hover:bg-[var(--primary-soft)]">Buka</Link>}</td>
                   </tr>
                   {open && e.rehearsals.map((r) => (
                     <tr key={`${e.id}-${r.id}`} className="bg-[#FAFAFD] text-[13px]">
@@ -154,7 +156,7 @@ export default function EventList() {
                       </td>
                       <td className="px-4 py-2 font-semibold text-[var(--ink-2)]">{r.room.name}{r.room.floor !== null && <span className="block text-xs font-medium">{floorText(r.room.floor)}</span>}</td>
                       <td className="px-4 py-2" /><td className="px-4 py-2" />
-                      <td className="px-4 py-2 text-right"><Link href={`/jadwal/${e.id}`} className="whitespace-nowrap rounded-lg px-3 py-1 text-xs font-bold text-[var(--primary-ink)] hover:bg-[var(--primary-soft)]">Buka acara</Link></td>
+                      <td className="px-4 py-2 text-right">{canOpen(e) && <Link href={`/jadwal/${e.id}`} className="whitespace-nowrap rounded-lg px-3 py-1 text-xs font-bold text-[var(--primary-ink)] hover:bg-[var(--primary-soft)]">Buka acara</Link>}</td>
                     </tr>
                   ))}
                   </Fragment>

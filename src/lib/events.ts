@@ -168,7 +168,7 @@ export async function listEvents(tenantId: string, q: z.infer<typeof eventListQu
     prisma.event.findMany({
       where,
       include: {
-        room: true, template: { select: { name: true } },
+        room: true, template: { select: { name: true } }, teams: { select: { teamTypeId: true } },
         assignments: { select: { personId: true } },
         rehearsals: { where: { deletedAt: null }, include: { room: true }, orderBy: { seq: "asc" } },
       },
@@ -185,6 +185,7 @@ export async function listEvents(tenantId: string, q: z.infer<typeof eventListQu
     templateId: e.templateId, templateName: e.template?.name ?? null,
     createdBy: (e.createdById && names.get(e.createdById)) || null,
     isOnline: e.isOnline,
+    teamTypeIds: e.teams.map((t) => t.teamTypeId), // dipakai daftar untuk menyembunyikan tombol buka bagi Admin Tim yang acaranya bukan untuk timnya
     room: { id: e.room.id, name: e.room.name, floor: e.room.floor },
     seatsTotal: e.assignments.length, seatsFilled: e.assignments.filter((a) => a.personId).length,
     rehearsals: e.rehearsals.map((r) => ({ id: r.id, seq: r.seq, startsAt: r.startsAt.toISOString(), endsAt: r.endsAt.toISOString(), room: { id: r.room.id, name: r.room.name, floor: r.room.floor }, note: r.note })),

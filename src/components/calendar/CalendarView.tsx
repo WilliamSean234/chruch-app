@@ -37,6 +37,17 @@ const BIRTHDAY_TONE = { bg: "#FCE7F0", fg: "#9D2352", dot: "#D6336C" };
 
 const nowParts = () => { const [y, m] = ymd(new Date()).split("-").map(Number); return { y, m0: m - 1 }; };
 
+/**
+ * Boleh membuka halaman edit acara ini? Penjadwal dan Superadmin: semua acara. Admin Tim: hanya acara yang memuat timnya
+ * (acara tanpa tim miliknya tidak ada yang bisa mereka atur, jadi tombolnya tidak ditampilkan).
+ */
+function canOpenEvent(canEdit: boolean, drop: DropPerms | null, teams: { teamTypeId: string }[]): boolean {
+  if (!canEdit) return false;
+  if (!drop || drop.addSeat || drop.scope === null) return true;
+  const scope = drop.scope;
+  return teams.some((t) => scope.includes(t.teamTypeId));
+}
+
 export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId, drop = null, canSeeMeetings = false, canSeeCancelled = false }: {
   /** Boleh melihat rapat? (Penjadwal, Superadmin, anggota kelompok). Kalau tidak: tidak ada rapat dan tidak ada tombolnya. */
   canSeeMeetings?: boolean;
@@ -473,7 +484,7 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
           ) : !detail || !tone || !st ? (
             <p className="py-10 text-center text-sm font-semibold text-[var(--ink-2)]">{events.length === 0 && (!canSeeMeetings || !showMeetings || shownMeetings.length === 0) && !loading ? "Tidak ada acara pada tampilan ini." : "Pilih acara di kalender untuk melihat detailnya."}</p>
           ) : selRehearsal ? (
-            <RehearsalPanel detail={detail} reh={selRehearsal} myPersonId={myPersonId} canEdit={canEdit} onBack={() => setSelectedRehearsal(null)} />
+            <RehearsalPanel detail={detail} reh={selRehearsal} myPersonId={myPersonId} canEdit={canOpenEvent(canEdit, drop, detail.teams)} onBack={() => setSelectedRehearsal(null)} />
           ) : (
             <>
               <div className="flex items-center gap-4">
@@ -547,7 +558,7 @@ export default function CalendarView({ canFilter, canEdit, hasPerson, myPersonId
               )}
               {selEvent && <p className="text-xs font-semibold text-[var(--ink-2)]">{selEvent.seatsFilled} dari {selEvent.seatsTotal} kursi terisi</p>}
               {selEvent?.canAttend && !detail.attendance && <Link href={`/hadir/${detail.id}`} className="flex h-[46px] items-center justify-center rounded-xl bg-[var(--primary)] text-sm font-bold text-white hover:brightness-110">Isi kehadiran</Link>}
-              {canEdit && <Link href={`/jadwal/${detail.id}`} className="flex h-[46px] items-center justify-center rounded-xl border border-[#D0D3E8] text-sm font-bold text-[var(--primary-ink)] hover:bg-[#f3f4f9]">Buka &amp; edit jadwal</Link>}
+              {canOpenEvent(canEdit, drop, detail.teams) && <Link href={`/jadwal/${detail.id}`} className="flex h-[46px] items-center justify-center rounded-xl border border-[#D0D3E8] text-sm font-bold text-[var(--primary-ink)] hover:bg-[#f3f4f9]">Buka &amp; edit jadwal</Link>}
             </>
           )}
         </aside>
