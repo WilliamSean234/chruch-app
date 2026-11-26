@@ -1,11 +1,39 @@
 import { blockedByOwner, OWNER_MESSAGE } from "./ownerRules";
 import { MAX_SUPERADMINS } from "./superadminLimit";
 
-/** Batas jumlah akun aktif per role. Role yang tidak tercantum tidak dibatasi. Murni supaya mudah diuji. */
-export const ROLE_LIMITS: Record<string, number> = { SUPERADMIN: MAX_SUPERADMINS };
-export const roleLimit = (code: string): number | null => ROLE_LIMITS[code] ?? null;
+/** Role yang kursinya bisa diatur Superadmin utama. Superadmin dikunci di kode (MAX_SUPERADMINS); Pelayan dan Petugas Absen jumlahnya banyak, jadi tanpa batas. */
+export const LIMITABLE_ROLES = ["PENJADWAL", "ADMIN_TIM", "ADMIN_JEMAAT", "PENGAWAS"] as const;
+export const SEAT_MAX = 500;
+const limitable = (code: string) => (LIMITABLE_ROLES as readonly string[]).includes(code);
+
+/** Batas yang berlaku untuk satu role: Superadmin selalu MAX_SUPERADMINS, role yang bisa dibatasi memakai nilai tersimpan, sisanya tanpa batas. */
+export function effectiveLimit(code: string, stored: number | null | undefined): number | null {
+  if (code === "SUPERADMIN") return MAX_SUPERADMINS;
+  return limitable(code) ? stored ?? null : null;
+}
 /** Penuh: ada batas dan sudah terpakai semua. */
-export const roleIsFull = (code: string, activeCount: number): boolean => { const m = roleLimit(code); return m !== null && activeCount >= m; };
+export const seatsFull = (max: number | null, activeCount: number): boolean => max !== null && activeCount >= max;
+
+/**
+ * Role yang butuh satu kursi baru dari perubahan ini: role yang tadinya tidak dihitung (belum dipegang, atau akunnya nonaktif)
+ * dan sesudah perubahan dipegang akun yang aktif. Mencakup akun baru, role yang diberikan, dan akun nonaktif yang diaktifkan lagi.
+ */
+export function rolesNeedingSlot(before: { codes: string[]; active: boolean } | null, after: { codes: string[]; active: boolean }): string[] {
+  if (!after.active) return [];
+  return after.codes.filter((c) => !(before && before.active && before.codes.includes(c)));
+}
+
+/** Periksa pengaturan batas yang diajukan. `counts` = akun aktif pemegang tiap role. Mengembalikan pesan penolakan, atau null. */
+export function validateLimits(limits: Record<string, number | null>, counts: Record<string, number>): string | null {
+  for (const [code, v] of Object.entries(limits)) {
+    if (!limitable(code)) return code === "SUPERADMIN" ? "Batas Superadmin dikunci (2 akun) dan tidak bisa diubah dari aplikasi." : `Role ${code} tidak punya batas kursi.`;
+    if (v === null) continue;
+    if (!Number.isInteger(v) || v < 1 || v > SEAT_MAX) return `Kursi harus angka 1 sampai ${SEAT_MAX}, atau kosongkan untuk tanpa batas.`;
+    const n = counts[code] ?? 0;
+    if (v < n) return `Role ini sudah dipegang ${n} akun aktif, jadi batasnya tidak bisa di bawah ${n}. Kurangi pemegangnya dulu.`;
+  }
+  return null;
+}
 
 export type TransferActor = { id: string; isSuper: boolean; isOwner: boolean };
 export type TransferParty = { id: string; isActive: boolean; isOwner: boolean; isSuper: boolean; holds: boolean };

@@ -174,6 +174,7 @@ export function describe(r: AuditRowIn, refs: Refs): { target: string | null; ho
     case "MeetingSeries": target = `Rapat berulang · ${refs.series.get(r.entityId) ?? "kelompok"}`; break;
     case "Tenant": target = a === "backup.download" ? "Cadangan data gereja" : a === "report.load.download" ? "Statistik beban pelayan" : "Profil gereja"; break;
     case "Import": target = "File Excel"; break;
+    case "Role": target = `Role ${roleText([p.role]) || ""}`.trim(); break;
     default: target = str(p.name); // pilihan data (posisi, komunitas, ruangan, kelompok CG)
   }
 
@@ -256,6 +257,7 @@ export function describe(r: AuditRowIn, refs: Refs): { target: string | null; ho
       break;
     }
     case "user.role.transfer": how = `${roleText([p.role]) || str(p.role) || "Role"}: ${str(p.fromEmail) ?? "-"} → ${str(p.toEmail) ?? "-"}`; break;
+    case "user.role.limit": how = `${roleText([p.role]) || str(p.role) || "Role"}: ${num(p.from) ? `${p.from} kursi` : "tanpa batas"} → ${num(p.to) ? `${p.to} kursi` : "tanpa batas"}`; break;
     case "registration.submit": how = str(p.email); break;
     case "registration.approve": how = [`Ditautkan ke ${person(p.personId) ?? "-"}`, roleText(p.roles) ? `Role: ${roleText(p.roles)}` : "Tanpa role"].join(" · "); break;
     case "group.create": how = [num(p.quorumMin) ? `Kuorum ${p.quorumMin}` : null, str(p.auto) ? `Otomatis (${p.auto})` : null].filter(Boolean).join(" · ") || null; break;

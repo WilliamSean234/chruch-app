@@ -130,6 +130,7 @@ model Role {
   code         String // SUPERADMIN | PENJADWAL | ADMIN_TIM | PELAYAN
   name         String
   isSuperadmin Boolean          @default(false) // bypass semua permission
+  maxAccounts  Int? // batas jumlah akun aktif pemegang role ini (kosong = tanpa batas); diatur Superadmin utama. Superadmin dikunci di kode (2)
   permissions  RolePermission[]
   users        UserRole[]
 

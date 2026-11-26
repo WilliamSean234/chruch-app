@@ -79,6 +79,7 @@ export default function AccountsPanel({ selfId, isSuper }: { selfId: string; isS
   return (
     <div className="flex flex-col gap-4">
       <p className="text-xs font-medium text-[var(--ink-2)]">Akun baru dibuat dari halaman Orang (atau lewat Impor data). Di sini Anda mengatur akun yang sudah ada.</p>
+      {isSuper && <RoleSeatsPanel onSaved={(m) => { setMsg(m); setError(""); }} />}
       <FilterBar active={!!(q || role || status || groupId)} onReset={() => { setQ(""); setRole(""); setStatus(""); setGroupId(""); setPage(1); }} moreCount={(status ? 1 : 0) + (groupId ? 1 : 0)}
         more={
           <>
@@ -195,8 +196,8 @@ export default function AccountsPanel({ selfId, isSuper }: { selfId: string; isS
 type PatchFn = (b: unknown) => Promise<{ ok: boolean; data: { error?: { message?: string; code?: string } } | null }>;
 
 type Holder = { id: string; name: string | null; email: string; isOwner: boolean; teamName: string | null; locked: boolean };
-type RoleInfo = { code: string; count: number; max: number | null; holders: Holder[]; canTransfer: boolean; transferNote: string | null };
-type RoleSummary = { roles: RoleInfo[]; viewerTwoFactor: boolean };
+type RoleInfo = { code: string; count: number; max: number | null; limitable: boolean; holders: Holder[]; canTransfer: boolean; transferNote: string | null };
+type RoleSummary = { roles: RoleInfo[]; viewerTwoFactor: boolean; canSetLimits: boolean };
 
 function RoleDialog({ acc, teams, isSuper, self, onClose, patch, onDone, onTransferred }: { acc: Acc; teams: Team[]; isSuper: boolean; self: boolean; onClose: () => void; patch: PatchFn; onDone: () => void; onTransferred: (message: string) => void }) {
   const options = ["PENJADWAL", "ADMIN_TIM", "ADMIN_JEMAAT", "PETUGAS_ABSEN", "PELAYAN", ...(isSuper ? ["PENGAWAS", "SUPERADMIN"] : [])];
@@ -259,7 +260,7 @@ function RoleDialog({ acc, teams, isSuper, self, onClose, patch, onDone, onTrans
             );
           })}
         </div>
-        <p className="text-xs font-medium text-[var(--ink-2)]">{sel.length ? "Role yang dipilih berlaku bersamaan." : "Tanpa role: orang ini hanya bisa melihat kalender dan jadwalnya sendiri."} Angka di tiap role = jumlah akun aktif yang memegangnya{isSuper ? " (Superadmin dibatasi, role lain tanpa batas)" : ""}. Ketuk role untuk melihat siapa pemegangnya.</p>
+        <p className="text-xs font-medium text-[var(--ink-2)]">{sel.length ? "Role yang dipilih berlaku bersamaan." : "Tanpa role: orang ini hanya bisa melihat kalender dan jadwalnya sendiri."} Angka di tiap role = jumlah akun aktif yang memegangnya{isSuper ? " (kursi diatur Superadmin utama di Kelola akun › Kursi per role)" : ""}. Ketuk role untuk melihat siapa pemegangnya.</p>
 
         {focus && fi && (
           <section className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3.5" aria-label={`Pemegang ${ROLE_LABEL[focus]}`}>
@@ -318,6 +319,54 @@ function RoleDialog({ acc, teams, isSuper, self, onClose, patch, onDone, onTrans
         {error && <p role="alert" className="rounded-xl bg-[#fdecec] px-3.5 py-2.5 text-sm font-semibold text-[#a12b2b]">{error}</p>}
       </div>
     </Modal>
+  );
+}
+
+function RoleSeatsPanel({ onSaved }: { onSaved: (message: string) => void }) {
+  const [sum, setSum] = useState<RoleSummary | null>(null);
+  const [vals, setVals] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const load = useCallback(async () => {
+    const r = await callApi("GET", "/api/v1/accounts/roles");
+    if (!r.ok) return;
+    const s = r.data as unknown as RoleSummary;
+    setSum(s);
+    setVals(Object.fromEntries(s.roles.filter((x) => x.limitable).map((x) => [x.code, x.max === null ? "" : String(x.max)])));
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+  if (!sum) return null;
+  const rows = sum.roles.filter((x) => x.limitable || x.code === "SUPERADMIN");
+  const dirty = sum.roles.some((x) => x.limitable && (vals[x.code] ?? "") !== (x.max === null ? "" : String(x.max)));
+  async function save() {
+    setBusy(true); setError("");
+    const limits: Record<string, number | null> = {};
+    for (const x of sum!.roles) if (x.limitable) { const t = (vals[x.code] ?? "").trim(); limits[x.code] = t === "" ? null : Number(t); }
+    const r = await callApi("PUT", "/api/v1/accounts/role-limits", { limits });
+    setBusy(false);
+    if (!r.ok) return setError(errMsg(r.data));
+    onSaved("Jumlah kursi per role disimpan.");
+    await load();
+  }
+  return (
+    <details className="rounded-[20px] border border-[var(--line)] bg-white px-4 py-3">
+      <summary className="cursor-pointer text-sm font-bold">Kursi per role</summary>
+      <div className="mt-3 flex flex-col gap-3">
+        <p className="text-xs font-medium leading-relaxed text-[var(--ink-2)]">Batas jumlah akun aktif yang boleh memegang tiap role. Kosong = tanpa batas. Role yang penuh tidak bisa diberikan lagi, tetapi bisa dipindahkan. Pelayan dan Petugas Absen tidak dibatasi. {sum.canSetLimits ? "" : "Hanya Superadmin utama yang bisa mengubahnya."}</p>
+        <ul className="flex flex-col divide-y divide-[var(--line)]">
+          {rows.map((x) => (
+            <li key={x.code} className="flex items-center justify-between gap-3 py-2">
+              <span className="text-[13px] font-semibold">{ROLE_LABEL[x.code]}<span className="ml-2 text-xs font-medium text-[var(--ink-2)]">{x.count} akun aktif</span></span>
+              {x.limitable ? (
+                <input type="number" inputMode="numeric" min={1} max={500} disabled={!sum.canSetLimits || busy} value={vals[x.code] ?? ""} onChange={(e) => setVals((p) => ({ ...p, [x.code]: e.target.value }))} placeholder="tanpa batas" aria-label={`Kursi ${ROLE_LABEL[x.code]}`} className="h-9 w-28 rounded-xl border border-[var(--line)] bg-white px-3 text-sm font-semibold disabled:bg-[#f3f4f9]" />
+              ) : <span className="text-xs font-bold text-[var(--ink-2)]">{x.max} (dikunci)</span>}
+            </li>
+          ))}
+        </ul>
+        {error && <p role="alert" className="rounded-xl bg-[#fdecec] px-3.5 py-2.5 text-sm font-semibold text-[#a12b2b]">{error}</p>}
+        {sum.canSetLimits && <div><button type="button" className={btnPrimary} disabled={busy || !dirty} onClick={() => void save()}>{busy ? "Menyimpan…" : "Simpan kursi"}</button></div>}
+      </div>
+    </details>
   );
 }
 
