@@ -17,6 +17,8 @@ import { emptyOnline, onlineBody, onlineProblem, type OnlineValue } from "@/lib/
 export type RoomOpt = { id: string; name: string; floor?: number | null };
 export type MeetingInit = {
   id: string; title: string; date: string; startTime: string; endTime: string; roomId: string; groupId: string; showTopic: boolean; showAttendees: boolean;
+  /** Mode rapat: false = hanya jadwal. hasMinutes: sudah punya notulen, jadi tidak bisa diubah menjadi hanya jadwal. */
+  fullMeeting?: boolean; hasMinutes?: boolean;
   /** Rapat yang sedang diubah: isian online dari server (null/kosong bila offline, atau bila yang membuka bukan anggota kelompok). */
   online?: OnlineValue; wasOnline?: boolean;
 };
@@ -68,6 +70,8 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
   const [endTime, setEndTime] = useState(meeting?.endTime ?? "21:00");
   const [roomId, setRoomId] = useState(meeting?.wasOnline ? "" : meeting?.roomId ?? "");
   const [onl, setOnl] = useState<OnlineValue>(meeting?.online ?? emptyOnline);
+  // bawaan rapat baru: hanya jadwal (tujuan utama aplikasi: menjadwalkan dan memberi pengingat); fitur lengkap dipilih sengaja
+  const [fullMeeting, setFullMeeting] = useState(meeting?.fullMeeting ?? false);
   const [showTopic, setShowTopic] = useState(meeting?.showTopic ?? false);
   const [showAttendees, setShowAttendees] = useState(meeting?.showAttendees ?? false);
   const [links, setLinks] = useState<Link[]>([{ title: "", url: "" }]);
@@ -182,7 +186,7 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
   const roomName = isOnline ? "Online" : rooms.find((r) => r.id === roomId)?.name ?? "Belum dipilih";
   const chipPublic = group ? meetingPublicTitle(group.name, title || "…", showTopic) : "Rapat";
   const chipMember = group ? meetingMemberTitle(group.name, title || "…") : "Rapat";
-  const canAttach = !edit && !!group?.isMember;
+  const canAttach = !edit && fullMeeting && !!group?.isMember;
 
   async function save() {
     if (!groupId) return setError("Pilih kelompok.");
@@ -199,15 +203,29 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
     if (canAttach && cleanLinks.some((l) => !l.title || !l.url)) return setError("Lengkapi judul dan alamat tautan, atau kosongkan barisnya.");
     setBusy(true); setError("");
     const r = edit
-      ? await callApi("PATCH", `/api/v1/meetings/${meeting!.id}`, { title: title.trim(), date, startTime, endTime, ...(isOnline || (meeting?.wasOnline && !canOnline) ? {} : { roomId }), ...(canOnline ? onlineBody(onl, "RAPAT") : {}), showTopic, showAttendees })
+      ? await callApi("PATCH", `/api/v1/meetings/${meeting!.id}`, { title: title.trim(), date, startTime, endTime, ...(isOnline || (meeting?.wasOnline && !canOnline) ? {} : { roomId }), ...(canOnline ? onlineBody(onl, "RAPAT") : {}), showTopic, showAttendees: fullMeeting && showAttendees, fullMeeting })
       : await callApi("POST", "/api/v1/meetings", {
-        groupId, title: title.trim(), date, startTime, endTime, ...(isOnline ? {} : { roomId }), ...(canOnline ? onlineBody(onl, "RAPAT") : {}), showTopic, showAttendees, links: canAttach ? cleanLinks : [],
-        invite: { mode: inviteMode, personIds: inviteMode === "SELECT" ? [...picked] : [], guests: group?.isMember ? guests : [] },
+        groupId, title: title.trim(), date, startTime, endTime, ...(isOnline ? {} : { roomId }), ...(canOnline ? onlineBody(onl, "RAPAT") : {}), showTopic, showAttendees: fullMeeting && showAttendees, fullMeeting, links: canAttach ? cleanLinks : [],
+        invite: fullMeeting ? { mode: inviteMode, personIds: inviteMode === "SELECT" ? [...picked] : [], guests: group?.isMember ? guests : [] } : { mode: "ALL", personIds: [], guests: [] },
         repeat: repeating ? { pattern: repeat, ...(endMode === "COUNT" ? { count: repCount } : { until: repUntil }) } : undefined,
       });
     setBusy(false);
     if (r.ok) { setDone({ id: r.data.id, created: !edit, series: r.data.seriesResult }); router.refresh(); } else setError(errMsg(r.data));
   }
+
+  const clashBox = (
+    <>
+      {clash && clash.count > 0 && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-[#ead9ae] bg-[#fffbf0] px-3.5 py-3">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6F4304" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="mt-px flex-none"><path d="M12 3l10 18H2L12 3z" /><path d="M12 10v5M12 18h.01" /></svg>
+          <span className="text-[13px] font-semibold leading-relaxed text-[#6f4304]">
+            {clash.names ? `${clash.names.join(", ")} punya jadwal lain pada jam ini.` : `${clash.count} anggota punya jadwal lain pada jam ini (nama tidak ditampilkan).`} Ini hanya peringatan, rapat tetap bisa disimpan.
+          </span>
+        </div>
+      )}
+      {clash && clash.count === 0 && <span className="text-[12.5px] font-semibold text-[#1b6b34]">Tidak ada anggota yang punya jadwal lain pada jam ini.</span>}
+    </>
+  );
 
   const saveLabel = busy ? "Menyimpan…" : edit ? "Simpan perubahan" : repeating ? "Simpan rapat berulang" : "Simpan rapat";
 
@@ -230,6 +248,19 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
           </span>
         </div>
         {error && <p role="alert" className="rounded-xl border border-[#f0c7c7] bg-[#fdf1f1] px-4 py-3 text-sm font-semibold text-[#9b1c1c]">{error}</p>}
+        <div className={card}>
+          <Rule>JENIS RAPAT</Rule>
+          <div role="radiogroup" aria-label="Jenis rapat" className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2.5">
+            <Choice on={!fullMeeting} disabled={edit && !!meeting?.hasMinutes} onClick={() => { setFullMeeting(false); setInviteMode("ALL"); }} title="Hanya jadwal"
+              hint={edit && meeting?.hasMinutes ? "Tidak tersedia: rapat ini sudah punya notulen." : "Agenda atau pinjam ruangan. Anggota tetap menerima pengingat."} />
+            <Choice on={fullMeeting} onClick={() => setFullMeeting(true)} title="Rapat lengkap" hint="Dengan peserta dan daftar hadir, notulen, dan lampiran." />
+          </div>
+          <span className="rounded-[10px] bg-[#f1f2fd] px-3.5 py-2.5 text-[12.5px] font-semibold leading-relaxed text-[var(--primary-ink)]">
+            {fullMeeting ? "Notulen, daftar hadir, dan lampiran muncul di halaman rapat." : "Tanpa daftar hadir, notulen, dan lampiran. Seluruh anggota kelompok tetap diundang otomatis supaya menerima pengingat."}
+            {edit && " Jenis rapat bisa diubah kapan saja, selama belum ada notulen."}
+          </span>
+        </div>
+
         <div className={card}>
           <Rule>INFORMASI RAPAT</Rule>
           <div className="flex flex-wrap gap-4">
@@ -337,6 +368,7 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
           </div>
         )}
 
+        {fullMeeting ? (
         <div className={card}>
           <Rule>UNDANGAN</Rule>
           {edit ? (
@@ -401,22 +433,15 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
               {group && !group.isMember && <span className="text-[13px] font-semibold leading-relaxed text-[var(--ink-2)]">Seluruh anggota diundang otomatis. Daftar nama hanya terlihat oleh anggota kelompok, jadi tidak ditampilkan kepada Anda.</span>}
             </>
           )}
-          {clash && clash.count > 0 && (
-            <div className="flex items-start gap-2.5 rounded-xl border border-[#ead9ae] bg-[#fffbf0] px-3.5 py-3">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6F4304" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="mt-px flex-none"><path d="M12 3l10 18H2L12 3z" /><path d="M12 10v5M12 18h.01" /></svg>
-              <span className="text-[13px] font-semibold leading-relaxed text-[#6f4304]">
-                {clash.names ? `${clash.names.join(", ")} punya jadwal lain pada jam ini.` : `${clash.count} anggota punya jadwal lain pada jam ini (nama tidak ditampilkan).`} Ini hanya peringatan, rapat tetap bisa disimpan.
-              </span>
-            </div>
-          )}
-          {clash && clash.count === 0 && <span className="text-[12.5px] font-semibold text-[#1b6b34]">Tidak ada anggota yang punya jadwal lain pada jam ini.</span>}
+          {clashBox}
         </div>
+        ) : clash && clash.count > 0 ? <div className={card}>{clashBox}</div> : null}
 
         <div className={card}>
           <Rule>TAMPILAN DI KALENDER</Rule>
           <Switch on={showTopic} onChange={setShowTopic} label="Tampilkan topik di kalender" hint={`Bawaan: mati. Orang di luar kelompok hanya melihat “Rapat ${group?.name ?? "…"}”.`} />
-          <Switch on={showAttendees} onChange={setShowAttendees} label="Tampilkan peserta di kalender" hint="Bawaan: mati. Daftar nama anggota tidak ikut terlihat." />
-          <span className="rounded-[10px] bg-[#f1f2fd] px-3.5 py-2.5 text-[12.5px] font-semibold leading-relaxed text-[var(--primary-ink)]">Notulen dan tautan dokumen tetap tertutup apa pun pilihan di atas.</span>
+          {fullMeeting && <Switch on={showAttendees} onChange={setShowAttendees} label="Tampilkan peserta di kalender" hint="Bawaan: mati. Daftar nama anggota tidak ikut terlihat." />}
+          {fullMeeting && <span className="rounded-[10px] bg-[#f1f2fd] px-3.5 py-2.5 text-[12.5px] font-semibold leading-relaxed text-[var(--primary-ink)]">Notulen dan tautan dokumen tetap tertutup apa pun pilihan di atas.</span>}
         </div>
 
         {canAttach && (
@@ -432,7 +457,7 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
             <div><button type="button" onClick={() => setLinks([...links, { title: "", url: "" }])} className="h-9 rounded-full border-[1.5px] border-dashed border-[#9aa0d6] bg-[#f6f7fe] px-3.5 text-[13px] font-bold text-[var(--primary-ink)] hover:bg-[#eceefd]">+ tautan lain</button></div>
           </div>
         )}
-        {!edit && group && !group.isMember && (
+        {!edit && fullMeeting && group && !group.isMember && (
           <div className="rounded-[14px] border border-dashed border-[#c4c8dc] bg-[var(--bg)] px-4 py-3 text-[13px] font-medium leading-relaxed text-[var(--ink-2)]">Tautan lampiran hanya bisa ditambahkan oleh anggota kelompok, di halaman rapat setelah rapat dibuat.</div>
         )}
 
@@ -464,7 +489,7 @@ export default function MeetingForm({ groups, rooms, meeting }: { groups: GroupO
           <div className="flex min-h-[34px] items-center gap-1.5 rounded-lg bg-[#f8e6dd] px-2.5 py-1 text-[12.5px] font-bold leading-tight text-[#7a3a1e]">
             <span className="size-[7px] flex-none rounded-full bg-[#c0562d]" aria-hidden="true" /><span className="min-w-0">{dotTime(startTime)} {chipMember}</span>
           </div>
-          <span className="text-[13px] font-medium leading-relaxed text-[var(--ink-2)]">Lengkap dengan peserta, kehadiran, notulen, dan tautan lampiran.</span>
+          <span className="text-[13px] font-medium leading-relaxed text-[var(--ink-2)]">{fullMeeting ? "Lengkap dengan peserta, kehadiran, notulen, dan tautan lampiran." : "Hanya jadwal: waktu, ruangan, dan pengingat. Tanpa daftar hadir, notulen, dan lampiran."}</span>
         </div>
       </aside>
       {done && (

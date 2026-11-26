@@ -74,6 +74,7 @@ export const meetingCreateBody = z.object({
   theme: z.string().trim().max(600).nullish(), // tema rapat online (terenkripsi)
   showTopic: z.boolean().default(false),
   showAttendees: z.boolean().default(false),
+  fullMeeting: z.boolean().default(true), // false = hanya jadwal: tanpa kehadiran, notulen, dan lampiran (pengingat tetap ke seluruh anggota)
   links: z.array(linkBody).max(20).default([]),
   invite: inviteBody.default({ mode: "ALL", personIds: [], guests: [] }),
   repeat: repeatBody.optional(),
@@ -89,6 +90,7 @@ export const meetingUpdateBody = z.object({
   theme: z.string().trim().max(600).nullish(),
   showTopic: z.boolean().optional(),
   showAttendees: z.boolean().optional(),
+  fullMeeting: z.boolean().optional(),
 });
 
 export const cancelBody = z.object({
@@ -169,8 +171,11 @@ async function toDto(u: AuthUser, e: MeetingRow & { group: { id: string; name: s
   const member = a.caps.isMember;
   const seesTitle = member || a.global || e.showTopic; // penjadwal global ikut tahu judulnya karena ia yang mengisinya
   const names = await creatorNames([e.createdById]);
-  const minutes = member ? await prisma.meetingMinutes.findUnique({ where: { eventId: e.id }, select: { status: true, version: true } }) : null;
-  const people = await participantsView(e.group.id, e.id, e.group.quorumMin, member, e.showAttendees);
+  const full = e.fullMeeting;
+  const minutes = member && full ? await prisma.meetingMinutes.findUnique({ where: { eventId: e.id }, select: { status: true, version: true } }) : null;
+  // hanya jadwal: peserta tetap tersimpan (mereka penerima pengingat) tetapi tidak ditampilkan, dan kehadiran tidak dicatat
+  const people = full ? await participantsView(e.group.id, e.id, e.group.quorumMin, member, e.showAttendees)
+    : { participants: [] as ParticipantDto[], attendance: null as ReturnType<typeof summarizeAttendance> | null, attendeesPublic: null as string[] | null };
   let series: { text: string; index: number; total: number; later: number } | null = null;
   if (e.seriesId) {
     const sr = await prisma.meetingSeries.findUnique({ where: { id: e.seriesId } });
@@ -192,10 +197,11 @@ async function toDto(u: AuthUser, e: MeetingRow & { group: { id: string; name: s
     displayTitle: member ? meetingMemberTitle(e.group.name, e.title) : meetingPublicTitle(e.group.name, e.title, e.showTopic),
     showTopic: e.showTopic,
     showAttendees: e.showAttendees,
+    fullMeeting: full,
     createdBy: member || a.global ? ((e.createdById && names.get(e.createdById)) || null) : null,
     // isi rapat: hanya anggota kelompok
     locked: !member,
-    links: member ? e.links.map((l) => ({ id: l.id, title: l.title, url: l.url })) : [],
+    links: member && full ? e.links.map((l) => ({ id: l.id, title: l.title, url: l.url })) : [],
     // rapat online: tautan, tema, dan pembicara adalah isi rapat, hanya untuk anggota kelompok. Yang lain hanya tahu rapat ini online (ruangannya "Online").
     isOnline: e.isOnline,
     online: e.isOnline && member ? await onlineMeetingView(e) : null,
@@ -207,9 +213,9 @@ async function toDto(u: AuthUser, e: MeetingRow & { group: { id: string; name: s
     viewer: {
       isMember: member,
       canManage: a.canManage && e.status !== "CANCELLED",
-      canAttach: member && (a.caps.canSchedule || a.caps.canWriteMinutes) && e.status !== "CANCELLED",
-      canWriteMinutes: member && (a.caps.canWriteMinutes || a.caps.canFinalize) && e.status !== "CANCELLED",
-      canRecord: member && (a.caps.canSchedule || a.caps.canWriteMinutes) && e.status !== "CANCELLED", // undang, hapus, catat kehadiran
+      canAttach: full && member && (a.caps.canSchedule || a.caps.canWriteMinutes) && e.status !== "CANCELLED",
+      canWriteMinutes: full && member && (a.caps.canWriteMinutes || a.caps.canFinalize) && e.status !== "CANCELLED",
+      canRecord: full && member && (a.caps.canSchedule || a.caps.canWriteMinutes) && e.status !== "CANCELLED", // undang, hapus, catat kehadiran
     },
   };
 }
@@ -375,6 +381,8 @@ export async function createMeeting(u: AuthUser, b: z.infer<typeof meetingCreate
   if (!a.canManage) throw forbidden("Anda tidak punya hak menjadwalkan rapat untuk kelompok ini.");
   // tautan = isi rapat, jadi hanya anggota kelompok yang boleh menambahkannya
   if (b.links.length && !a.caps.isMember) throw forbidden("Tautan lampiran hanya bisa ditambahkan oleh anggota kelompok.");
+  // hanya jadwal: tidak ada lampiran, peserta pilihan, atau tamu. Seluruh anggota tetap diundang otomatis supaya menerima pengingat.
+  if (!b.fullMeeting && (b.links.length || b.invite.mode === "SELECT" || b.invite.guests.length)) throw badRequest("Rapat \"hanya jadwal\" tidak memakai lampiran, peserta pilihan, atau tamu. Pilih \"rapat lengkap\" bila diperlukan.");
   // nama peserta dan tamu = isi rapat, jadi hanya anggota kelompok yang boleh memilih sendiri; Penjadwal non-anggota hanya bisa mengundang seluruh anggota
   if ((b.invite.mode === "SELECT" || b.invite.guests.length) && !a.caps.isMember) throw forbidden("Memilih peserta dan menambah tamu hanya bisa dilakukan oleh anggota kelompok.");
   const memberIds = await activeMemberIds(group.id);
@@ -406,7 +414,7 @@ export async function createMeeting(u: AuthUser, b: z.infer<typeof meetingCreate
         data: {
           id: eventId, tenantId: u.tenantId, number, kind: "RAPAT", groupId: group.id, title: sealTitle(eventId, b.title), startsAt, endsAt, roomId, ...(onl ?? {}), theme: online ? sealTheme(eventId, b.theme) : null,
           status: "PUBLISHED", publishedAt: new Date(), attendanceMode: "COUNT", createdById: u.userId,
-          showTopic: b.showTopic, showAttendees: b.showAttendees, seriesId: opts.seriesId ?? null, seriesIndex: opts.seriesIndex ?? null,
+          showTopic: b.showTopic, showAttendees: b.fullMeeting && b.showAttendees, fullMeeting: b.fullMeeting, seriesId: opts.seriesId ?? null, seriesIndex: opts.seriesIndex ?? null,
           links: { create: b.links.map((l) => ({ ...sealLink(eventId, l), createdById: u.userId })) },
           participants: {
             create: [
@@ -420,7 +428,7 @@ export async function createMeeting(u: AuthUser, b: z.infer<typeof meetingCreate
       return e;
     }),
   "Ruangan sudah dipakai pada jam itu. Pilih ruangan atau jam lain.");
-  await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.create", entity: "Event", entityId: created.id, payload: { number, group: group.name, startsAt: startsAt.toISOString(), online, onBehalf: !a.caps.isMember, invited: invitees.length, guests: guests.length } });
+  await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.create", entity: "Event", entityId: created.id, payload: { number, group: group.name, startsAt: startsAt.toISOString(), online, fullMeeting: b.fullMeeting, onBehalf: !a.caps.isMember, invited: invitees.length, guests: guests.length } });
   return getMeeting(u, created.id);
 }
 
@@ -430,6 +438,9 @@ export async function updateMeeting(u: AuthUser, id: string, b: z.infer<typeof m
   if (!a.canManage) throw forbidden("Anda tidak punya hak mengubah rapat ini.");
   if (cur.status === "CANCELLED") throw conflict("Rapat yang sudah dibatalkan tidak bisa diubah.");
 
+  if (b.fullMeeting === false && cur.fullMeeting && (await prisma.meetingMinutes.count({ where: { eventId: id } })) > 0) {
+    throw conflict("Rapat ini sudah punya notulen, jadi tidak bisa diubah menjadi \"hanya jadwal\". Biarkan sebagai rapat lengkap.");
+  }
   const was = localParts(cur.startsAt);
   const wasEnd = localParts(cur.endsAt);
   const { startsAt, endsAt } = range(b.date ?? was.date, b.startTime ?? was.time, b.endTime ?? wasEnd.time);
@@ -457,7 +468,7 @@ export async function updateMeeting(u: AuthUser, id: string, b: z.infer<typeof m
 
   await translateOverlap(() =>
     prisma.$transaction(async (tx) => {
-      await tx.event.update({ where: { id }, data: { title: b.title !== undefined ? sealTitle(id, b.title) : undefined, startsAt, endsAt, roomId, ...(onl ?? {}), theme: themeData, showTopic: b.showTopic, showAttendees: b.showAttendees } });
+      await tx.event.update({ where: { id }, data: { title: b.title !== undefined ? sealTitle(id, b.title) : undefined, startsAt, endsAt, roomId, ...(onl ?? {}), theme: themeData, showTopic: b.showTopic, showAttendees: b.fullMeeting === false ? false : b.showAttendees, fullMeeting: b.fullMeeting } });
       if (timeChanged || roomChanged) {
         await releaseBookings(tx, { sourceType: "EVENT", sourceId: id, resourceType: "ROOM" });
         if (!willBeOnline) await bookRoom(tx, { tenantId: u.tenantId, roomId, startsAt, endsAt, sourceType: "EVENT", sourceId: id });
@@ -494,6 +505,7 @@ async function requireAttach(u: AuthUser, id: string) {
   const a = await accessTo(u, cur.group.id);
   if (!a.caps.isMember || !(a.caps.canSchedule || a.caps.canWriteMinutes)) throw forbidden("Hanya anggota kelompok yang boleh mengatur lampiran.");
   if (cur.status === "CANCELLED") throw conflict("Rapat ini sudah dibatalkan.");
+  if (!cur.fullMeeting) throw conflict("Rapat ini hanya jadwal, tanpa kehadiran dan lampiran. Ubah menjadi rapat lengkap lewat Ubah jadwal.");
   return cur;
 }
 

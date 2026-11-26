@@ -30,7 +30,7 @@ export default async function NotulenCetakPage({ params, searchParams }: Props) 
   const u = await currentUser();
   const nf = (e: unknown) => { if (e instanceof ApiError && e.status === 404) notFound(); throw e; };
   const m = await getMeeting(u, id).catch(nf);
-  if (m.locked) redirect(`/rapat/${id}`);
+  if (m.locked || !m.fullMeeting) redirect(`/rapat/${id}`);
   if ((await unlockExpiry(u)) === null) redirect(`/rapat/${id}/notulen`); // terkunci: halaman notulen meminta kata sandi
   const minutes = await getMinutes(u, id).catch(nf);
 

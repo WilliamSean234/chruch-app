@@ -19,7 +19,7 @@ export type MeetingDto = {
   id: string; number: string; status: string; cancelReason: string | null; startsAt: string; endsAt: string;
   room: { id: string; name: string }; group: { id: string; name: string; quorumMin: number | null };
   title: string | null; displayTitle: string; showTopic: boolean; showAttendees: boolean; createdBy: string | null;
-  locked: boolean; links: LinkRow[];
+  locked: boolean; fullMeeting: boolean; links: LinkRow[];
   isOnline?: boolean; online?: OnlineDto | null;
   participants: Participant[]; attendance: Attendance | null; attendeesPublic: string[] | null;
   minutes: { status: string; version: number } | null;
@@ -155,6 +155,15 @@ export default function MeetingDetail({ meeting: m }: { meeting: MeetingDto }) {
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#565B76" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="mt-px flex-none"><rect x="5" y="11" width="14" height="9" rx="2.5" /><path d="M8 11V8a4 4 0 018 0v3" /></svg>
               <span className="flex flex-col gap-1"><span className="text-sm font-extrabold text-[#3a3f58]">Isi rapat tertutup</span>
                 <span className="text-[13px] font-medium leading-relaxed text-[var(--ink-2)]">Peserta, notulen, dan dokumen hanya untuk anggota {m.group.name}. Anda hanya melihat waktu dan ruangan.</span></span>
+            </div>
+          ) : !m.fullMeeting ? (
+            <div className="flex items-start gap-3 rounded-[20px] border border-dashed border-[#c4c8dc] bg-[var(--bg)] p-5">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#565B76" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="mt-px flex-none"><rect x="3.5" y="5" width="17" height="15" rx="2.5" /><path d="M8 3v4M16 3v4M3.5 10h17" /></svg>
+              <span className="flex flex-col gap-1"><span className="text-sm font-extrabold text-[#3a3f58]">Hanya jadwal</span>
+                <span className="text-[13px] font-medium leading-relaxed text-[var(--ink-2)]">
+                  Rapat ini dipakai sebagai agenda atau peminjaman ruangan. Seluruh anggota {m.group.name} tetap menerima pengingat. Tidak ada daftar hadir, notulen, maupun lampiran.
+                  {m.viewer.canManage && <> Perlu fitur itu? Pilih “Rapat lengkap” lewat <Link href={`/rapat/${m.id}/ubah`} className="font-bold text-[var(--primary-ink)] hover:underline">Ubah jadwal</Link>.</>}
+                </span></span>
             </div>
           ) : (
             <>

@@ -17,7 +17,7 @@ export default async function NotulenPage({ params }: Props) {
   const u = await currentUser();
   const notFoundTo = (e: unknown) => { if (e instanceof ApiError && e.status === 404) notFound(); throw e; };
   const m = await getMeeting(u, id).catch(notFoundTo);
-  if (m.locked) redirect(`/rapat/${id}`);
+  if (m.locked || !m.fullMeeting) redirect(`/rapat/${id}`); // bukan anggota, atau rapat "hanya jadwal" (tanpa notulen)
   const shell = { active: "rapat" as const, title: m.displayTitle, subtitle: `Notulen · ${m.group.name} · ${m.number}` };
   // isi notulen baru dibaca (dan didekripsi) setelah kata sandi dimasukkan ulang
   const until = await unlockExpiry(u);

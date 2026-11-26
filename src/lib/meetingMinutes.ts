@@ -37,6 +37,7 @@ async function memberAccess(u: AuthUser, id: string) {
   const e = await loadMeeting(u, id);
   const a = await accessTo(u, e.group.id);
   if (!a.caps.isMember) throw notFound("Notulen"); // bukan anggota: seolah tidak ada
+  if (!e.fullMeeting) throw conflict("Rapat ini hanya jadwal, tanpa notulen. Ubah menjadi rapat lengkap lewat Ubah jadwal.");
   const open = e.status !== "CANCELLED";
   return {
     e,

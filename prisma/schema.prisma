@@ -370,6 +370,7 @@ model Event { // header; nomor EV-YYYYMM-0001
   groupId       String? // wajib bila kind = RAPAT
   showTopic     Boolean            @default(false) // judul rapat ikut tampil di kalender umum
   showAttendees Boolean            @default(false) // daftar peserta ikut tampil di kalender umum
+  fullMeeting   Boolean            @default(true) // rapat: false = hanya jadwal (agenda atau pinjam ruangan; tanpa kehadiran, notulen, lampiran), true = rapat lengkap
   // Acara online: tanpa ruangan fisik (memakai ruangan maya Online). Tautan dan nama pembicara tersimpan terenkripsi.
   isOnline       Boolean           @default(false)
   onlineUrl      String? // tautan meeting online (terenkripsi)
