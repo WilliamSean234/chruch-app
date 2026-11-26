@@ -5,7 +5,8 @@ import { prisma } from "./prisma";
 import { badRequest, conflict, forbidden, notFound } from "./errors";
 import { isSuperadmin, type AuthUser } from "./rbac";
 import { forgetLiveUser } from "./liveUser";
-import { assertCanDeactivate } from "./accountGuards";
+import { assertCanDeactivate, assertSuperadminSlot } from "./accountGuards";
+import { needsSuperadminSlot } from "./superadminLimit";
 import { nameKey } from "./names";
 import { pagingQuery, resolvePaging } from "./paging";
 import { membershipsOf } from "./groups";
@@ -27,6 +28,7 @@ export async function createAccountForPerson(
 ) {
   if ((b.roleCodes.includes("SUPERADMIN") || b.roleCodes.includes("PENGAWAS")) && !isSuperadmin(actor)) throw forbidden("Hanya Superadmin yang boleh membuat Superadmin atau Pengawas.");
   if (b.roleCodes.includes("ADMIN_TIM") && !b.teamTypeId) throw badRequest("Pilih tim yang dikelola untuk Admin Tim.");
+  if (b.roleCodes.includes("SUPERADMIN")) await assertSuperadminSlot(actor.tenantId); // maksimal 2 Superadmin aktif
 
   const person = await prisma.person.findFirst({ where: { id: personId, tenantId: actor.tenantId, deletedAt: null }, include: { user: true } });
   if (!person) throw notFound("Orang");
@@ -95,6 +97,10 @@ export async function updateAccount(actor: AuthUser, target: string | { userId: 
   if (targetIsSuper && !isSuperadmin(actor)) throw forbidden("Akun Superadmin hanya bisa diubah oleh Superadmin.");
   if ((b.roleCodes?.includes("SUPERADMIN") || b.roleCodes?.includes("PENGAWAS")) && !isSuperadmin(actor)) throw forbidden("Hanya Superadmin yang boleh memberi role Superadmin atau Pengawas.");
   if (b.roleCodes?.includes("ADMIN_TIM") && !b.teamTypeId) throw badRequest("Pilih tim yang dikelola untuk Admin Tim.");
+
+  // Batas jumlah Superadmin aktif: berlaku bila perubahan ini menjadikan akun ini Superadmin aktif (baru diberi role, atau diaktifkan kembali).
+  const afterIsSuper = b.roleCodes !== undefined ? b.roleCodes.includes("SUPERADMIN") : targetIsSuper;
+  if (needsSuperadminSlot({ isSuper: targetIsSuper, active: user.isActive }, { isSuper: afterIsSuper, active: b.isActive ?? user.isActive })) await assertSuperadminSlot(actor.tenantId, user.id);
 
   // Jangan sampai aplikasi kehilangan Superadmin terakhirnya.
   const losesSuper = targetIsSuper && ((b.roleCodes !== undefined && !b.roleCodes.includes("SUPERADMIN")) || b.isActive === false);
