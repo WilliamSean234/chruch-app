@@ -1,6 +1,8 @@
 import { badgeCounts } from "@/lib/badges";
 import { PresenceBeat } from "@/components/ui/Presence";
 import SessionWatch from "@/components/ui/SessionWatch";
+import AvatarFlower from "@/components/ui/AvatarFlower";
+import { hasFlower } from "@/lib/personalTouch";
 import { logoutAction } from "@/lib/logoutAction";
 import { BadgeLive, LiveNavBadge, LiveNavDot } from "@/components/ui/LiveBadges";
 import Link from "next/link";
@@ -146,7 +148,7 @@ export default async function AppShell({ active, title, subtitle, actions, back,
           <div className="flex flex-none flex-wrap items-center gap-3">
             {actions}
             <div className="hidden items-center gap-2.5 rounded-full border border-[var(--line)] bg-white py-1.5 pl-1.5 pr-3.5 md:flex">
-              <span className="grid size-8 place-items-center rounded-full bg-[var(--primary)] text-[13px] font-bold text-white" aria-hidden="true">{initials(name)}</span>
+              <span className="relative flex-none"><span className="grid size-8 place-items-center rounded-full bg-[var(--primary)] text-[13px] font-bold text-white" aria-hidden="true">{initials(name)}</span>{hasFlower(person?.name) && <AvatarFlower size={15} />}</span>
               <span className="flex flex-col leading-tight">
                 <span className="text-[13.5px] font-bold">{name}</span>
                 <span className="text-xs text-[var(--ink-2)]">{roleText}</span>

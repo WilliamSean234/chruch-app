@@ -1,4 +1,6 @@
 import Link from "next/link";
+import AvatarFlower from "@/components/ui/AvatarFlower";
+import { hasFlower } from "@/lib/personalTouch";
 import AppShell, { currentUser, visibleNav } from "@/components/AppShell";
 import { LiveNavBadge } from "@/components/ui/LiveBadges";
 import { auth } from "@/lib/auth";
@@ -26,7 +28,7 @@ export default async function ProfilPage() {
   return (
     <AppShell active="profil" title="Profil" subtitle={church?.name ?? "Akun saya"}>
       <section className="flex items-center gap-4 rounded-[20px] border border-[var(--line)] bg-white p-5">
-        <span className="grid size-14 flex-none place-items-center rounded-full bg-[var(--primary)] text-lg font-extrabold text-white" aria-hidden="true">{initials(name)}</span>
+        <span className="relative flex-none"><span className="grid size-14 place-items-center rounded-full bg-[var(--primary)] text-lg font-extrabold text-white" aria-hidden="true">{initials(name)}</span>{hasFlower(person?.name) && <AvatarFlower size={22} />}</span>
         <div className="flex min-w-0 flex-col gap-0.5">
           <span className="truncate text-lg font-extrabold">{name}</span>
           <span className="text-sm font-semibold text-[var(--ink-2)]">{roleText}</span>
