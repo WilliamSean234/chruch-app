@@ -99,18 +99,23 @@ export async function pendingCount(tenantId: string) {
   return prisma.registrationRequest.count({ where: { tenantId, status: "PENDING" } });
 }
 
-/** Orang yang belum punya akun dan namanya mirip dengan nama pendaftar. */
+/** Orang yang namanya mirip dengan nama pendaftar: yang belum punya akun (bisa ditautkan) dan yang sudah punya akun (hanya diberi tahu). */
 export async function suggestPersons(u: AuthUser, id: string) {
   const r = await prisma.registrationRequest.findFirst({ where: { id, tenantId: u.tenantId } });
   if (!r) throw notFound("Permintaan");
   const tokens = nameKey(r.name).split(/\s+/).filter((t) => t.length >= 2);
-  if (tokens.length === 0) return [];
+  if (tokens.length === 0) return { items: [], withAccount: [] };
   const cands = await prisma.person.findMany({
-    where: { tenantId: u.tenantId, deletedAt: null, user: { is: null }, OR: tokens.map((t) => ({ nameKey: { contains: t.slice(0, Math.max(3, Math.min(t.length, 4))) } })) },
-    select: { id: true, name: true, nameKey: true, birthDate: true, position: { select: { name: true } }, cgGroup: { select: { name: true } } },
+    where: { tenantId: u.tenantId, deletedAt: null, OR: tokens.map((t) => ({ nameKey: { contains: t.slice(0, Math.max(3, Math.min(t.length, 4))) } })) },
+    select: { id: true, name: true, nameKey: true, birthDate: true, position: { select: { name: true } }, cgGroup: { select: { name: true } }, user: { select: { email: true, isActive: true, deletedAt: true } } },
     take: 200,
   });
-  return rankMatches(r.name, cands).map((p) => ({ id: p.id, name: p.name, position: p.position.name, cg: p.cgGroup?.name ?? null }));
+  const free = cands.filter((p) => !p.user);
+  const taken = cands.filter((p) => p.user && !p.user.deletedAt); // akun sudah ada: tidak bisa ditautkan lagi (satu orang satu akun)
+  return {
+    items: rankMatches(r.name, free).map((p) => ({ id: p.id, name: p.name, position: p.position.name, cg: p.cgGroup?.name ?? null })),
+    withAccount: rankMatches(r.name, taken, 3).map((p) => ({ id: p.id, name: p.name, email: p.user!.email, isActive: p.user!.isActive })),
+  };
 }
 
 export const approveBody = z.object({

@@ -11,5 +11,5 @@ export const GET = handle(async (req: Request, { params }: Ctx) => {
   const u = await requireUser(req);
   requirePermission(u, "user.manage");
   const { id } = await params;
-  return NextResponse.json({ items: await suggestPersons(u, id) });
+  return NextResponse.json(await suggestPersons(u, id));
 });

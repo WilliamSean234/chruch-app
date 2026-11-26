@@ -94,6 +94,7 @@ export default function RegistrationsPanel() {
 function ApproveDialog({ req, onClose, onDone }: { req: Row; onClose: () => void; onDone: (msg: string) => void }) {
   const [picked, setPicked] = useState<Cand | null>(null);
   const [similar, setSimilar] = useState<Cand[] | null>(null);
+  const [taken, setTaken] = useState<{ id: string; name: string; email: string; isActive: boolean }[]>([]);
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Cand[]>([]);
   const [searched, setSearched] = useState(false);
@@ -106,7 +107,9 @@ function ApproveDialog({ req, onClose, onDone }: { req: Row; onClose: () => void
   useEffect(() => {
     let live = true;
     void callApi("GET", `/api/v1/registrations/${req.id}/matches`).then((r) => {
-      if (live) setSimilar(r.ok ? (r.data.items as { id: string; name: string; position: string; cg: string | null }[]).map((p) => ({ id: p.id, name: p.name, sub: [p.position, p.cg].filter(Boolean).join(" · ") })) : []);
+      if (!live) return;
+      setSimilar(r.ok ? (r.data.items as { id: string; name: string; position: string; cg: string | null }[]).map((p) => ({ id: p.id, name: p.name, sub: [p.position, p.cg].filter(Boolean).join(" · ") })) : []);
+      setTaken(r.ok ? (r.data.withAccount as { id: string; name: string; email: string; isActive: boolean }[]) ?? [] : []);
     });
     return () => { live = false; };
   }, [req.id]);
@@ -162,7 +165,15 @@ function ApproveDialog({ req, onClose, onDone }: { req: Row; onClose: () => void
                   {similar.map((c) => <Pick key={c.id} c={c} />)}
                 </div>
               )}
-              {similar !== null && similar.length === 0 && <span className="text-sm font-medium text-[var(--ink-2)]">Tidak ada nama yang mirip. Cari manual di bawah, atau buat orang baru.</span>}
+              {similar !== null && similar.length === 0 && taken.length === 0 && <span className="text-sm font-medium text-[var(--ink-2)]">Tidak ada nama yang mirip. Cari manual di bawah, atau buat orang baru.</span>}
+              {similar !== null && similar.length === 0 && taken.length > 0 && <span className="text-sm font-medium text-[var(--ink-2)]">Tidak ada nama mirip yang belum punya akun.</span>}
+              {taken.length > 0 && (
+                <div className="flex flex-col gap-1 rounded-xl border border-[#E7C27A] bg-[#FFFBF0] px-3.5 py-2.5 text-xs font-medium text-[#6F4304]">
+                  <span className="font-extrabold">Nama mirip yang sudah punya akun (tidak bisa ditautkan lagi)</span>
+                  {taken.map((t) => <span key={t.id}>{t.name}: {t.email} ({t.isActive ? "aktif" : "nonaktif"})</span>)}
+                  <span>Bila ini orang yang sama, buka Orang &gt; Ubah &gt; Akun login, lalu aktifkan kembali dan atur ulang kata sandinya. Jangan membuat orang baru supaya datanya tidak ganda.</span>
+                </div>
+              )}
             </div>
 
             <Field label="Cari nama lain">
