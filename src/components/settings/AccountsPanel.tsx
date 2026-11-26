@@ -32,7 +32,7 @@ export default function AccountsPanel({ selfId, isSuper }: { selfId: string; isS
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
-  const [dlg, setDlg] = useState<{ kind: "role" | "reset"; acc: Acc } | null>(null);
+  const [dlg, setDlg] = useState<{ kind: "role" | "reset" | "email"; acc: Acc } | null>(null);
 
   useEffect(() => { const t = setTimeout(() => { setSearch(q.trim()); setPage(1); }, 300); return () => clearTimeout(t); }, [q]);
   useEffect(() => { void callApi("GET", "/api/v1/groups").then((r) => { if (r.ok) setGroups(r.data.items as { id: string; name: string }[]); }); }, []);
@@ -111,6 +111,7 @@ export default function AccountsPanel({ selfId, isSuper }: { selfId: string; isS
                   {locked ? <p className="text-xs font-medium text-[var(--ink-2)]">Hanya Superadmin yang bisa mengubah akun ini.</p> : (
                     <div className="flex flex-wrap gap-0.5">
                       <button type="button" className={link} onClick={() => { setMsg(""); setDlg({ kind: "role", acc: a }); }}>Ubah role</button>
+                      <button type="button" className={link} onClick={() => { setMsg(""); setDlg({ kind: "email", acc: a }); }}>Ubah email</button>
                       <button type="button" className={link} onClick={() => { setMsg(""); setDlg({ kind: "reset", acc: a }); }}>Reset sandi</button>
                       {a.isActive
                         ? <button type="button" disabled={self} onClick={() => void toggle(a, false)} className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-[#9B1C1C] hover:bg-[#FFF5F5] disabled:cursor-not-allowed disabled:opacity-40">Nonaktifkan</button>
@@ -151,6 +152,7 @@ export default function AccountsPanel({ selfId, isSuper }: { selfId: string; isS
                         {locked ? <span className="text-xs font-medium text-[var(--ink-2)]">Hanya Superadmin</span> : (
                           <>
                             <button type="button" className={link} onClick={() => { setMsg(""); setDlg({ kind: "role", acc: a }); }}>Ubah role</button>
+                            <button type="button" className={link} onClick={() => { setMsg(""); setDlg({ kind: "email", acc: a }); }}>Ubah email</button>
                             <button type="button" className={link} onClick={() => { setMsg(""); setDlg({ kind: "reset", acc: a }); }}>Reset sandi</button>
                             {a.isActive
                               ? <button type="button" disabled={self} title={self ? "Anda tidak bisa menonaktifkan akun sendiri" : undefined} onClick={() => void toggle(a, false)} className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-[#9B1C1C] hover:bg-[#FFF5F5] disabled:cursor-not-allowed disabled:opacity-40">Nonaktifkan</button>
@@ -171,6 +173,7 @@ export default function AccountsPanel({ selfId, isSuper }: { selfId: string; isS
       </section>
 
       {dlg?.kind === "role" && <RoleDialog acc={dlg.acc} teams={teams} isSuper={isSuper} self={dlg.acc.id === selfId} onClose={() => setDlg(null)} patch={(b) => patch(dlg.acc, b)} onDone={() => { setMsg(`Role ${dlg.acc.email} diperbarui. Berlaku saat orang itu masuk lagi.`); setDlg(null); }} />}
+      {dlg?.kind === "email" && <EmailDialog acc={dlg.acc} self={dlg.acc.id === selfId} onClose={() => setDlg(null)} patch={(b) => patch(dlg.acc, b)} onDone={(to) => { setMsg(`Email akun diubah dari ${dlg.acc.email} menjadi ${to}. Pakai email baru untuk masuk.`); setDlg(null); }} />}
       {dlg?.kind === "reset" && <ResetDialog acc={dlg.acc} onClose={() => setDlg(null)} patch={(b) => patch(dlg.acc, b)} />}
     </div>
   );
@@ -213,6 +216,32 @@ function RoleDialog({ acc, teams, isSuper, self, onClose, patch, onDone }: { acc
         <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3.5 py-3 text-xs font-medium leading-relaxed text-[var(--ink-2)]">Admin Tim EBM otomatis menjadi anggota kelompok EBM dengan jabatan Admin Tim (akses penuh): menjadwalkan rapat, menulis dan memfinalkan notulen, serta mengelola anggota kelompok.</p>
       )}
         {self && <p className="text-xs font-medium text-[var(--ink-2)]">Ini akun Anda sendiri: role Superadmin tidak bisa dicabut dari sini.</p>}
+        {error && <p role="alert" className="rounded-xl bg-[#fdecec] px-3.5 py-2.5 text-sm font-semibold text-[#a12b2b]">{error}</p>}
+      </div>
+    </Modal>
+  );
+}
+
+function EmailDialog({ acc, self, onClose, patch, onDone }: { acc: Acc; self: boolean; onClose: () => void; patch: PatchFn; onDone: (to: string) => void }) {
+  const [email, setEmail] = useState(acc.email);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const next = email.trim().toLowerCase();
+  const same = next === acc.email.toLowerCase();
+  async function save() {
+    setBusy(true); setError("");
+    const r = await patch({ email: next });
+    setBusy(false);
+    if (!r.ok) setError(r.data?.error?.code === "VALIDATION" ? "Alamat email tidak valid." : errMsg(r.data)); else onDone(next);
+  }
+  return (
+    <Modal title="Ubah email" onClose={onClose} footer={<><button type="button" className={btnGhost} onClick={onClose}>Batal</button><button type="button" className={btnPrimary} disabled={busy || same || !next} onClick={() => void save()}>{busy ? "Menyimpan…" : "Simpan email"}</button></>}>
+      <div className="flex flex-col gap-4">
+        <p className="text-sm font-semibold">{acc.name ?? acc.email}<span className="block text-xs font-medium text-[var(--ink-2)]">Email sekarang: {acc.email}</span></p>
+        <Field label="Email baru" hint="Dipakai untuk masuk. Kata sandi dan role tidak berubah. Email baru ditandai belum terverifikasi.">
+          <input type="email" className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" />
+        </Field>
+        {self && <p className="text-xs font-medium text-[var(--ink-2)]">Ini akun Anda sendiri: setelah disimpan, masuklah dengan email baru ini.</p>}
         {error && <p role="alert" className="rounded-xl bg-[#fdecec] px-3.5 py-2.5 text-sm font-semibold text-[#a12b2b]">{error}</p>}
       </div>
     </Modal>

@@ -79,10 +79,11 @@ export const accountPatch = z
     teamTypeId: z.string().uuid().nullish(),
     isActive: z.boolean().optional(),
     newPassword: z.string().min(8, "Kata sandi minimal 8 karakter").max(100).optional(), // reset oleh admin
+    email: z.string().trim().toLowerCase().email("Alamat email tidak valid.").max(200).optional(), // email untuk masuk
   })
-  .refine((b) => b.roleCodes !== undefined || b.isActive !== undefined || b.newPassword !== undefined, { message: "Tidak ada yang diubah." });
+  .refine((b) => b.roleCodes !== undefined || b.isActive !== undefined || b.newPassword !== undefined || b.email !== undefined, { message: "Tidak ada yang diubah." });
 
-/** Ubah role, aktif/nonaktif, atau reset kata sandi akun yang sudah ada. */
+/** Ubah role, aktif/nonaktif, email, atau reset kata sandi akun yang sudah ada. */
 export async function updateAccount(actor: AuthUser, target: string | { userId: string }, b: z.infer<typeof accountPatch>) {
   const who = typeof target === "string" ? { personId: target } : { id: target.userId }; // string = id orang; objek = id akun
   const user = await prisma.user.findFirst({
@@ -107,6 +108,13 @@ export async function updateAccount(actor: AuthUser, target: string | { userId: 
   if (b.isActive === false && user.id === actor.userId) throw badRequest("Anda tidak bisa menonaktifkan akun Anda sendiri.");
 
   const data: Prisma.UserUpdateInput = {};
+  const emailChanged = b.email !== undefined && b.email !== user.email.toLowerCase();
+  if (emailChanged) {
+    const taken = await prisma.user.findFirst({ where: { tenantId: actor.tenantId, id: { not: user.id }, email: { equals: b.email, mode: "insensitive" } }, select: { id: true } });
+    if (taken) throw conflict("Email ini sudah dipakai akun lain.");
+    data.email = b.email;
+    data.emailVerifiedAt = null; // email baru belum dibuktikan pemiliknya
+  }
   if (b.isActive !== undefined) data.isActive = b.isActive;
   if (b.newPassword) {
     data.passwordHash = await bcrypt.hash(b.newPassword, 10);
@@ -124,6 +132,7 @@ export async function updateAccount(actor: AuthUser, target: string | { userId: 
   }
 
   const ebmAdmin = !!user.personId && !!b.roleCodes?.includes("ADMIN_TIM") && (await isEbmTeam(prisma, actor.tenantId, b.teamTypeId));
+  try {
   await prisma.$transaction(async (tx) => {
     await tx.user.update({ where: { id: user.id }, data });
     if (roleRows) {
@@ -133,8 +142,12 @@ export async function updateAccount(actor: AuthUser, target: string | { userId: 
     if (ebmAdmin) await grantEbmAdmin(tx, actor.tenantId, user.personId!, actor.userId); // Admin Tim EBM: akses penuh di kelompok EBM
     if (user.personId && b.roleCodes?.includes("PENJADWAL")) await syncTkiGroup(tx, actor.tenantId, { only: [user.personId], rejoin: true, userId: actor.userId });
   });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") throw conflict("Email ini sudah dipakai akun lain.");
+    throw e;
+  }
   forgetLiveUser(user.id);
-  return { id: user.id, email: user.email };
+  return { id: user.id, email: emailChanged ? b.email! : user.email, emailFrom: emailChanged ? user.email : null };
 }
 
 export const passwordBody = z.object({

@@ -51,7 +51,7 @@ Dokumen desain, schema, dan roadmap (W1T1 dst.) ada di dokumen "Desain Arsitektu
 
 ## Akun dan kata sandi
 
-- Superadmin membuat akun lewat **Orang & pelayanan → pilih orang → Ubah data lengkap → Akun login** (email, kata sandi awal, role).
+- Superadmin membuat akun lewat **Orang & pelayanan → pilih orang → Ubah data lengkap → Akun login** (email, kata sandi awal, role). Email akun bisa diubah kemudian lewat **Ubah email** (di sana atau di Pengaturan → Kelola akun); email baru ditandai belum terverifikasi dan tidak boleh dipakai akun lain.
 - Akun baru (dan akun yang kata sandinya direset admin) **wajib mengganti kata sandi saat login pertama**: web diarahkan ke `/ganti-password`;
   API menjawab `403 PASSWORD_CHANGE_REQUIRED` kecuali `GET /api/v1/me` dan `POST /api/v1/me/password`. Aplikasi native perlu login ulang
   (`/api/v1/auth/token`) setelah mengganti kata sandi agar token barunya bersih dari penanda itu.

@@ -251,7 +251,7 @@ export function describe(r: AuditRowIn, refs: Refs): { target: string | null; ho
     case "cg.leaders": how = `Pemimpin: ${list(persons(arr(p.personIds)))}`; break;
     case "user.create": how = [roleText(p.roles) ? `Role: ${roleText(p.roles)}` : "Tanpa role", p.ebmScheduler === true ? "Penjadwal EBM" : null].filter(Boolean).join(" · "); break;
     case "user.update": {
-      const bits = [p.roles !== null && p.roles !== undefined ? `Role: ${roleText(p.roles) || "tanpa role"}` : null, p.isActive === true ? "Diaktifkan" : p.isActive === false ? "Dinonaktifkan" : null, p.passwordReset === true ? "Kata sandi direset" : null, p.ebmScheduler === true ? "Penjadwal EBM" : null].filter(Boolean);
+      const bits = [p.roles !== null && p.roles !== undefined ? `Role: ${roleText(p.roles) || "tanpa role"}` : null, p.isActive === true ? "Diaktifkan" : p.isActive === false ? "Dinonaktifkan" : null, p.passwordReset === true ? "Kata sandi direset" : null, str(p.emailFrom) && str(p.emailTo) ? `Email: ${str(p.emailFrom)} → ${str(p.emailTo)}` : null, p.ebmScheduler === true ? "Penjadwal EBM" : null].filter(Boolean);
       how = bits.join(" · ") || null;
       break;
     }

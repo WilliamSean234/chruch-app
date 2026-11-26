@@ -17,7 +17,7 @@ export const PATCH = handle(async (req: Request, { params }: Ctx) => {
   const acc = await updateAccount(u, { userId: id }, body);
   await audit({
     tenantId: u.tenantId, userId: u.userId, action: "user.update", entity: "User", entityId: acc.id,
-    payload: { email: acc.email, roles: body.roleCodes ?? null, isActive: body.isActive ?? null, passwordReset: !!body.newPassword },
+    payload: { email: acc.email, roles: body.roleCodes ?? null, isActive: body.isActive ?? null, passwordReset: !!body.newPassword, emailFrom: acc.emailFrom, emailTo: acc.emailFrom ? acc.email : null },
   });
   return NextResponse.json(acc);
 });

@@ -167,7 +167,7 @@ const Chip = ({ on, disabled, onClick, children }: { on: boolean; disabled?: boo
 /** Akun login: dibuat, diubah rolenya, direset kata sandinya, atau dinonaktifkan terpisah dari data orang. */
 function AccountSection({ person, teams, isSuper, onChanged }: { person: PersonDto; teams: Team[]; isSuper: boolean; onChanged: () => void }) {
   const [acc, setAcc] = useState(person.account);
-  const [mode, setMode] = useState<"view" | "create" | "role" | "reset">("view");
+  const [mode, setMode] = useState<"view" | "create" | "role" | "reset" | "email">("view");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("NONE");
@@ -185,8 +185,9 @@ function AccountSection({ person, teams, isSuper, onChanged }: { person: PersonD
   const isEbmTeam = role === "ADMIN_TIM" && /\bebm\b/i.test(teamName(teamId) ?? "");
   const roleBody = () => ({ roleCodes: role === "NONE" ? [] : [role], teamTypeId: role === "ADMIN_TIM" ? teamId || null : null });
 
-  function open(m: "create" | "role" | "reset") {
+  function open(m: "create" | "role" | "reset" | "email") {
     setError(""); setNote(""); setIssued(null); setPassword(m === "create" || m === "reset" ? genPassword() : "");
+    if (m === "email") setEmail(acc?.email ?? "");
     if (m === "role") { setRole(accRoles.find((c) => c !== "NONE") ?? "NONE"); setTeamId(acc?.teamTypeId ?? ""); }
     setMode(m);
   }
@@ -194,7 +195,7 @@ function AccountSection({ person, teams, isSuper, onChanged }: { person: PersonD
     setBusy(true); setError(""); setNote("");
     const r = await callApi(method, `/api/v1/persons/${person.id}/account`, body);
     setBusy(false);
-    if (!r.ok) return setError(r.data?.error?.code === "VALIDATION" ? "Periksa isian (kata sandi minimal 8 karakter)." : errMsg(r.data));
+    if (!r.ok) return setError(r.data?.error?.code === "VALIDATION" ? "Periksa isian (email harus valid, kata sandi minimal 8 karakter)." : errMsg(r.data));
     after(); onChanged();
   }
   const create = () =>
@@ -206,6 +207,11 @@ function AccountSection({ person, teams, isSuper, onChanged }: { person: PersonD
     send("PATCH", roleBody(), () => {
       if (acc) setAcc({ ...acc, roleCodes: role === "NONE" ? [] : [role], teamTypeId: role === "ADMIN_TIM" ? teamId : null });
       setMode("view"); setNote("Role diperbarui. Berlaku saat orang itu masuk lagi.");
+    });
+  const saveEmail = () =>
+    send("PATCH", { email: email.trim() }, () => {
+      if (acc) setAcc({ ...acc, email: email.trim().toLowerCase() });
+      setMode("view"); setNote("Email akun diubah. Pakai email baru ini untuk masuk; kata sandi dan role tidak berubah.");
     });
   const reset = () =>
     send("PATCH", { newPassword: password }, () => {
@@ -259,6 +265,7 @@ function AccountSection({ person, teams, isSuper, onChanged }: { person: PersonD
           {mode === "view" && !lockedSuper && (
             <div className="-ml-3 flex flex-wrap gap-1">
               <button type="button" className={link} disabled={busy} onClick={() => open("role")}>Ubah role</button>
+              <button type="button" className={link} disabled={busy} onClick={() => open("email")}>Ubah email</button>
               <button type="button" className={link} disabled={busy} onClick={() => open("reset")}>Reset kata sandi</button>
               {acc.isActive
                 ? <button type="button" onClick={() => toggle(false)} disabled={busy} className="rounded-lg px-3 py-1.5 text-xs font-bold text-[#9B1C1C] hover:bg-[#FFF5F5]">Nonaktifkan</button>
@@ -273,6 +280,12 @@ function AccountSection({ person, teams, isSuper, onChanged }: { person: PersonD
         <div className="flex flex-col gap-3">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{roleFields}</div>
           {actions("Simpan role", saveRole, role === "ADMIN_TIM" && !teamId)}
+        </div>
+      )}
+      {acc && mode === "email" && (
+        <div className="flex flex-col gap-3">
+          <Field label="Email baru"><input type="email" className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" /></Field>
+          {actions("Simpan email", saveEmail, !email.trim() || email.trim().toLowerCase() === acc.email.toLowerCase())}
         </div>
       )}
       {acc && mode === "reset" && (
