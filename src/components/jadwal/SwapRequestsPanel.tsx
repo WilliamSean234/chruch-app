@@ -6,6 +6,7 @@ import Modal, { Field } from "@/components/master/Modal";
 import { showNotice } from "@/components/ui/NoticeHost";
 import { showToast } from "@/components/ui/Toast";
 import { dayShort, hm } from "@/lib/ui";
+import { useOnBadgesChanged } from "@/components/ui/LiveBadges";
 import { btnGhost, btnPrimary, callApi, errMsg } from "./api";
 
 type Item = {
@@ -29,6 +30,7 @@ export default function SwapRequestsPanel() {
     if (r.ok) setItems(r.data.items as Item[]);
   }, []);
   useEffect(() => { void load(); }, [load]);
+  useOnBadgesChanged(load); // permintaan baru masuk atau sudah diputuskan di tempat lain: daftar ikut diperbarui
 
   if (items.length === 0 && !rejecting) return null;
 

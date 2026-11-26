@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LiveTabBadge } from "@/components/ui/LiveBadges";
 
 export const SETTINGS_TABS: readonly { key: "impor" | "akun" | "daftar" | "profil" | "cadangan" | "log"; label: string; short: string; ready: boolean; superOnly?: boolean }[] = [
   { key: "impor", short: "Impor", label: "Impor data", ready: true },
@@ -18,7 +19,7 @@ export default function SettingsTabs({ active, isSuper = false, pending = 0 }: {
       {tabs.map((t) => {
         const on = t.key === active;
         const cls = `relative flex h-10 items-center justify-center whitespace-nowrap rounded-xl px-1 text-[13.5px] font-bold md:flex-none md:px-4 md:text-sm ${on ? "bg-[var(--primary-soft)] text-[var(--primary-ink)]" : "text-[var(--ink-2)]"}`;
-        const badge = t.key === "daftar" && pending > 0 ? <span className="ml-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-[#B8860B] px-1 text-[11px] font-extrabold text-white max-md:absolute max-md:right-0.5 max-md:top-0 max-md:ml-0 max-md:h-4 max-md:min-w-4 max-md:px-1 max-md:text-[10px] max-md:ring-2 max-md:ring-white" aria-label={`${pending} menunggu`}>{pending > 99 ? "99+" : pending}</span> : null;
+        const badge = t.key === "daftar" ? <LiveTabBadge badgeKey="pengaturan" initial={pending} /> : null;
         const label = <><span className="md:hidden">{t.short}</span><span className="max-md:hidden">{t.label}</span>{badge}</>;
         return t.ready ? (
           <Link key={t.key} href={`/pengaturan?tab=${t.key}`} className={`${cls} ${on ? "" : "hover:bg-[var(--bg)]"}`} aria-current={on ? "page" : undefined} aria-label={t.label}>{label}</Link>

@@ -7,6 +7,7 @@ import { btnGhost, btnPrimary, callApi, errMsg, inputCls } from "@/components/ja
 import { Alert, FilterBar, FSearch, FSelect, listCard } from "@/components/ui/Filters";
 import Pager from "@/components/ui/Pager";
 import { useDebounced, usePagedList } from "@/components/ui/usePagedList";
+import { useOnBadgesChanged } from "@/components/ui/LiveBadges";
 
 type Row = { id: string; name: string; email: string; status: "PENDING" | "APPROVED" | "REJECTED"; createdAt: string; decidedAt: string | null; personName: string | null; rejectReason: string | null; emailVerified: boolean };
 type Cand = { id: string; name: string; sub: string | null };
@@ -29,6 +30,7 @@ export default function RegistrationsPanel() {
   const [status, setStatus] = useState("PENDING");
   const search = useDebounced(q.trim());
   const list = usePagedList<Row, { pending: number; mailOn: boolean }>("/api/v1/registrations", { search, status: status || "ALL" });
+  useOnBadgesChanged(list.reload); // permintaan baru masuk: daftar ikut diperbarui tanpa muat ulang
   const mailOn = !!list.data?.mailOn;
   const [approve, setApprove] = useState<Row | null>(null);
   const [reject, setReject] = useState<Row | null>(null);
