@@ -241,7 +241,11 @@ async function toDto(u: AuthUser, e: MeetingRow & { group: { id: string; name: s
       canManage: a.canManage && e.status !== "CANCELLED",
       canAttach: full && member && (a.caps.canSchedule || a.caps.canWriteMinutes) && e.status !== "CANCELLED",
       canWriteMinutes: full && member && (a.caps.canWriteMinutes || a.caps.canFinalize) && e.status !== "CANCELLED",
-      canRecord: full && member && (a.caps.canSchedule || a.caps.canWriteMinutes) && e.status !== "CANCELLED", // undang, hapus, catat kehadiran
+      canRecord: full && member && (a.caps.canSchedule || a.caps.canWriteMinutes) && e.status !== "CANCELLED", // undang dan hapus peserta
+      personId: u.personId ?? null,
+      // kehadiran orang lain hanya boleh diubah anggota yang berhak "kelola anggota" (Admin Tim selalu); kehadiran sendiri boleh diubah oleh orangnya
+      canManageAttendance: full && member && a.caps.canManageMembers && e.status !== "CANCELLED",
+      canMarkSelf: full && member && e.status !== "CANCELLED" && !!u.personId && people.participants.some((p) => p.personId === u.personId),
     },
   };
 }
@@ -548,12 +552,19 @@ export async function cancelMeeting(u: AuthUser, id: string, reason: string, sco
 }
 
 // ───────── Tautan lampiran (hanya anggota) ─────────
-async function requireAttach(u: AuthUser, id: string) {
+const ATTENDANCE_RULE = "Kehadiran hanya bisa diubah oleh orangnya sendiri, atau anggota yang berhak kelola anggota (Admin Tim selalu berhak).";
+/** Anggota kelompok pada rapat lengkap yang belum dibatalkan. Hak lebih jauh (lampiran, undangan, kehadiran orang lain) diperiksa pemanggil. */
+async function requireMeetingMember(u: AuthUser, id: string) {
   const cur = await loadMeeting(u, id);
   const a = await accessTo(u, cur.group.id);
-  if (!a.caps.isMember || !(a.caps.canSchedule || a.caps.canWriteMinutes)) throw forbidden("Hanya anggota kelompok yang boleh mengatur lampiran.");
+  if (!a.caps.isMember) throw forbidden("Hanya anggota kelompok yang boleh mengatur lampiran dan kehadiran.");
   if (cur.status === "CANCELLED") throw conflict("Rapat ini sudah dibatalkan.");
   if (!cur.fullMeeting) throw conflict("Rapat ini hanya jadwal, tanpa kehadiran dan lampiran. Ubah menjadi rapat lengkap lewat Ubah jadwal.");
+  return { cur, caps: a.caps };
+}
+async function requireAttach(u: AuthUser, id: string) {
+  const { cur, caps } = await requireMeetingMember(u, id);
+  if (!(caps.canSchedule || caps.canWriteMinutes)) throw forbidden("Hanya anggota kelompok yang boleh mengatur lampiran.");
   return cur;
 }
 
@@ -629,9 +640,10 @@ export async function addParticipants(u: AuthUser, id: string, b: z.infer<typeof
 }
 
 export async function setAttendance(u: AuthUser, id: string, participantId: string, b: z.infer<typeof attendanceBody>) {
-  await requireAttach(u, id);
+  const { caps } = await requireMeetingMember(u, id);
   const p = await prisma.meetingParticipant.findFirst({ where: { id: participantId, eventId: id } });
   if (!p) throw notFound("Peserta");
+  if (!caps.canManageMembers && !(p.personId && p.personId === u.personId)) throw forbidden(ATTENDANCE_RULE);
   await prisma.meetingParticipant.update({
     where: { id: participantId },
     data: { status: b.status, respondedAt: b.status === "INVITED" ? null : new Date(), ...(b.note !== undefined ? { note: sealNote(id, b.note) } : {}) },
@@ -642,7 +654,8 @@ export async function setAttendance(u: AuthUser, id: string, participantId: stri
 
 /** Tandai sekaligus semua peserta yang belum dicatat (mis. "semua hadir"), lalu sisanya dikoreksi satu per satu. */
 export async function bulkAttendance(u: AuthUser, id: string, b: z.infer<typeof bulkAttendanceBody>) {
-  await requireAttach(u, id);
+  const { caps } = await requireMeetingMember(u, id);
+  if (!caps.canManageMembers) throw forbidden(ATTENDANCE_RULE);
   const r = await prisma.meetingParticipant.updateMany({ where: { eventId: id, status: "INVITED" }, data: { status: b.status, respondedAt: new Date() } });
   await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.participant.bulk", entity: "Event", entityId: id, payload: { status: b.status, count: r.count } });
   return { updated: r.count };
@@ -658,7 +671,9 @@ export async function removeParticipant(u: AuthUser, id: string, participantId: 
 
 /** Simpan sekaligus semua perubahan dari halaman rapat. Semuanya berhasil atau tidak sama sekali. */
 export async function applyMeetingChanges(u: AuthUser, id: string, b: z.infer<typeof changesBody>) {
-  const cur = await requireAttach(u, id);
+  const { cur, caps } = await requireMeetingMember(u, id);
+  const canAttach = caps.canSchedule || caps.canWriteMinutes; // undang, hapus peserta, lampiran
+  const mine = (personId: string | null) => !!personId && personId === u.personId;
   const existing = await prisma.meetingParticipant.findMany({ where: { eventId: id }, select: { id: true, personId: true, guestName: true, status: true } });
   const byId = new Map(existing.map((x) => [x.id, x]));
   if (b.remove.some((x) => !byId.has(x)) || b.attendance.some((x) => !byId.has(x.id))) {
@@ -680,6 +695,12 @@ export async function applyMeetingChanges(u: AuthUser, id: string, b: z.infer<ty
   if (links.length !== new Set(b.linkRemove).size) throw conflict("Tautan sudah diubah orang lain. Muat ulang halaman, lalu ulangi perubahan Anda.");
 
   const attendance = b.attendance.filter((x) => !removeSet.has(x.id) && byId.get(x.id)!.status !== x.status);
+  if ((removeSet.size || newMembers.length || newGuests.length || b.linkAdd.length || links.length) && !canAttach) throw forbidden("Hanya anggota yang berhak mengatur undangan dan lampiran yang boleh mengubah peserta dan tautan.");
+  // kehadiran: orangnya sendiri, atau anggota yang berhak kelola anggota; tamu hanya oleh pengelola anggota
+  if (!caps.canManageMembers) {
+    if (attendance.some((x) => !mine(byId.get(x.id)!.personId))) throw forbidden(ATTENDANCE_RULE);
+    if (newMembers.some((m) => m.status !== "INVITED" && !mine(m.personId)) || newGuests.some((g) => g.status !== "INVITED")) throw forbidden(ATTENDANCE_RULE);
+  }
   const total = removeSet.size + attendance.length + newMembers.length + newGuests.length + b.linkAdd.length + links.length;
   if (total === 0) throw badRequest("Tidak ada perubahan untuk disimpan.");
 

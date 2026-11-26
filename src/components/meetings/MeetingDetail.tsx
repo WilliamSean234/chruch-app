@@ -24,7 +24,7 @@ export type MeetingDto = {
   participants: Participant[]; attendance: Attendance | null; attendeesPublic: string[] | null;
   minutes: { status: string; version: number } | null;
   series: { text: string; index: number; total: number; later: number } | null;
-  viewer: { isMember: boolean; canManage: boolean; canAttach: boolean; canRecord: boolean; canWriteMinutes: boolean };
+  viewer: { isMember: boolean; canManage: boolean; canAttach: boolean; canRecord: boolean; canWriteMinutes: boolean; personId: string | null; canManageAttendance: boolean; canMarkSelf: boolean };
 };
 
 const eyebrow = "text-xs font-extrabold tracking-[0.07em] text-[var(--gold-ink)]";
@@ -49,7 +49,7 @@ export default function MeetingDetail({ meeting: m }: { meeting: MeetingDto }) {
   const cancelled = m.status === "CANCELLED";
   const draft = useMeetingDraft({ participants: m.participants, links: m.links, quorumMin: m.group.quorumMin });
   const dirty = draft.changeCount > 0;
-  const canEdit = !m.locked && !cancelled && (m.viewer.canRecord || m.viewer.canAttach);
+  const canEdit = !m.locked && !cancelled && (m.viewer.canRecord || m.viewer.canAttach || m.viewer.canManageAttendance || m.viewer.canMarkSelf);
 
   // peringatan bila halaman ditutup atau dimuat ulang saat masih ada perubahan yang belum disimpan
   useEffect(() => {
@@ -168,7 +168,7 @@ export default function MeetingDetail({ meeting: m }: { meeting: MeetingDto }) {
           ) : (
             <>
               <MeetingAttendance groupId={m.group.id} groupName={m.group.name} rows={draft.rows} attendance={draft.summary}
-                canRecord={m.viewer.canRecord && !cancelled} cancelled={cancelled} inviteAllStaged={draft.inviteAll}
+                canRecord={m.viewer.canRecord && !cancelled} canManageAttendance={m.viewer.canManageAttendance && !cancelled} me={m.viewer.personId} cancelled={cancelled} inviteAllStaged={draft.inviteAll}
                 actions={{ mark: draft.mark, markAllPresent: draft.markAllPresent, removeRow: draft.removeRow, undoRemove: draft.undoRemove, addPeople: draft.addPeople, inviteAll: () => draft.setInviteAll(true) }} />
             <div className={card}>
               <Rule>NOTULEN</Rule>

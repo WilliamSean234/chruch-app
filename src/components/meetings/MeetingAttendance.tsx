@@ -49,8 +49,8 @@ export type AttendanceActions = {
  * Kartu "Undangan & kehadiran" di halaman rapat. Hanya dirender untuk anggota kelompok.
  * Semua perubahan hanya ditampung (lihat useMeetingDraft) dan baru disimpan lewat tombol "Simpan perubahan" di atas halaman.
  */
-export default function MeetingAttendance({ groupId, groupName, rows, attendance, canRecord, cancelled, inviteAllStaged, actions }: {
-  groupId: string; groupName: string; rows: DraftRow[]; attendance: Attendance; canRecord: boolean; cancelled: boolean; inviteAllStaged: boolean; actions: AttendanceActions;
+export default function MeetingAttendance({ groupId, groupName, rows, attendance, canRecord, canManageAttendance, me, cancelled, inviteAllStaged, actions }: {
+  groupId: string; groupName: string; rows: DraftRow[]; attendance: Attendance; canRecord: boolean; canManageAttendance: boolean; me: string | null; cancelled: boolean; inviteAllStaged: boolean; actions: AttendanceActions;
 }) {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
@@ -67,6 +67,8 @@ export default function MeetingAttendance({ groupId, groupName, rows, attendance
   const live = rows.filter((r) => !r.removed);
 
   const a = attendance;
+  // kehadiran: orangnya sendiri, atau pengelola anggota (tamu hanya oleh pengelola)
+  const canMark = (p: DraftRow) => !cancelled && (canManageAttendance || (!p.isGuest && !!me && p.personId === me));
   return (
     <div className={card}>
       <Rule>UNDANGAN &amp; KEHADIRAN</Rule>
@@ -97,9 +99,12 @@ export default function MeetingAttendance({ groupId, groupName, rows, attendance
             </div>
           )}
 
+          {!cancelled && !canManageAttendance && live.some((p) => !!me && p.personId === me) && (
+            <p className="text-[12.5px] font-medium text-[var(--ink-2)]">Anda hanya bisa mengubah kehadiran Anda sendiri. Kehadiran anggota lain diubah oleh Admin Tim atau anggota yang berhak kelola anggota.</p>
+          )}
           {canRecord && (
             <div className="flex flex-wrap gap-2.5">
-              {live.some((p) => p.status === "INVITED") && (
+              {canManageAttendance && live.some((p) => p.status === "INVITED") && (
                 <button type="button" onClick={actions.markAllPresent} className="h-10 rounded-xl border border-[#cfe6d6] bg-[#f3faf5] px-4 text-[13px] font-bold text-[#1b6b34] hover:bg-[#e8f5ec]">Tandai semua yang belum dicatat: hadir</button>
               )}
               <button type="button" onClick={() => setAddOpen(true)} className="h-10 rounded-xl border border-[#d0d3e8] bg-white px-4 text-[13px] font-bold text-[var(--primary-ink)] hover:bg-[#f3f4f9]">+ Tambah peserta atau tamu</button>
@@ -132,9 +137,9 @@ export default function MeetingAttendance({ groupId, groupName, rows, attendance
                   </div>
                   {canRecord && p.removed ? (
                     <button type="button" onClick={() => actions.undoRemove(p)} className="h-8 rounded-lg px-3 text-[12.5px] font-bold text-[var(--primary-ink)] hover:bg-[var(--primary-soft)]">Urungkan</button>
-                  ) : canRecord ? (
+                  ) : canRecord || canMark(p) ? (
                     <div className="flex items-center gap-1.5">
-                      <div role="group" aria-label={`Kehadiran ${p.name}`} className="flex gap-1 rounded-xl bg-[#ECEEF4] p-1">
+                      {canMark(p) ? <div role="group" aria-label={`Kehadiran ${p.name}`} className="flex gap-1 rounded-xl bg-[#ECEEF4] p-1">
                         {(["PRESENT", "EXCUSED", "ABSENT"] as const).map((k) => {
                           const on = p.status === k;
                           return (
@@ -145,8 +150,8 @@ export default function MeetingAttendance({ groupId, groupName, rows, attendance
                             </button>
                           );
                         })}
-                      </div>
-                      <button type="button" onClick={() => actions.removeRow(p)} aria-label={`Hapus ${p.name}`} className="h-8 rounded-lg px-2.5 text-sm font-bold text-[var(--ink-2)] hover:bg-[var(--bg)]">✕</button>
+                      </div> : <span className="whitespace-nowrap rounded-full px-2.5 py-[3px] text-xs font-bold" style={{ background: st.bg, color: st.fg }}>{st.label}</span>}
+                      {canRecord && <button type="button" onClick={() => actions.removeRow(p)} aria-label={`Hapus ${p.name}`} className="h-8 rounded-lg px-2.5 text-sm font-bold text-[var(--ink-2)] hover:bg-[var(--bg)]">✕</button>}
                     </div>
                   ) : (
                     <span className="whitespace-nowrap rounded-full px-2.5 py-[3px] text-xs font-bold" style={{ background: st.bg, color: st.fg }}>{st.label}</span>
