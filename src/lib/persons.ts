@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { onlineAmong } from "./presence";
+import { onlineAmong, onlinePersonIds } from "./presence";
 import { presenceCutoff } from "./presenceRules";
 import { z } from "zod";
 import { prisma } from "./prisma";
