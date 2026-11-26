@@ -12,7 +12,7 @@ import EventDetailDialog, { type DialogTarget } from "./EventDetailDialog";
 import type { SwapState } from "./SwapRequestSection";
 
 export type ScheduleRow = {
-  key: string; kind: "SERVICE" | "REHEARSAL" | "MEETING"; eventId: string; title: string; startsAt: string; endsAt: string; room: string;
+  key: string; kind: "SERVICE" | "REHEARSAL" | "MEETING" | "COMMUNITY"; eventId: string; title: string; startsAt: string; endsAt: string; room: string;
   role: string; status: string; rehearsalRequired: boolean; canAttend: boolean; attendanceMode: string; note?: string;
   /** Latihan: acara yang memakai sesi ini (Ibadah Minggu 1 dan 2 bisa berbagi satu latihan). */
   events?: RehearsalEvent[];
@@ -119,7 +119,7 @@ export default function MySchedule({ rows, note, nowIso, myPersonId = null }: { 
 
       <FilterBar active={filtered} onReset={reset} moreCount={moreCount}
         more={<>
-          <FSelect label="Jenis" value={kind} onChange={setKind} options={[{ value: "SERVICE", label: "Pelayanan" }, { value: "REHEARSAL", label: "Latihan" }, { value: "MEETING", label: "Rapat" }]} />
+          <FSelect label="Jenis" value={kind} onChange={setKind} options={[{ value: "SERVICE", label: "Pelayanan" }, { value: "REHEARSAL", label: "Latihan" }, { value: "MEETING", label: "Rapat" }, { value: "COMMUNITY", label: "Komunitas" }]} />
           <FSelect label="Peran" value={role} onChange={setRole} options={roles} />
         </>}>
         <FSearch value={q} onChange={setQ} placeholder="Acara, peran, atau ruangan" />
@@ -161,6 +161,7 @@ export default function MySchedule({ rows, note, nowIso, myPersonId = null }: { 
                     <div className="flex flex-none flex-col items-end gap-1.5">
                       {r.kind === "REHEARSAL" && <span className={`${chip} bg-[#F7EBD2] text-[#6F4304]`}>Wajib</span>}
                       {r.kind === "MEETING" && <span className={`${chip} bg-[#f8e6dd] text-[#7a3a1e]`}>Rapat</span>}
+                      {r.kind === "COMMUNITY" && <span className={`${chip} bg-[#E3F1EC] text-[#1F5F4A]`}>Komunitas</span>}
                       {r.kind === "SERVICE" && !r.rehearsalRequired && <span className={`${chip} bg-[#ECEEF4] text-[#3A3F58]`}>Tanpa latihan</span>}
                       {r.status === "DRAFT" && <span className={`${chip} bg-[#FBEFD6] text-[#6F4304]`}>Draf</span>}
                       {r.kind === "SERVICE" && r.swap?.status === "PENDING" && <span className={`${chip} bg-[#FBEFD6] text-[#6F4304]`}>Minta ganti</span>}

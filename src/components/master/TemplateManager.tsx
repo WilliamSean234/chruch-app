@@ -1,6 +1,8 @@
 "use client";
 
 import OnlineFields from "@/components/online/OnlineFields";
+import AudienceFields from "@/components/online/AudienceFields";
+import { audienceBody, audienceFromIds, audienceProblem, type AudienceValue } from "@/lib/audienceForm";
 import { emptyOnline, onlineProblem, type OnlineValue } from "@/lib/onlineForm";
 import Fab from "@/components/ui/Fab";
 import Link from "next/link";
@@ -15,7 +17,7 @@ type Team = { id: string; name: string; ministries: TeamMin[] };
 type Slot = { ministryId: string; ministryName: string; teamTypeId: string; teamName: string; count: number; rehearsalRequired: boolean };
 type Tpl = {
   id: string; name: string; weekday: number; recurrence: "WEEKLY" | "MONTHLY_NTH"; ordinal: number | null; startTime: string; durationMin: number;
-  room: Opt; isOnline?: boolean; online?: { url: string | null; communityIds: string[]; reminder: boolean } | null; attendanceModeDefault: "COUNT" | "NAMES"; attendanceCommunity: Opt | null; slots: Slot[];
+  room: Opt; isOnline?: boolean; online?: { url: string | null; communityIds: string[]; reminder: boolean } | null; audienceCommunityIds?: string[]; attendanceModeDefault: "COUNT" | "NAMES"; attendanceCommunity: Opt | null; slots: Slot[];
 };
 type Room = Opt & { isActive: boolean; floor?: number | null };
 type SlotState = Record<string, { count: number; rehearsal: boolean }>;
@@ -150,6 +152,7 @@ function Editor({ tpl, pal, teams, rooms, comms, onDirty, onSaved, onDeleted, on
   const [onl, setOnl] = useState<OnlineValue>(tpl?.isOnline
     ? { ...emptyOnline, online: true, url: tpl.online?.url ?? "", audience: tpl.online?.communityIds.length ? "COMMUNITIES" : "ALL", communityIds: tpl.online?.communityIds ?? [], reminder: tpl.online?.reminder ?? true }
     : emptyOnline);
+  const [aud, setAud] = useState<AudienceValue>(audienceFromIds(tpl?.audienceCommunityIds));
   const [att, setAtt] = useState(tpl ? (tpl.attendanceModeDefault === "NAMES" ? `NAMES:${tpl.attendanceCommunity?.id ?? ""}` : "COUNT") : "COUNT");
   const [slots, setSlots] = useState<SlotState>(Object.fromEntries((tpl?.slots ?? []).map((s) => [s.ministryId, { count: s.count, rehearsal: s.rehearsalRequired }])));
   const [extra, setExtra] = useState<string[]>([]); // tim yang baru ditambahkan dan belum punya posisi
@@ -158,7 +161,7 @@ function Editor({ tpl, pal, teams, rooms, comms, onDirty, onSaved, onDeleted, on
   const [error, setError] = useState("");
 
   const minutes = Math.min(720, Math.max(15, Math.round((Number(hours) || 0) * 60)));
-  const snap = () => JSON.stringify({ name: name.trim(), pat, start, minutes, roomId, onl, att, slots: Object.entries(slots).sort(([a], [b]) => a.localeCompare(b)) });
+  const snap = () => JSON.stringify({ name: name.trim(), pat, start, minutes, roomId, onl, aud, att, slots: Object.entries(slots).sort(([a], [b]) => a.localeCompare(b)) });
   const initial = useRef(snap());
   const isDirty = isNew || snap() !== initial.current;
   useEffect(() => { onDirty(isDirty); }); // eslint-disable-line react-hooks/exhaustive-deps
@@ -184,12 +187,13 @@ function Editor({ tpl, pal, teams, rooms, comms, onDirty, onSaved, onDeleted, on
   async function save() {
     if (!name.trim()) return setError("Nama acara wajib diisi.");
     if (!onl.online && !roomId) return setError("Pilih ruangan.");
-    const problem = onlineProblem(onl, "IBADAH");
+    const problem = onlineProblem(onl, "IBADAH") ?? audienceProblem(aud);
     if (problem) return setError(problem);
     const [mode, commId] = att.split(":");
     const body = {
       name: name.trim(), ...parsePat(pat), startTime: start, durationMin: minutes, ...(onl.online ? {} : { roomId }),
       online: onl.online, ...(onl.online ? { onlineUrl: onl.url.trim(), onlineCommunityIds: onl.audience === "COMMUNITIES" ? onl.communityIds : [], onlineReminder: onl.reminder } : {}),
+      audienceCommunityIds: audienceBody(aud),
       attendanceModeDefault: mode === "NAMES" ? "NAMES" : "COUNT", attendanceCommunityId: mode === "NAMES" && commId ? commId : null,
       slots: Object.entries(slots).map(([ministryId, s]) => ({ ministryId, count: s.count, rehearsalRequired: s.rehearsal })),
     };
@@ -244,6 +248,7 @@ function Editor({ tpl, pal, teams, rooms, comms, onDirty, onSaved, onDeleted, on
           </label>
         </div>
         <OnlineFields kind="IBADAH" noSpeaker value={onl} onChange={setOnl} hint="Berlaku untuk acara yang dibuat dari template ini; acara yang sudah ada tidak berubah. Pembicara dan tema diisi di tiap acara. Acara online tanpa ruangan dan tanpa latihan." />
+        <AudienceFields value={aud} onChange={setAud} />
         <span className="text-[13px] font-semibold text-[#565B76]">Selesai otomatis: <span className="font-extrabold text-[#171A2C]">{dot(endTime(start || "00:00", minutes))}</span></span>
       </div>
 

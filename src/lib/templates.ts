@@ -10,6 +10,7 @@ import { isSundayPair } from "./seatRules";
 import { randomUUID } from "node:crypto";
 import { ensureOnlineRoom } from "./online";
 import { cleanOnlineUrl } from "./onlineRules";
+import { audienceCommunityIds, checkAudience } from "./audience";
 import { openTemplateUrl, sealOnlineUrl, sealTemplateUrl } from "./meetingCrypto";
 
 export const templateBody = z
@@ -26,6 +27,7 @@ export const templateBody = z
     onlineUrl: z.string().trim().max(500).nullish(),
     onlineCommunityIds: z.array(z.string().uuid()).max(30).default([]),
     onlineReminder: z.boolean().default(true),
+    audienceCommunityIds: audienceCommunityIds.default([]), // acara dari template ini khusus komunitas ini; kosong = umum
     attendanceModeDefault: z.enum(["COUNT", "NAMES"]).default("COUNT"),
     attendanceCommunityId: z.string().uuid().nullish(),
     slots: z
@@ -61,6 +63,7 @@ const toDto = (t: TemplateFull) => {
     room: { id: t.room.id, name: t.room.name },
     isOnline: t.isOnline,
     online: t.isOnline ? { url: safeUrl(t.id, t.onlineUrl), communityIds: t.onlineCommunityIds, reminder: t.onlineReminder } : null,
+    audienceCommunityIds: t.audienceCommunityIds,
     attendanceModeDefault: t.attendanceModeDefault,
     attendanceCommunity: t.attendanceCommunity ? { id: t.attendanceCommunity.id, name: t.attendanceCommunity.name } : null,
     slots: [...byMinistry.values()],
@@ -111,6 +114,7 @@ export async function createTemplate(tenantId: string, b: TemplateInput) {
   const data = {
     name: b.name, weekday: b.weekday, recurrence: b.recurrence, ordinal: b.recurrence === "MONTHLY_NTH" ? b.ordinal! : null,
     startTime: b.startTime, durationMin: b.durationMin, attendanceModeDefault: b.attendanceModeDefault, attendanceCommunityId: b.attendanceCommunityId ?? null,
+    audienceCommunityIds: await checkAudience(tenantId, b.audienceCommunityIds),
     ...(await onlineData(tenantId, templateId, b, null)),
   };
   const row = await prisma.$transaction(async (tx) => {
@@ -133,6 +137,7 @@ export async function updateTemplate(tenantId: string, id: string, b: TemplateIn
   if (dup) throw conflict(`Nama template "${b.name}" sudah dipakai.`);
   if (!b.online && cur.isOnline && !b.roomId) throw badRequest("Template tidak lagi online: pilih ruangannya.");
   const onl = await onlineData(tenantId, id, b, cur.onlineUrl); // tautan lama dipertahankan bila tidak diisi ulang
+  const audience = await checkAudience(tenantId, b.audienceCommunityIds);
   const row = await prisma.$transaction(async (tx) => {
     await tx.eventTemplateSlot.deleteMany({ where: { templateId: id } });
     return tx.eventTemplate.update({
@@ -140,6 +145,7 @@ export async function updateTemplate(tenantId: string, id: string, b: TemplateIn
       data: {
         name: b.name, weekday: b.weekday, recurrence: b.recurrence, ordinal: b.recurrence === "MONTHLY_NTH" ? b.ordinal! : null,
         startTime: b.startTime, durationMin: b.durationMin, attendanceModeDefault: b.attendanceModeDefault, attendanceCommunityId: b.attendanceCommunityId ?? null,
+        audienceCommunityIds: audience,
         ...onl,
         slots: { create: slots },
       },
@@ -205,7 +211,7 @@ export async function createOnDate(u: AuthUser, t: TplWithSlots, iso: string): P
           data: {
             id: eventId, ...online,
             tenantId: u.tenantId, number, templateId: t.id, title: t.name, startsAt, endsAt, roomId: t.roomId, status: "DRAFT",
-            attendanceMode: t.attendanceModeDefault, createdById: u.userId,
+            attendanceMode: t.attendanceModeDefault, createdById: u.userId, audienceCommunityIds: t.audienceCommunityIds,
             teams: { create: teamIds.map((teamTypeId) => ({ teamTypeId })) },
             assignments: {
               create: t.slots.map((s, i) => ({ tenantId: u.tenantId, teamTypeId: s.ministry.teamTypeId, ministryId: s.ministryId, slotNo: s.slotNo, rehearsalRequired: s.rehearsalRequired, sortOrder: i })),

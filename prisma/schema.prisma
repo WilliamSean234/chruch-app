@@ -321,6 +321,7 @@ model EventTemplate {
   isOnline              Boolean             @default(false)
   onlineUrl             String?
   onlineCommunityIds    String[]            @default([]) // kosong = tautan untuk semua orang
+  audienceCommunityIds  String[]            @default([]) // acara dari template ini khusus komunitas ini; kosong = acara umum
   onlineReminder        Boolean             @default(true)
   deletedAt             DateTime?
   room                  Room                @relation(fields: [roomId], references: [id])
@@ -385,6 +386,7 @@ model Event { // header; nomor EV-YYYYMM-0001
   speakerName    String? // pembicara luar yang diketik (terenkripsi); dipakai bila speakerPersonId kosong
   onlineReminder Boolean           @default(true) // acara online: pengingat sehari sebelumnya (petugas, pembicara, dan penerima tautan atau anggota kelompok)
   onlineCommunityIds String[]      @default([]) // ibadah online: tautan hanya untuk komunitas ini; kosong = semua orang. Rapat: selalu hanya anggota kelompok
+  audienceCommunityIds String[]    @default([]) // acara khusus komunitas (mis. Fellowship Pemuda): anggota komunitas ini melihatnya di Jadwal saya; kosong = acara umum
   group         MeetingGroup?      @relation(fields: [groupId], references: [id])
   seriesId      String? // rapat yang dibuat dari satu pengulangan
   seriesIndex   Int? // urutan tanggal dalam seri (1 = pertama; bisa ada nomor yang terlewati bila ruangan bentrok)

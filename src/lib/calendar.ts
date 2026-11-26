@@ -121,9 +121,35 @@ function canRecordAttendance(u: AuthUser, e: { kind: string; status: string; sta
   return attendanceWriteBlock(e.startsAt, hasData) === null;
 }
 
+/**
+ * Acara yang dikhususkan untuk komunitas saya (mis. Fellowship Pemuda): semua anggota komunitas itu melihatnya di Jadwal saya,
+ * tanpa perlu ditugaskan. Acara yang sudah ada di daftar tugas saya (`skip`) tidak diulang. Acara DRAFT hanya terlihat penjadwal.
+ */
+export async function myCommunityEvents(u: AuthUser, from: Date, to: Date, skip: string[]) {
+  if (!u.personId) return [];
+  const mine = (await prisma.personCommunity.findMany({ where: { personId: u.personId }, select: { communityId: true } })).map((c) => c.communityId);
+  if (!mine.length) return [];
+  const rows = await prisma.event.findMany({
+    where: {
+      tenantId: u.tenantId, kind: "IBADAH", deletedAt: null, status: canSeeDrafts(u) ? { not: "CANCELLED" } : "PUBLISHED",
+      startsAt: { gte: from, lte: to }, audienceCommunityIds: { hasSome: mine }, ...(skip.length ? { id: { notIn: skip } } : {}),
+    },
+    include: { room: { select: { name: true } } },
+    orderBy: { startsAt: "asc" },
+    take: 300,
+  });
+  const names = new Map((await prisma.community.findMany({ where: { id: { in: [...new Set(rows.flatMap((e) => e.audienceCommunityIds))] }, tenantId: u.tenantId, deletedAt: null }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
+  return rows.map((e) => ({
+    eventId: e.id, number: e.number, title: e.title, status: e.status,
+    startsAt: e.startsAt.toISOString(), endsAt: e.endsAt.toISOString(),
+    room: e.isOnline ? "Online" : e.room.name, isOnline: e.isOnline,
+    communities: e.audienceCommunityIds.map((id) => names.get(id)).filter((n): n is string => !!n),
+  }));
+}
+
 /** "Jadwal saya": tugas dan latihan wajib milik orang yang terhubung ke akun ini. */
 export async function mySchedule(u: AuthUser, range: { from?: string; to?: string }) {
-  if (!u.personId) return { items: [], meetings: [] as Awaited<ReturnType<typeof myMeetings>>, note: "Akun ini belum dihubungkan ke data orang." };
+  if (!u.personId) return { items: [], meetings: [] as Awaited<ReturnType<typeof myMeetings>>, communityEvents: [] as Awaited<ReturnType<typeof myCommunityEvents>>, note: "Akun ini belum dihubungkan ke data orang." };
   const from = range.from ? zonedToUtc(range.from, "00:00") : new Date();
   const to = range.to ? zonedToUtc(range.to, "23:59") : addMinutes(new Date(), 60 * 24 * 90);
   const seats = await prisma.eventAssignment.findMany({
@@ -138,6 +164,7 @@ export async function mySchedule(u: AuthUser, range: { from?: string; to?: strin
   const nowDate = new Date();
   return {
     meetings: await myMeetings(u, from, to), // rapat kelompok yang saya ikuti dan saya diundang
+    communityEvents: await myCommunityEvents(u, from, to, seats.map((s) => s.eventId)), // acara khusus komunitas saya
     items: seats.map((s) => ({
       assignmentId: s.id,
       swap: swaps.get(s.id) ?? null,

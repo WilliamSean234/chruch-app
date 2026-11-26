@@ -4,7 +4,7 @@ import { sundayBaseTitle } from "./rehearsalRules";
 export type RehearsalEvent = { id: string; title: string; startsAt: string; endsAt: string; status: string };
 
 type Row = {
-  key: string; kind: "SERVICE" | "REHEARSAL" | "MEETING"; eventId: string; title: string; startsAt: string; endsAt: string; room: string; status: string; note?: string;
+  key: string; kind: "SERVICE" | "REHEARSAL" | "MEETING" | "COMMUNITY"; eventId: string; title: string; startsAt: string; endsAt: string; room: string; status: string; note?: string;
   events?: RehearsalEvent[];
 };
 

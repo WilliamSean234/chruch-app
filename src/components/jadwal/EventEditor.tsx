@@ -13,6 +13,8 @@ import { dayLong, dayShort, hm, initials, MONTHS, STATUS_LABEL, toneFor, WEEKDAY
 import RoomOptions from "@/components/ui/RoomOptions";
 import NotifyStaff from "./NotifyStaff";
 import OnlineFields from "@/components/online/OnlineFields";
+import AudienceFields from "@/components/online/AudienceFields";
+import { audienceBody, audienceFromIds, audienceProblem, emptyAudience, type AudienceValue } from "@/lib/audienceForm";
 import { emptyOnline, onlineBody, onlineFromDto, onlineProblem, type OnlineValue } from "@/lib/onlineForm";
 
 type Seat = {
@@ -24,6 +26,7 @@ type Detail = {
   id: string; number: string; title: string; status: string; attendanceMode: string; theme: string | null; padus: string | null; bandMode: "BAND" | "NO_BAND"; locked?: boolean; attendanceOpen?: boolean; attendance?: { mode: "COUNT" | "NAMES"; total: number; note: string | null; recordedAt: string | null } | null; startsAt: string; endsAt: string; durationMin: number;
   room: { id: string; name: string }; teams: { teamTypeId: string; name: string }[]; seats: Seat[];
   isOnline?: boolean;
+  audience?: { id: string; name: string }[]; // komunitas tujuan acara khusus; kosong = acara umum
   online?: { isOnline: boolean; url: string | null; canSeeLink: boolean; speaker: { personId: string | null; name: string } | null; communities: { id: string; name: string }[]; visibleTo: string } | null;
   /** Ibadah pasangan di hari yang sama (Minggu 1 dan 2): personelnya biasanya sama. */
   pair: { id: string; number: string; title: string; startsAt: string; filled: number; sessions: number; seats: { ministryId: string; slotNo: number; personId: string | null }[] } | null;
@@ -57,7 +60,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
   const topRef = useRef<HTMLDivElement>(null);
   const [cancelReason, setCancelReason] = useState("");
   // form info
-  const [f, setF] = useState<{ title: string; date: string; start: string; end: string; roomId: string; mode: string; theme: string; padus: string; onl: OnlineValue }>({ title: "", date: "", start: "", end: "", roomId: "", mode: "COUNT", theme: "", padus: "", onl: emptyOnline });
+  const [f, setF] = useState<{ title: string; date: string; start: string; end: string; roomId: string; mode: string; theme: string; padus: string; onl: OnlineValue; aud: AudienceValue }>({ title: "", date: "", start: "", end: "", roomId: "", mode: "COUNT", theme: "", padus: "", onl: emptyOnline, aud: emptyAudience });
   const [bandAsk, setBandAsk] = useState(false); // konfirmasi (tanpa popup bawaan browser) sebelum ke No Band bila ada orang di posisi band
   const [base, setBase] = useState(f); // isi form terakhir dari server, untuk mengetahui ada perubahan atau tidak
   // form latihan
@@ -69,7 +72,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
     const det = a.data as Detail;
     setD(det);
     if (b.ok) setReh(b.data);
-    const form = { title: det.title, date: ymd(det.startsAt), start: hmInput(det.startsAt), end: hmInput(det.endsAt), roomId: det.isOnline ? "" : det.room.id, mode: det.attendanceMode, theme: det.theme ?? "", padus: det.padus ?? "", onl: onlineFromDto(det.online) };
+    const form = { title: det.title, date: ymd(det.startsAt), start: hmInput(det.startsAt), end: hmInput(det.endsAt), roomId: det.isOnline ? "" : det.room.id, mode: det.attendanceMode, theme: det.theme ?? "", padus: det.padus ?? "", onl: onlineFromDto(det.online), aud: audienceFromIds(det.audience) };
     setF(form); setBase(form);
   }, [eventId]);
 
@@ -118,12 +121,12 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
     if (!d) return;
     const dur = diffMin(f.start, f.end);
     if (dur <= 0) return setBanner({ kind: "error", title: "Waktu tidak valid", message: "Jam selesai harus setelah jam mulai." });
-    const problem = onlineProblem(f.onl, "IBADAH") ?? (!f.onl.online && !f.roomId ? "Pilih ruangan." : null);
+    const problem = onlineProblem(f.onl, "IBADAH") ?? audienceProblem(f.aud) ?? (!f.onl.online && !f.roomId ? "Pilih ruangan." : null);
     if (problem) return setBanner({ kind: "error", title: "Belum lengkap", message: problem });
     // tema dan padus biasanya sama untuk kedua ibadah: tanyakan apakah ikut disimpan di ibadah satunya
     const sharedChanged = f.theme !== base.theme || f.padus !== base.padus;
     const alsoPair = !!d.pair && sharedChanged && (await askPair(`Tema atau catatan padus diubah. Simpan juga di ${d.pair.title}? Judul, jam, dan ruangan tidak ikut diubah.`));
-    return run(() => callApi("PATCH", `/api/v1/events/${eventId}`, { title: f.title, date: f.date, startTime: f.start, durationMin: dur, ...(f.onl.online ? {} : { roomId: f.roomId }), ...onlineBody(f.onl, "IBADAH"), attendanceMode: f.mode, theme: f.theme, padus: f.padus, alsoPair }), () => setSaved(true));
+    return run(() => callApi("PATCH", `/api/v1/events/${eventId}`, { title: f.title, date: f.date, startTime: f.start, durationMin: dur, ...(f.onl.online ? {} : { roomId: f.roomId }), ...onlineBody(f.onl, "IBADAH"), audienceCommunityIds: audienceBody(f.aud), attendanceMode: f.mode, theme: f.theme, padus: f.padus, alsoPair }), () => setSaved(true));
   };
 
   /** Pilihan untuk Ibadah Minggu 1 dan 2: true = berlaku di kedua ibadah, false = hanya ibadah ini (juga bila ditutup dengan Esc). */
@@ -419,6 +422,7 @@ export default function EventEditor({ eventId, perms }: { eventId: string; perms
                 </label>
               )}
               <div className="sm:col-span-2 lg:col-span-3"><OnlineFields kind="IBADAH" value={f.onl} onChange={(onl) => setF({ ...f, onl })} disabled={!perms.editEvent || !editable} /></div>
+              <div className="sm:col-span-2 lg:col-span-3"><AudienceFields value={f.aud} onChange={(aud) => setF({ ...f, aud })} disabled={!perms.editEvent || !editable} /></div>
               <label className="flex flex-col gap-1.5 text-[13px] font-bold">Kehadiran dicatat
                 <select className={inputCls} value={f.mode} disabled={!perms.editEvent || !editable} onChange={(e) => setF({ ...f, mode: e.target.value })}>
                   <option value="COUNT">Jumlah saja</option>

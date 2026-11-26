@@ -16,6 +16,7 @@ import { afterResponse } from "./notify";
 import { notifySeatChange } from "./eventNotify";
 import { ensureOnlineRoom, NOT_ONLINE, onlineFields, onlineView, prepareOnline } from "./online";
 import { openOnlineUrl, openSpeaker } from "./meetingCrypto";
+import { audienceCommunityIds, audienceView, checkAudience } from "./audience";
 
 /** Teks opsional: kosong atau spasi saja = tidak ada (null). */
 const optText = (max: number) => z.string().trim().max(max).nullish().transform((v) => (v ? v : null));
@@ -31,6 +32,7 @@ export const eventCreateBody = z.object({
   durationMin: z.number().int().min(15).max(720).default(120),
   roomId: z.string().uuid().optional(), // wajib kecuali acara online
   ...onlineFields,
+  audienceCommunityIds: audienceCommunityIds.optional(), // acara khusus komunitas; kosong = umum
   attendanceMode: z.enum(["COUNT", "NAMES"]).default("COUNT"),
   theme: optText(THEME_MAX), // tema ibadah (opsional)
   padus: optText(PADUS_MAX), // catatan paduan suara (opsional)
@@ -45,6 +47,7 @@ export const eventUpdateBody = z.object({
   durationMin: z.number().int().min(15).max(720).optional(),
   roomId: z.string().uuid().optional(),
   ...onlineFields,
+  audienceCommunityIds: audienceCommunityIds.optional(), // tidak dikirim = tidak diubah; [] = jadikan acara umum
   attendanceMode: z.enum(["COUNT", "NAMES"]).optional(),
   theme: z.string().trim().max(THEME_MAX).nullish().transform((v) => (v === undefined ? undefined : v ? v : null)), // kosong = hapus tema
   padus: z.string().trim().max(PADUS_MAX).nullish().transform((v) => (v === undefined ? undefined : v ? v : null)),
@@ -109,8 +112,8 @@ async function pairOf(tenantId: string, e: EventFull) {
 /** `viewer` menentukan apakah tautan online ikut terisi (hanya bila ia berhak); tanpa viewer tautan kosong. */
 export const getEvent = async (tenantId: string, id: string, viewer?: AuthUser) => {
   const e = await load(tenantId, id);
-  const [names, pair, online] = await Promise.all([creatorNames([e.createdById]), pairOf(tenantId, e), onlineView(tenantId, viewer, e, e.assignments.map((a) => a.personId))]);
-  return { ...toDto(e), online, createdBy: (e.createdById && names.get(e.createdById)) || null, createdAt: e.createdAt.toISOString(), pair };
+  const [names, pair, online, audience] = await Promise.all([creatorNames([e.createdById]), pairOf(tenantId, e), onlineView(tenantId, viewer, e, e.assignments.map((a) => a.personId)), audienceView(tenantId, e.audienceCommunityIds)]);
+  return { ...toDto(e), online, audience, createdBy: (e.createdById && names.get(e.createdById)) || null, createdAt: e.createdAt.toISOString(), pair };
 };
 
 /** Kehadiran yang sudah tercatat untuk acara ini (null bila belum ada). Mode "jumlah": angka dan catatan; mode "per nama": jumlah yang hadir. */
@@ -220,11 +223,12 @@ export async function createEvent(u: AuthUser, b: z.infer<typeof eventCreateBody
   const number = await nextDocNumber(u.tenantId, "EV", startsAt);
   const id = randomUUID(); // id dibuat dulu karena tautan online disegel dengan id acara
   const onl = await prepareOnline(u.tenantId, id, b, "IBADAH");
+  const audience = await checkAudience(u.tenantId, b.audienceCommunityIds ?? []);
   const created = await translateOverlap(() =>
     prisma.$transaction(async (tx) => {
       const e = await tx.event.create({
         data: {
-          id, ...(onl ?? {}),
+          id, ...(onl ?? {}), audienceCommunityIds: audience,
           tenantId: u.tenantId, number, title: b.title, startsAt, endsAt, roomId, status: "DRAFT", attendanceMode: b.attendanceMode, theme: b.theme, padus: online ? null : b.padus, createdById: u.userId,
           teams: { create: teamIds.map((teamTypeId) => ({ teamTypeId })) },
           assignments: { create: seats.map((s, i) => ({ tenantId: u.tenantId, ...s, sortOrder: i })) },
@@ -264,6 +268,7 @@ export async function updateEvent(u: AuthUser, id: string, b: z.infer<typeof eve
       }, "IBADAH")
     : b.online === false ? NOT_ONLINE : undefined;
 
+  const audience = b.audienceCommunityIds !== undefined ? await checkAudience(u.tenantId, b.audienceCommunityIds) : undefined;
   if (b.attendanceMode && b.attendanceMode !== cur.attendanceMode) {
     const [names, summary] = await Promise.all([prisma.eventAttendance.count({ where: { eventId: id } }), prisma.eventAttendanceSummary.count({ where: { eventId: id } })]);
     if (names + summary > 0) throw conflict("Mode kehadiran tidak bisa diganti karena data kehadiran sudah ada.");
@@ -276,7 +281,7 @@ export async function updateEvent(u: AuthUser, id: string, b: z.infer<typeof eve
   await translateOverlap(
     () =>
       prisma.$transaction(async (tx) => {
-        await tx.event.update({ where: { id }, data: { title: b.title, attendanceMode: b.attendanceMode, theme: b.theme, padus: willBeOnline ? null : b.padus, startsAt, endsAt, roomId, ...(onl ?? {}) } });
+        await tx.event.update({ where: { id }, data: { title: b.title, attendanceMode: b.attendanceMode, theme: b.theme, padus: willBeOnline ? null : b.padus, startsAt, endsAt, roomId, ...(onl ?? {}), ...(audience !== undefined ? { audienceCommunityIds: audience } : {}) } });
         if (willBeOnline && !cur.isOnline) await tx.eventAssignment.updateMany({ where: { eventId: id, rehearsalRequired: true }, data: { rehearsalRequired: false } });
         if (timeChanged || roomChanged) {
           await releaseBookings(tx, { sourceType: "EVENT", sourceId: id, resourceType: "ROOM" });

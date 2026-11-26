@@ -41,6 +41,13 @@ export default async function SayaPage() {
       role: "Rapat", status: "PUBLISHED", rehearsalRequired: false, canAttend: false, attendanceMode: "COUNT", note: m.fullMeeting ? undefined : "Hanya jadwal",
     });
   }
+  // acara yang dikhususkan untuk komunitas saya (mis. Fellowship Pemuda): tampil tanpa harus ditugaskan
+  for (const c of r.communityEvents) {
+    rows.push({
+      key: `c-${c.eventId}`, kind: "COMMUNITY", eventId: c.eventId, title: c.title, startsAt: c.startsAt, endsAt: c.endsAt, room: c.room,
+      role: "Komunitas", status: c.status, rehearsalRequired: false, canAttend: false, attendanceMode: "COUNT", note: c.communities.length ? `Khusus ${c.communities.join(", ")}` : undefined,
+    });
+  }
   rows.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
   const merged = mergeTwinRehearsalRows(rows); // latihan Ibadah Minggu 1 dan 2 yang sama tampil satu baris
 
