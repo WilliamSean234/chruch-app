@@ -416,6 +416,7 @@ export async function createMeeting(u: AuthUser, b: z.infer<typeof meetingCreate
   const online = !!b.online;
   if (online && !a.caps.isMember) throw forbidden("Tautan, tema, dan pembicara rapat online hanya bisa diisi oleh anggota kelompok.");
   if (!online && !b.roomId) throw badRequest("Pilih ruangan.");
+  await assertGroupFree(u.tenantId, group, startsAt, endsAt);
   const roomId = online ? await ensureOnlineRoom(prisma, u.tenantId) : b.roomId!;
   if (!online) {
     await assertRoomUsable(u.tenantId, roomId);
@@ -468,6 +469,7 @@ export async function updateMeeting(u: AuthUser, id: string, b: z.infer<typeof m
   const roomId = willBeOnline ? await ensureOnlineRoom(prisma, u.tenantId) : (b.roomId ?? cur.roomId);
   const timeChanged = startsAt.getTime() !== cur.startsAt.getTime() || endsAt.getTime() !== cur.endsAt.getTime();
   const roomChanged = roomId !== cur.roomId;
+  if (timeChanged) await assertGroupFree(u.tenantId, cur.group, startsAt, endsAt, id);
   if (roomChanged && !willBeOnline) await assertRoomUsable(u.tenantId, roomId);
   if ((timeChanged || roomChanged) && !willBeOnline) await assertRoomFree(u.tenantId, roomId, startsAt, endsAt, id);
   // isian online: tautan wajib; yang tidak dikirim dipertahankan dari rapat ini (rapat sudah online) supaya mengubah jam saja tidak menghapusnya
@@ -541,9 +543,28 @@ export async function removeLink(u: AuthUser, id: string, linkId: string) {
   await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.link.remove", entity: "Event", entityId: id, payload: {} });
 }
 
+// ───────── Satu kelompok tidak bisa rapat di dua tempat sekaligus ─────────
+/**
+ * Menolak rapat yang jamnya beririsan dengan rapat lain dari kelompok yang sama (ruangan berbeda pun tidak boleh, juga rapat online):
+ * anggotanya tidak bisa hadir di dua rapat pada saat yang sama. Rapat yang dibatalkan tidak dihitung. Pakai `excludeId` saat mengubah rapat sendiri.
+ */
+async function assertGroupFree(tenantId: string, group: { id: string; name: string }, startsAt: Date, endsAt: Date, excludeId?: string) {
+  const other = await prisma.event.findFirst({
+    where: {
+      tenantId, kind: "RAPAT", groupId: group.id, deletedAt: null, status: { not: "CANCELLED" },
+      startsAt: { lt: endsAt }, endsAt: { gt: startsAt }, ...(excludeId ? { id: { not: excludeId } } : {}),
+    },
+    select: { number: true, startsAt: true, endsAt: true },
+    orderBy: { startsAt: "asc" },
+  });
+  if (!other) return;
+  const hm = (d: Date) => localParts(d).time.replace(":", ".");
+  throw conflict(`Kelompok ${group.name} sudah punya rapat pada jam itu (${other.number}, ${hm(other.startsAt)}–${hm(other.endsAt)}). Satu kelompok tidak bisa rapat di dua tempat sekaligus: pilih jam lain, atau batalkan rapat yang satunya.`);
+}
+
 // ───────── Peringatan jadwal ganda anggota ─────────
 /**
- * Anggota kelompok yang sudah bertugas di acara lain pada jam itu. Hanya peringatan; rapat tetap boleh disimpan.
+ * Anggota kelompok yang sudah bertugas di acara lain, atau sudah diundang ke rapat lain, pada jam itu. Hanya peringatan; rapat tetap boleh disimpan.
  * Nama hanya dibuka untuk anggota kelompok; Penjadwal global hanya melihat jumlahnya.
  */
 export async function memberClashes(u: AuthUser, q: { groupId: string; date: string; startTime: string; endTime: string; excludeEventId?: string; personIds?: string[] }) {
@@ -555,7 +576,15 @@ export async function memberClashes(u: AuthUser, q: { groupId: string; date: str
     select: { personId: true, person: { select: { name: true } } },
   });
   const map = await personConflicts(u.tenantId, members.map((m) => m.personId), [{ startsAt, endsAt }], q.excludeEventId ? { excludeSource: { sourceType: "EVENT", sourceId: q.excludeEventId } } : {});
-  const busy = members.filter((m) => map.has(m.personId));
+  // anggota yang sudah diundang ke rapat lain (kelompok mana pun) pada jam yang sama juga ikut diperingatkan
+  const inMeetings = new Set((await prisma.meetingParticipant.findMany({
+    where: {
+      personId: { in: members.map((m) => m.personId) },
+      event: { tenantId: u.tenantId, kind: "RAPAT", deletedAt: null, status: { not: "CANCELLED" }, startsAt: { lt: endsAt }, endsAt: { gt: startsAt }, ...(q.excludeEventId ? { id: { not: q.excludeEventId } } : {}) },
+    },
+    select: { personId: true },
+  })).map((p) => p.personId));
+  const busy = members.filter((m) => map.has(m.personId) || inMeetings.has(m.personId));
   return { count: busy.length, total: members.length, names: a.caps.isMember ? busy.map((m) => m.person.name).sort((x, y) => x.localeCompare(y)) : null };
 }
 
@@ -713,7 +742,7 @@ export async function createMeetingSeries(u: AuthUser, b: z.infer<typeof meeting
   }
   if (!firstDto) {
     await prisma.meetingSeries.delete({ where: { id: series.id } });
-    throw conflict("Ruangan sudah terpakai pada semua tanggal itu. Pilih ruangan atau jam lain.");
+    throw conflict("Semua tanggal itu bentrok: ruangan sudah terpakai, atau kelompok sudah punya rapat pada jam yang sama. Pilih ruangan atau jam lain.");
   }
   await audit({ tenantId: u.tenantId, userId: u.userId, action: "meeting.series.create", entity: "MeetingSeries", entityId: series.id, payload: { group: group.name, pattern: b.repeat.pattern, created: created.length, skipped: skipped.length } });
   return { ...firstDto, seriesResult: { created: created.length, skipped } };
