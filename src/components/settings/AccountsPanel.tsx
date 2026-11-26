@@ -12,7 +12,7 @@ import Pager from "@/components/ui/Pager";
 import MembershipChips, { type Membership } from "@/components/ui/MembershipChips";
 import { FilterBar, FSearch, FSelect } from "@/components/ui/Filters";
 
-type Acc = { id: string; personId: string | null; name: string | null; email: string; isActive: boolean; mustChangePassword: boolean; twoFactor?: boolean; roleCodes: string[]; teamTypeId: string | null; teamName: string | null; memberships?: Membership[] };
+type Acc = { id: string; personId: string | null; name: string | null; email: string; isActive: boolean; mustChangePassword: boolean; twoFactor?: boolean; isOwner?: boolean; roleCodes: string[]; teamTypeId: string | null; teamName: string | null; memberships?: Membership[] };
 type Team = { id: string; name: string };
 const rolesText = (a: Acc) => (a.roleCodes.length ? a.roleCodes.map((c) => ROLE_LABEL[c] ?? c).join(", ") + (a.teamName ? ` · ${a.teamName}` : "") : "Anggota (tanpa role)");
 
@@ -107,10 +107,10 @@ export default function AccountsPanel({ selfId, isSuper }: { selfId: string; isS
           <CompactList label="Daftar akun">
             {items.map((a) => {
               const self = a.id === selfId;
-              const locked = a.roleCodes.includes("SUPERADMIN") && !isSuper;
+              const locked = (a.roleCodes.includes("SUPERADMIN") && !isSuper) || (!!a.isOwner && !self);
               return (
                 <CompactRow key={a.id} id={a.id} open={rows.open.has(a.id)} onToggle={rows.toggle} tone={a.isActive ? "" : "bg-[var(--surface-2)]"}
-                  title={<>{a.name ?? a.email}{self && <span className="ml-2 whitespace-nowrap rounded-full bg-[var(--primary-soft)] px-2 py-0.5 text-[11px] font-bold text-[var(--primary-ink)]">Anda</span>}</>}
+                  title={<>{a.name ?? a.email}{self && <span className="ml-2 whitespace-nowrap rounded-full bg-[var(--primary-soft)] px-2 py-0.5 text-[11px] font-bold text-[var(--primary-ink)]">Anda</span>}{a.isOwner && <span className="ml-2 whitespace-nowrap rounded-full bg-[var(--gold-soft)] px-2 py-0.5 text-[11px] font-bold text-[#6F4304]">Utama</span>}</>}
                   sub={rolesText(a)}
                   trailing={<span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-bold ${a.isActive ? "bg-[#E3F4E8] text-[#1B6B34]" : "bg-[#ECEEF4] text-[#565b76]"}`}>{a.isActive ? "Aktif" : "Nonaktif"}</span>}>
                   {a.name && <Detail label="Email"><span className="break-all">{a.email}</span></Detail>}
@@ -118,7 +118,7 @@ export default function AccountsPanel({ selfId, isSuper }: { selfId: string; isS
                   {a.mustChangePassword && <Detail label="Sandi"><span className="whitespace-nowrap rounded-full bg-[var(--gold-soft)] px-2.5 py-0.5 text-xs font-bold text-[#6F4304]">Belum ganti sandi</span></Detail>}
                   {a.twoFactor && <Detail label="2 langkah"><span className="whitespace-nowrap rounded-full bg-[#E3F4E8] px-2.5 py-0.5 text-xs font-bold text-[#1B6B34]">Aktif</span></Detail>}
                   {a.memberships && a.memberships.length > 0 && <Detail label="Kelompok"><MembershipChips items={a.memberships} /></Detail>}
-                  {locked ? <p className="text-xs font-medium text-[var(--ink-2)]">Hanya Superadmin yang bisa mengubah akun ini.</p> : (
+                  {locked ? <p className="text-xs font-medium text-[var(--ink-2)]">{a.isOwner ? "Akun Superadmin utama: hanya pemiliknya yang bisa mengubah." : "Hanya Superadmin yang bisa mengubah akun ini."}</p> : (
                     <div className="flex flex-wrap gap-0.5">
                       <button type="button" className={link} onClick={() => { setMsg(""); setDlg({ kind: "role", acc: a }); }}>Ubah role</button>
                       <button type="button" className={link} onClick={() => { setMsg(""); setDlg({ kind: "email", acc: a }); }}>Ubah email</button>
@@ -142,11 +142,11 @@ export default function AccountsPanel({ selfId, isSuper }: { selfId: string; isS
             <tbody>
               {items.map((a) => {
                 const self = a.id === selfId;
-                const locked = a.roleCodes.includes("SUPERADMIN") && !isSuper;
+                const locked = (a.roleCodes.includes("SUPERADMIN") && !isSuper) || (!!a.isOwner && !self);
                 return (
                   <tr key={a.id} className={`border-t border-[var(--line-2)] ${a.isActive ? "" : "bg-[var(--surface-2)] text-[var(--ink-2)]"}`}>
                     <td className="px-4 py-3">
-                      <div className="font-bold">{a.name ?? a.email}{self && <span className="whitespace-nowrap ml-2 rounded-full bg-[var(--primary-soft)] px-2 py-0.5 text-[11px] font-bold text-[var(--primary-ink)]">Anda</span>}</div>
+                      <div className="font-bold">{a.name ?? a.email}{self && <span className="whitespace-nowrap ml-2 rounded-full bg-[var(--primary-soft)] px-2 py-0.5 text-[11px] font-bold text-[var(--primary-ink)]">Anda</span>}{a.isOwner && <span className="whitespace-nowrap ml-2 rounded-full bg-[var(--gold-soft)] px-2 py-0.5 text-[11px] font-bold text-[#6F4304]">Utama</span>}</div>
                       {a.name && <div className="text-xs font-medium text-[var(--ink-2)]">{a.email}</div>}
                       {!a.personId && <div className="text-xs font-medium text-[var(--ink-2)]">Tidak terhubung ke data orang</div>}
                     </td>
@@ -161,7 +161,7 @@ export default function AccountsPanel({ selfId, isSuper }: { selfId: string; isS
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap justify-end gap-0.5">
-                        {locked ? <span className="text-xs font-medium text-[var(--ink-2)]">Hanya Superadmin</span> : (
+                        {locked ? <span className="text-xs font-medium text-[var(--ink-2)]">{a.isOwner ? "Hanya pemiliknya" : "Hanya Superadmin"}</span> : (
                           <>
                             <button type="button" className={link} onClick={() => { setMsg(""); setDlg({ kind: "role", acc: a }); }}>Ubah role</button>
                             <button type="button" className={link} onClick={() => { setMsg(""); setDlg({ kind: "email", acc: a }); }}>Ubah email</button>

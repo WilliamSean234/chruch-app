@@ -31,6 +31,7 @@ model User {
   sessionsValidFrom  DateTime? // sesi/token yang dibuat sebelum waktu ini ditolak (diisi saat kata sandi diganti atau direset admin)
   notifyOff    String[]   @default([]) // jenis notifikasi yang dimatikan pemilik akun (lihat lib/notificationKinds)
   emailVerifiedAt DateTime? // kapan pemilik membuktikan emailnya lewat tautan; kosong = belum terverifikasi (email tidak dipakai untuk notifikasi)
+  isOwner      Boolean    @default(false) // Superadmin utama: hanya bisa diubah, dinonaktifkan, dihapus, atau direset oleh dirinya sendiri (lib/ownerRules); diatur lewat npm run db:set-owner
   totpSecret     String? // kunci rahasia verifikasi 2 langkah, terenkripsi (lib/twoFactor); belum berlaku sampai totpEnabledAt terisi
   totpEnabledAt  DateTime? // kapan verifikasi 2 langkah diaktifkan; kosong = tidak aktif
   totpLastStep   Int? // langkah 30 detik terakhir yang sudah dipakai masuk: kode yang sama tidak bisa dipakai dua kali

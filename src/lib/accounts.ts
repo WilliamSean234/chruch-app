@@ -7,6 +7,7 @@ import { isSuperadmin, type AuthUser } from "./rbac";
 import { forgetLiveUser } from "./liveUser";
 import { assertCanDeactivate, assertSuperadminSlot } from "./accountGuards";
 import { needsSuperadminSlot } from "./superadminLimit";
+import { blockedByOwner, OWNER_MESSAGE } from "./ownerRules";
 import { nameKey } from "./names";
 import { pagingQuery, resolvePaging } from "./paging";
 import { membershipsOf } from "./groups";
@@ -93,6 +94,7 @@ export async function updateAccount(actor: AuthUser, target: string | { userId: 
     include: { roles: { include: { role: true } } },
   });
   if (!user) throw notFound("Akun");
+  if (blockedByOwner(user, actor.userId)) throw forbidden(OWNER_MESSAGE); // Superadmin utama: hanya pemiliknya sendiri
   const targetIsSuper = user.roles.some((r) => r.role.isSuperadmin);
   if (targetIsSuper && !isSuperadmin(actor)) throw forbidden("Akun Superadmin hanya bisa diubah oleh Superadmin.");
   if ((b.roleCodes?.includes("SUPERADMIN") || b.roleCodes?.includes("PENGAWAS")) && !isSuperadmin(actor)) throw forbidden("Hanya Superadmin yang boleh memberi role Superadmin atau Pengawas.");
@@ -204,7 +206,7 @@ export async function listAccounts(tenantId: string, q: z.infer<typeof accountLi
       skip: pg.skip,
       take: pg.take,
       select: {
-        id: true, email: true, isActive: true, mustChangePassword: true, passwordChangedAt: true, createdAt: true, totpEnabledAt: true,
+        id: true, email: true, isActive: true, mustChangePassword: true, passwordChangedAt: true, createdAt: true, totpEnabledAt: true, isOwner: true,
         person: { select: { id: true, name: true, title: true } },
         roles: { select: { teamTypeId: true, teamType: { select: { name: true } }, role: { select: { code: true } } } },
       },
@@ -221,6 +223,7 @@ export async function listAccounts(tenantId: string, q: z.infer<typeof accountLi
       isActive: u.isActive,
       mustChangePassword: u.mustChangePassword,
       twoFactor: !!u.totpEnabledAt,
+      isOwner: u.isOwner,
       passwordChangedAt: u.passwordChangedAt?.toISOString() ?? null,
       createdAt: u.createdAt.toISOString(),
       roleCodes: u.roles.map((r) => r.role.code),

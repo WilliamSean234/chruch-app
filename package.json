@@ -26,6 +26,7 @@
     "db:check-key": "tsx scripts/check-enc-key.ts",
     "db:reset-bad-minutes": "tsx scripts/reset-unreadable-minutes.ts",
     "db:reset-2fa": "tsx scripts/reset-2fa.ts",
+    "db:set-owner": "tsx scripts/set-owner.ts",
     "vercel-build": "prisma generate && node scripts/migrate-deploy.js && next build"
   },
   "prisma": {

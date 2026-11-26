@@ -186,8 +186,8 @@ async function main() {
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await prisma.user.upsert({
       where: { tenantId_email: { tenantId: TENANT_ID, email } },
-      update: {},
-      create: { tenantId: TENANT_ID, email, passwordHash },
+      update: { isOwner: true },
+      create: { tenantId: TENANT_ID, email, passwordHash, isOwner: true }, // Superadmin pertama = Superadmin utama
     });
     const existing = await prisma.userRole.findFirst({
       where: { userId: user.id, roleId: roleIds.SUPERADMIN, teamTypeId: null },

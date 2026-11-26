@@ -12,7 +12,7 @@ export type Team = { id: string; name: string; ministries: Opt[] };
 export type PersonDto = {
   id: string; name: string; title: string | null; nickname?: string | null; aliases?: string[]; birthDate: string | null; age: number | null; gender: "L" | "P"; origin: "DALAM" | "LUAR"; originChurch: string | null;
   position: Opt; cgGroup: Opt | null; communities: Opt[]; ministries: { id: string; name: string; teamTypeId: string; teamName: string }[];
-  account: { email: string; isActive: boolean; mustChangePassword?: boolean; roleCodes?: string[]; teamTypeId?: string | null } | null;
+  account: { email: string; isActive: boolean; isOwner?: boolean; mustChangePassword?: boolean; roleCodes?: string[]; teamTypeId?: string | null } | null;
   /** Kelompok rapat + jabatan; hanya dikirim server untuk Superadmin. */
   memberships?: { groupId: string; groupName: string; positions: string[] }[];
 };
@@ -180,7 +180,7 @@ function AccountSection({ person, teams, isSuper, onChanged }: { person: PersonD
   const roleLabel = (c: string) => (c === "NONE" ? "Tanpa role (hanya melihat jadwal)" : ROLE_LABEL[c] ?? c);
   const accRoles = acc?.roleCodes ?? [];
   const roleText = accRoles.length ? accRoles.map((c) => ROLE_LABEL[c] ?? c).join(", ") : "Tanpa role (hanya melihat jadwal)";
-  const lockedSuper = accRoles.includes("SUPERADMIN") && !isSuper; // hanya Superadmin yang boleh mengubah akun Superadmin
+  const lockedSuper = (accRoles.includes("SUPERADMIN") && !isSuper) || !!acc?.isOwner; // hanya Superadmin yang boleh mengubah akun Superadmin; akun utama hanya oleh pemiliknya (lewat Kelola akun)
   const teamName = (id: string | null | undefined) => teams.find((t) => t.id === id)?.name;
   const isEbmTeam = role === "ADMIN_TIM" && /\bebm\b/i.test(teamName(teamId) ?? "");
   const roleBody = () => ({ roleCodes: role === "NONE" ? [] : [role], teamTypeId: role === "ADMIN_TIM" ? teamId || null : null });
@@ -272,7 +272,7 @@ function AccountSection({ person, teams, isSuper, onChanged }: { person: PersonD
                 : <button type="button" className={link} disabled={busy} onClick={() => toggle(true)}>Aktifkan kembali</button>}
             </div>
           )}
-          {lockedSuper && <p className="text-xs font-medium text-[var(--ink-2)]">Akun Superadmin hanya bisa diubah oleh Superadmin.</p>}
+          {lockedSuper && <p className="text-xs font-medium text-[var(--ink-2)]">{acc?.isOwner ? "Akun Superadmin utama hanya bisa diubah oleh pemiliknya sendiri, lewat Pengaturan > Kelola akun." : "Akun Superadmin hanya bisa diubah oleh Superadmin."}</p>}
         </div>
       )}
 

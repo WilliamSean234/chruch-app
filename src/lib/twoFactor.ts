@@ -6,6 +6,7 @@ import { isSuperadmin, type AuthUser } from "./rbac";
 import { forgetLiveUser } from "./liveUser";
 import { audit } from "./audit";
 import { LIMITS, rateLimit } from "./rateLimit";
+import { blockedByOwner, OWNER_MESSAGE } from "./ownerRules";
 import { getChurchProfile } from "./church";
 import { groupSecret, hashRecovery, kindOfCode, matchTotp, newRecoveryCodes, newSecret, otpauthUri } from "./totp";
 
@@ -124,8 +125,9 @@ export async function regenerateRecoveryCodes(u: AuthUser, b: { code: string }) 
 export async function resetTwoFactor(actor: AuthUser, targetUserId: string) {
   if (!isSuperadmin(actor)) throw forbidden("Hanya Superadmin yang boleh mereset verifikasi 2 langkah.");
   if (targetUserId === actor.userId) throw badRequest("Untuk akun Anda sendiri, pakai Matikan di halaman Keamanan akun.");
-  const t = await prisma.user.findFirst({ where: { id: targetUserId, tenantId: actor.tenantId, deletedAt: null }, select: { id: true, totpEnabledAt: true, totpSecret: true } });
+  const t = await prisma.user.findFirst({ where: { id: targetUserId, tenantId: actor.tenantId, deletedAt: null }, select: { id: true, isOwner: true, totpEnabledAt: true, totpSecret: true } });
   if (!t) throw notFound("Akun");
+  if (blockedByOwner(t, actor.userId)) throw forbidden(OWNER_MESSAGE);
   if (!t.totpEnabledAt && !t.totpSecret) throw conflict("Akun ini tidak memakai verifikasi 2 langkah.");
   await prisma.user.update({ where: { id: t.id }, data: { totpSecret: null, totpEnabledAt: null, totpLastStep: null, recoveryHashes: [], sessionsValidFrom: new Date() } });
   forgetLiveUser(t.id);

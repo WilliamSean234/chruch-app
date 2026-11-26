@@ -44,7 +44,7 @@ const include = {
   cgGroup: true,
   communities: { include: { community: true } },
   ministries: { include: { ministry: { include: { teamType: true } } } },
-  user: { select: { id: true, email: true, isActive: true, mustChangePassword: true, roles: { select: { teamTypeId: true, role: { select: { code: true } } } } } },
+  user: { select: { id: true, email: true, isActive: true, isOwner: true, mustChangePassword: true, roles: { select: { teamTypeId: true, role: { select: { code: true } } } } } },
 } satisfies Prisma.PersonInclude;
 
 type PersonFull = Prisma.PersonGetPayload<{ include: typeof include }>;
@@ -68,6 +68,7 @@ export const toDto = (p: PersonFull) => ({
     ? {
         email: p.user.email,
         isActive: p.user.isActive,
+        isOwner: p.user.isOwner,
         mustChangePassword: p.user.mustChangePassword,
         roleCodes: p.user.roles.map((r) => r.role.code),
         teamTypeId: p.user.roles.find((r) => r.role.code === "ADMIN_TIM")?.teamTypeId ?? null,
