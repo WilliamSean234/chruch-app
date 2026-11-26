@@ -92,10 +92,8 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
   });
   const { items, total, error } = list;
   const reload = list.reload;
-  // Status online langsung (cek tiap 4 detik selama halaman terlihat). Saat tabel sedang disaring Online/Offline, daftarnya ikut dimuat ulang bila ada yang masuk atau keluar.
-  const onlineRef = useRef(onlineF);
-  useEffect(() => { onlineRef.current = onlineF; });
-  const live = useOnlinePeople(true, useCallback(() => { if (onlineRef.current) list.reload(); }, [list.reload])); // eslint-disable-line react-hooks/exhaustive-deps
+  // Status online langsung (cek tiap 4 detik selama halaman terlihat). Yang online ada paling atas, jadi tabel dimuat ulang tiap ada yang masuk atau keluar.
+  const live = useOnlinePeople(true, list.reload);
   const isOn = (p: PersonDto) => (live ? live.has(p.id) : !!p.account?.online);
   const dirty = !!(q || ministryId || positionId || commId || roleF || cgId || gender || origin || ageMin || ageMax || groupId || onlineF);
   const resetFilters = () => { setQ(""); setMinistryId(""); setPositionId(""); setCommId(""); setRoleF(""); setCgId(""); setGender(""); setOrigin(""); setAgeMin(""); setAgeMax(""); setGroupId(""); setOnlineF(""); };

@@ -125,6 +125,19 @@ export type PersonListQuery = PagingInput & {
   groupId?: string; // kelompok rapat (atau NONE = tidak di kelompok mana pun); untuk yang berhak mengelola data orang
 };
 
+/** Satu halaman orang: yang online (sesuai `where`) lebih dulu, lalu yang lain, masing-masing urut nama. Tanpa yang online, urut nama biasa. */
+async function pageOnlineFirst(where: Prisma.PersonWhereInput, onlineIds: string[], pg: { skip: number; take: number }) {
+  const byName = { nameKey: "asc" } as const;
+  if (onlineIds.length === 0) return prisma.person.findMany({ where, include, orderBy: byName, skip: pg.skip, take: pg.take });
+  const on: Prisma.PersonWhereInput = { AND: [where, { id: { in: onlineIds } }] };
+  const off: Prisma.PersonWhereInput = { AND: [where, { id: { notIn: onlineIds } }] };
+  const nOn = await prisma.person.count({ where: on });
+  if (pg.skip >= nOn) return prisma.person.findMany({ where: off, include, orderBy: byName, skip: pg.skip - nOn, take: pg.take });
+  const head = await prisma.person.findMany({ where: on, include, orderBy: byName, skip: pg.skip, take: pg.take });
+  if (head.length >= pg.take) return head;
+  return [...head, ...(await prisma.person.findMany({ where: off, include, orderBy: byName, take: pg.take - head.length }))];
+}
+
 export async function listPersons(u: AuthUser, q: PersonListQuery) {
   const pg = resolvePaging(q);
   if (q.role || q.online) requirePermission(u, "person.write"); // peran dan status online akun tidak untuk umum
@@ -156,9 +169,11 @@ export async function listPersons(u: AuthUser, q: PersonListQuery) {
     // status online dipisah lewat AND supaya bisa dipakai bersama filter role
     ...(q.online ? { AND: [{ user: { is: { deletedAt: null, isActive: true, ...(q.online === "ON" ? { presence: { some: { seenAt: { gt: presenceCutoff() } } } } : { presence: { none: { seenAt: { gt: presenceCutoff() } } } }) } } }] } : {}),
   };
+  // Yang sedang online ditaruh paling atas (tiap kelompok urut nama), untuk yang berhak melihat status online. Himpunan online diambil sekali per permintaan.
+  const onlineIds = seesGroups ? await onlinePersonIds(u.tenantId) : [];
   const [total, rows] = await Promise.all([
     prisma.person.count({ where }),
-    prisma.person.findMany({ where, include, orderBy: { nameKey: "asc" }, skip: pg.skip, take: pg.take }),
+    pageOnlineFirst(where, onlineIds, pg),
   ]);
   // kelompok + jabatan disertakan untuk yang berhak mengelola data orang
   const mem = seesGroups ? await membershipsOf(u.tenantId, rows.map((r) => r.id)) : null;
