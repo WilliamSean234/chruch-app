@@ -18,7 +18,7 @@ export const accountBody = z.object({
   email: z.string().trim().toLowerCase().email(),
   password: z.string().min(8, "Kata sandi minimal 8 karakter").max(100),
   roleCodes: z.array(z.enum(["SUPERADMIN", "PENJADWAL", "ADMIN_TIM", "ADMIN_JEMAAT", "PETUGAS_ABSEN", "PELAYAN", "PENGAWAS"])).default([]), // kosong = hanya bisa melihat kalender dan jadwal sendiri
-  teamTypeId: z.string().uuid().nullish(), // wajib bila ADMIN_TIM; Admin Tim EBM otomatis jadi anggota kelompok EBM dengan akses penuh
+  teamTypeId: z.string().uuid().nullish(), // wajib bila ADMIN_TIM; Admin Tim EBM otomatis jadi Pengelola Kelompok di kelompok EBM (akses penuh)
 });
 
 /** Buat akun login dan hubungkan ke Person. Satu orang paling banyak satu akun. */

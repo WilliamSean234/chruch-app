@@ -127,23 +127,23 @@ test("jabatan yang penuh menolak anggota berikutnya, termasuk yang diisi di bari
   assert.ok(ag.errors.every((e) => /sudah penuh/.test(e.message)));
 });
 
-test("kelompok baru otomatis punya Admin Tim; anggota di file yang sama boleh langsung memakainya", () => {
+test("kelompok baru otomatis punya Pengelola Kelompok; anggota di file yang sama boleh langsung memakainya", () => {
   const { st, ctx, gs, sheet } = setup();
   stageGroups(ctx, st, gs, {
     KelompokRapat: [KG(4, "Panitia")],
     JabatanKelompok: [],
-    AnggotaKelompok: [AG(4, "Panitia", "Setia Budi", "Admin Tim"), AG(5, "Panitia", "Maria Susanti")],
+    AnggotaKelompok: [AG(4, "Panitia", "Setia Budi", "Pengelola Kelompok"), AG(5, "Panitia", "Maria Susanti")],
   });
   assert.equal(sheet("AnggotaKelompok").created, 2);
   assert.equal(sheet("AnggotaKelompok").errors.length, 0);
   const g = gs.groups.get("panitia")!;
-  const admin = g.positions.get("admin tim")!;
+  const admin = g.positions.get("pengelola kelompok")!;
   assert.deepEqual(admin.caps, { schedule: true, write: true, finalize: true, manage: true });
   assert.equal(admin.seats, null);
   assert.deepEqual(g.members.get("p1")!.positionIds, [admin.id]);
 });
 
-test("Admin Tim yang juga ditulis di JabatanKelompok tidak dobel; jumlah orang dari sheet dipakai, haknya tetap penuh", () => {
+test("Nama lama \"Admin Tim\" di file Excel yang sudah beredar tetap dikenali sebagai Pengelola Kelompok, tidak dobel; jumlah orang dari sheet dipakai, haknya tetap penuh", () => {
   const { st, ctx, gs, sheet } = setup();
   stageGroups(ctx, st, gs, {
     KelompokRapat: [KG(4, "Panitia")],
@@ -151,8 +151,8 @@ test("Admin Tim yang juga ditulis di JabatanKelompok tidak dobel; jumlah orang d
     AnggotaKelompok: [AG(4, "Panitia", "Setia Budi", "Admin Tim"), AG(5, "Panitia", "Maria Susanti", "Admin Tim"), AG(6, "Panitia", "Daniel", "Admin Tim")],
   });
   const g = gs.groups.get("panitia")!;
-  assert.equal([...g.positions.values()].filter((p) => p.name === "Admin Tim").length, 1);
-  assert.equal(g.positions.get("admin tim")!.seats, 2);
+  assert.equal([...g.positions.values()].filter((p) => p.name === "Pengelola Kelompok").length, 1);
+  assert.equal(g.positions.get("pengelola kelompok")!.seats, 2);
   assert.equal(sheet("JabatanKelompok").created, 1);
   assert.equal(sheet("AnggotaKelompok").created, 2); // orang ketiga ditolak: jabatan penuh
   assert.equal(sheet("AnggotaKelompok").errors.length, 1);

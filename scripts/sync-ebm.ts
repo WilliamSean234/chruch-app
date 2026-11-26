@@ -1,7 +1,7 @@
 /**
  * Memasukkan semua orang yang melayani di bidang EBM ke kelompok "EBM" (dibuat bila belum ada).
  * Hanya menambah; anggota yang sudah ada atau sengaja dikeluarkan tidak diubah.
- * Akun Admin Tim EBM sekaligus diberi jabatan "Admin Tim EBM" (akses penuh) di kelompok itu.
+ * Akun Admin Tim EBM sekaligus diberi jabatan "Pengelola Kelompok" (akses penuh) di kelompok itu.
  * Jalankan sekali untuk data yang sudah ada: npm run db:sync-ebm
  */
 import { PrismaClient } from "@prisma/client";
@@ -16,7 +16,7 @@ async function main() {
     const r = await prisma.$transaction((tx) => syncEbmGroup(tx, t.id, {}));
     console.log(`${t.name}: ${r.added} orang ditambahkan ke kelompok EBM.`);
     const a = await prisma.$transaction((tx) => syncEbmAdmins(tx, t.id, {}));
-    console.log(`${t.name}: ${a.granted} Admin Tim EBM diberi akses penuh di kelompok EBM.`);
+    console.log(`${t.name}: ${a.granted} Admin Tim EBM diberi jabatan Pengelola Kelompok di kelompok EBM.`);
   }
 }
 

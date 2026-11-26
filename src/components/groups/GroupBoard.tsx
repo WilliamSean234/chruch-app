@@ -45,14 +45,14 @@ function Rule({ children }: { children: React.ReactNode }) {
   return <div className="flex items-center gap-2.5"><span className={eyebrow}>{children}</span><span className="h-px flex-1 bg-[#e8e4d6]" /></div>;
 }
 
-const isAdminTim = (name: string) => name.trim().toLowerCase() === "admin tim";
+const isAdminTim = (name: string) => { const n = name.trim().toLowerCase(); return n === "pengelola kelompok" || n === "admin tim"; };
 
-/** Superadmin yang menjadikan Admin Tim pertama kehilangan hak mengatur anggota kelompok itu: minta persetujuan dulu. */
+/** Superadmin yang menjadikan Pengelola Kelompok pertama kehilangan hak mengatur anggota kelompok itu: minta persetujuan dulu. */
 async function confirmFirstAdminTim(detail: Detail, positionIds: string[], who: string) {
   if (!detail.canAdmin || detail.hasAdminTim) return true;
   const at = detail.positions.find((p) => isAdminTim(p.name));
   if (!at || !positionIds.includes(at.id)) return true;
-  return askConfirm(`Jadikan ${who} Admin Tim ${detail.name}? Sesudah ini anggota dan jabatan kelompok hanya bisa diatur Admin Tim. Anda tidak bisa lagi menambah, mengeluarkan, atau mengubah jabatan anggota, dan tidak bisa mengubah jabatan kelompok ini.`, { confirmLabel: "Ya, jadikan" });
+  return askConfirm(`Jadikan ${who} Pengelola Kelompok ${detail.name}? Sesudah ini anggota dan jabatan kelompok hanya bisa diatur Pengelola Kelompok. Anda tidak bisa lagi menambah, mengeluarkan, atau mengubah jabatan anggota, dan tidak bisa mengubah jabatan kelompok ini.`, { confirmLabel: "Ya, jadikan" });
 }
 
 export default function GroupBoard({ isSuperadmin, canAddPerson }: { isSuperadmin: boolean; canAddPerson: boolean }) {
@@ -104,7 +104,7 @@ export default function GroupBoard({ isSuperadmin, canAddPerson }: { isSuperadmi
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2A2F8F" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="flex-none"><rect x="5" y="11" width="14" height="9" rx="2.5" /><path d="M8 11V8a4 4 0 018 0v3" /></svg>
         <span className="text-[13.5px] font-semibold leading-relaxed text-[var(--primary-ink)]">
           {isSuperadmin
-            ? <>Isi rapat (notulen dan tautan dokumen) hanya terbaca oleh anggota kelompok. Anda melihat halaman ini sebagai <b>Superadmin</b>: bisa mengatur kelompok, serta menyiapkan jabatan dan memasukkan <b>Admin Tim</b> pertama di tiap kelompok. Sesudah itu anggota dan jabatan kelompok diurus Admin Tim, dan Anda tidak bisa membaca notulen. Setiap perubahan tercatat di Log aktivitas.</>
+            ? <>Isi rapat (notulen dan tautan dokumen) hanya terbaca oleh anggota kelompok. Anda melihat halaman ini sebagai <b>Superadmin</b>: bisa mengatur kelompok, serta menyiapkan jabatan dan memasukkan <b>Pengelola Kelompok</b> pertama di tiap kelompok. Sesudah itu anggota dan jabatan kelompok diurus Pengelola Kelompok, dan Anda tidak bisa membaca notulen. Setiap perubahan tercatat di Log aktivitas.</>
             : <>Isi rapat (notulen dan tautan dokumen) hanya terbaca oleh anggota kelompok. Di sini Anda hanya melihat kelompok yang Anda ikuti.</>}
         </span>
       </div>
@@ -235,8 +235,8 @@ export default function GroupBoard({ isSuperadmin, canAddPerson }: { isSuperadmi
                 {detail.canAdmin && (
                   <span className="rounded-xl bg-[#f1f2fd] px-3.5 py-2.5 text-[12.5px] font-semibold leading-relaxed text-[var(--primary-ink)]">
                     {detail.hasAdminTim
-                      ? "Anggota dan jabatan kelompok ini diurus Admin Tim. Anda tidak lagi bisa menambah, mengeluarkan, mengubah jabatan anggota, atau menambah dan mengubah jabatan kelompok. Hak Anda kembali bila Admin Tim kosong."
-                      : "Kelompok ini belum punya Admin Tim. Siapkan jabatan yang dibutuhkan, lalu masukkan satu anggota dengan jabatan Admin Tim; sesudah itu anggota dan jabatan kelompok diurus Admin Tim dan Anda tidak bisa lagi mengubahnya."}
+                      ? "Anggota dan jabatan kelompok ini diurus Pengelola Kelompok. Anda tidak lagi bisa menambah, mengeluarkan, mengubah jabatan anggota, atau menambah dan mengubah jabatan kelompok. Hak Anda kembali bila Pengelola Kelompok kosong."
+                      : "Kelompok ini belum punya Pengelola Kelompok. Siapkan jabatan yang dibutuhkan, lalu masukkan satu anggota dengan jabatan Pengelola Kelompok; sesudah itu anggota dan jabatan kelompok diurus Pengelola Kelompok dan Anda tidak bisa lagi mengubahnya."}
                   </span>
                 )}
                 <span className="text-[12.5px] font-medium leading-relaxed text-[var(--ink-2)]">Anggota yang keluar tidak lagi bisa membuka notulen, tetapi riwayat keanggotaannya tetap tersimpan.</span>
@@ -515,14 +515,14 @@ function PositionChecks({ positions, value, onChange, held = [], canElevate = tr
       <span className="text-[13px] font-bold">Jabatan</span>
       {positions.map((p) => {
         const full = p.seats !== null && p.filled >= p.seats && !held.includes(p.id); // penuh dan bukan miliknya
-        // jabatan berhak khusus hanya diberikan/dicabut Admin Tim kelompok (pengelola anggota biasa tidak bisa; servernya juga menolak)
+        // jabatan berhak khusus hanya diberikan/dicabut Pengelola Kelompok (pengelola anggota biasa tidak bisa; servernya juga menolak)
         const locked = !canElevate && (isAdminTim(p.name) || p.canSchedule || p.canWriteMinutes || p.canFinalize || p.canManageMembers);
         return (
           <label key={p.id} className={`flex items-center gap-3 rounded-xl px-1 py-1.5 ${full || locked ? "opacity-60" : "cursor-pointer hover:bg-[var(--surface-2)]"}`}>
             <input type="checkbox" checked={value.includes(p.id)} disabled={full || locked} onChange={(e) => onChange(e.target.checked ? [...value, p.id] : value.filter((x) => x !== p.id))} className="size-4 accent-[var(--primary)]" />
             <span className="text-sm font-bold">{p.name}</span>
             {p.seats !== null && <span className={`text-xs font-semibold ${full ? "text-[#9b1c1c]" : "text-[var(--ink-2)]"}`}>{full ? `penuh ${p.filled}/${p.seats}` : `${p.filled}/${p.seats}`}</span>}
-            {locked && <span className="text-xs font-semibold text-[var(--ink-2)]">hanya Admin Tim</span>}
+            {locked && <span className="text-xs font-semibold text-[var(--ink-2)]">hanya Pengelola Kelompok</span>}
           </label>
         );
       })}
@@ -647,7 +647,7 @@ function LeaveGroup({ detail, onLeft }: { detail: Detail; onLeft: () => void }) 
   const leave = async () => {
     const last = detail.me?.lastAdminTim;
     const ok = await askConfirm(
-      `Keluar dari ${detail.name}? Anda tidak bisa membuka isi rapat kelompok ini lagi dan tidak diundang ke rapat yang akan datang.${last ? " Anda pemegang Admin Tim terakhir: setelah Anda keluar, kelompok ini tanpa Admin Tim dan Superadmin kembali yang mengatur anggotanya." : ""} Hanya pengelola kelompok yang bisa memasukkan Anda lagi.`,
+      `Keluar dari ${detail.name}? Anda tidak bisa membuka isi rapat kelompok ini lagi dan tidak diundang ke rapat yang akan datang.${last ? " Anda pemegang Pengelola Kelompok terakhir: setelah Anda keluar, kelompok ini tanpa Pengelola Kelompok dan Superadmin kembali yang mengatur anggotanya." : ""} Hanya pengelola kelompok yang bisa memasukkan Anda lagi.`,
       { danger: true, confirmLabel: "Keluar dari kelompok" },
     );
     if (!ok) return;

@@ -16,8 +16,9 @@ test("Superadmin yang sendiri memegang jabatan pengelola tetap boleh", () => {
   assert.equal(canEditGroupMembers({ isManagerMember: true, isSuperadmin: true, groupHasAdminTim: true }), true);
 });
 
-test("nama Admin Tim dikenali tanpa memandang huruf besar dan spasi", () => {
-  assert.equal(isAdminTimName(" admin tim "), true);
+test("nama Pengelola Kelompok (dan nama lama Admin Tim) dikenali tanpa memandang huruf besar dan spasi", () => {
+  assert.equal(isAdminTimName(" pengelola  kelompok "), true);
+  assert.equal(isAdminTimName(" admin tim "), true); // nama lama tetap dikenali (file Excel yang sudah beredar)
   assert.equal(isAdminTimName("Admin Tim EBM"), false);
 });
 
@@ -43,7 +44,7 @@ test("jabatan berhak khusus: memberi atau mencabutnya terdeteksi; jabatan biasa 
 test("jabatan dikenali berhak khusus bila Admin Tim atau punya salah satu hak", () => {
   const none = { canSchedule: false, canWriteMinutes: false, canFinalize: false, canManageMembers: false };
   assert.equal(isElevatedPosition({ name: "Anggota", ...none }), false);
-  assert.equal(isElevatedPosition({ name: "admin tim ", ...none }), true);
+  assert.equal(isElevatedPosition({ name: "pengelola kelompok ", ...none }), true);
   assert.equal(isElevatedPosition({ name: "Sekretaris", ...none, canWriteMinutes: true }), true);
   assert.equal(isElevatedPosition({ name: "Ketua", ...none, canManageMembers: true }), true);
   assert.equal(isElevatedPosition({ name: "Bendahara", ...none, canSchedule: true }), true);

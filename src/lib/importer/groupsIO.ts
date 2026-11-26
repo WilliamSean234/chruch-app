@@ -41,11 +41,11 @@ export async function flushGroups(ctx: Ctx, gs: GroupState) {
           await tx.groupPosition.createMany({
             data: newPositions.map(({ g, p }) => ({
               id: p.id, groupId: g.id, name: p.name, sortOrder: p.sortOrder, seats: p.seats,
-              canSchedule: isAdminTimName(p.name) || p.caps.schedule, canWriteMinutes: isAdminTimName(p.name) || p.caps.write, canFinalize: isAdminTimName(p.name) || p.caps.finalize, canManageMembers: isAdminTimName(p.name) || p.caps.manage, // Admin Tim selalu berhak penuh
+              canSchedule: isAdminTimName(p.name) || p.caps.schedule, canWriteMinutes: isAdminTimName(p.name) || p.caps.write, canFinalize: isAdminTimName(p.name) || p.caps.finalize, canManageMembers: isAdminTimName(p.name) || p.caps.manage, // Pengelola Kelompok selalu berhak penuh
             })),
           });
         }
-        // Setiap kelompok baru wajib punya jabatan Admin Tim, juga bila file impor tidak memuatnya.
+        // Setiap kelompok baru wajib punya jabatan Pengelola Kelompok, juga bila file impor tidak memuatnya.
         const lacking = newGroups.filter((g) => ![...g.positions.values()].some((p) => isAdminTimName(p.name)));
         if (lacking.length) await tx.groupPosition.createMany({ data: lacking.map((g) => ({ groupId: g.id, name: ADMIN_TIM_POSITION, sortOrder: 0, seats: null, ...ADMIN_TIM_CAPS })) });
         if (newMembers.length) await tx.groupMember.createMany({ data: newMembers.map(({ g, m }) => ({ id: m.id, groupId: g.id, personId: m.personId })) });

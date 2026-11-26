@@ -15,7 +15,7 @@ export async function isEbmTeam(db: Db | typeof import("./prisma").prisma, tenan
 }
 
 /**
- * Masukkan orang ke kelompok EBM dengan jabatan wajib "Admin Tim" (akses penuh di kelompok itu).
+ * Masukkan orang ke kelompok EBM dengan jabatan wajib "Pengelola Kelompok" (akses penuh di kelompok itu).
  * Kelompok dan jabatannya dibuat bila belum ada; anggota yang sudah keluar dimasukkan lagi. Jabatan lain milik orangnya tidak diubah.
  */
 export async function grantEbmAdmin(db: Db, tenantId: string, personId: string, userId: string | null) {

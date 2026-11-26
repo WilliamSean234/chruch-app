@@ -4,11 +4,14 @@ import { isYesNo, k, parseInt0, splitList, yes, type Ctx, type Row } from "./com
 import type { MasterState } from "./master";
 import { ADMIN_TIM_CAPS, ADMIN_TIM_POSITION, isAdminTimName } from "../groupRules";
 
+/** Kunci jabatan di peta: "Admin Tim" (nama lama di file Excel yang sudah beredar) dipetakan ke Pengelola Kelompok. */
+const pk = (name: string) => k(isAdminTimName(name) ? ADMIN_TIM_POSITION : name);
+
 /**
  * Kelompok rapat dari Excel: sheet KelompokRapat, JabatanKelompok, AnggotaKelompok.
  * Bagian ini murni (tanpa database): data yang sudah ada dimuat lebih dulu (lihat groupsIO.ts) lalu dicocokkan di sini.
- * Aturan sama dengan di aplikasi: setiap kelompok baru otomatis punya jabatan "Anggota" tanpa hak khusus dan jabatan "Admin Tim" (hak penuh),
- * jadi anggota di file yang sama boleh langsung diberi jabatan Admin Tim tanpa menuliskannya di sheet JabatanKelompok,
+ * Aturan sama dengan di aplikasi: setiap kelompok baru otomatis punya jabatan "Anggota" tanpa hak khusus dan jabatan "Pengelola Kelompok" (hak penuh),
+ * jadi anggota di file yang sama boleh langsung diberi jabatan Pengelola Kelompok tanpa menuliskannya di sheet JabatanKelompok,
  * dan yang sudah ada TIDAK diubah (dilewati dengan catatan), supaya file boleh diunggah berulang kali.
  */
 
@@ -56,7 +59,7 @@ export function stageGroups(ctx: Ctx, st: MasterState, gs: GroupState, rows: { K
       continue;
     }
     const base: GPos = { id: randomUUID(), name: BASE_POSITION, isNew: true, auto: true, sortOrder: 99, caps: { ...NO_CAPS }, seats: null };
-    // Admin Tim wajib ada di setiap kelompok baru; dibuat di sini supaya anggota di file yang sama bisa langsung memakainya.
+    // Pengelola Kelompok wajib ada di setiap kelompok baru; dibuat di sini supaya anggota di file yang sama bisa langsung memakainya.
     const adminTim: GPos = { id: randomUUID(), name: ADMIN_TIM_POSITION, isNew: true, auto: true, sortOrder: 0, caps: { schedule: ADMIN_TIM_CAPS.canSchedule, write: ADMIN_TIM_CAPS.canWriteMinutes, finalize: ADMIN_TIM_CAPS.canFinalize, manage: ADMIN_TIM_CAPS.canManageMembers }, seats: null };
     gs.groups.set(k(name), {
       id: randomUUID(), name, isNew: true, deleted: false, quorum, sortOrder: ++nextOrder, row: r.n,
@@ -96,17 +99,17 @@ export function stageGroups(ctx: Ctx, st: MasterState, gs: GroupState, rows: { K
     }
     for (const [key, v] of Object.entries(flags)) if (!isYesNo(v)) errs.push(`${label[key as keyof typeof label]}: isi Ya atau Tidak (isinya "${v}"; kosong = Tidak).`);
     if (errs.length) { rep.err("JabatanKelompok", r.n, errs.join(" ")); continue; }
-    const ex = g.positions.get(k(name));
+    const ex = g.positions.get(pk(name));
     if (ex) {
       if (ex.deleted) rep.err("JabatanKelompok", r.n, `Jabatan "${name}" di ${g.name} pernah dihapus. Pakai nama lain.`);
-      else if (ex.auto && isAdminTimName(name)) { ex.seats = seats; ex.row = r.n; rep.ok("JabatanKelompok"); } // Admin Tim sudah otomatis ada (hak penuh); dari sheet hanya jumlah orangnya yang dipakai
+      else if (ex.auto && isAdminTimName(name)) { ex.seats = seats; ex.row = r.n; rep.ok("JabatanKelompok"); } // Pengelola Kelompok sudah otomatis ada (hak penuh); dari sheet hanya jumlah orangnya yang dipakai
       else if (ex.auto) rep.skip("JabatanKelompok", r.n, `Jabatan ${ex.name} otomatis ada di setiap kelompok baru, jadi dilewati.`);
       else if (ex.isNew) rep.err("JabatanKelompok", r.n, `Jabatan "${name}" muncul dua kali di kelompok ${g.name}.`);
       else rep.skip("JabatanKelompok", r.n, `Jabatan "${ex.name}" di ${g.name} sudah ada, haknya tidak diubah.`);
       continue;
     }
     const used = [...g.positions.values()].filter((p) => p.sortOrder < 99).map((p) => p.sortOrder);
-    g.positions.set(k(name), {
+    g.positions.set(pk(name), {
       id: randomUUID(), name, isNew: true, sortOrder: Math.max(0, ...used) + 1, row: r.n, seats,
       caps: { schedule: yes(flags.schedule, false), write: yes(flags.write, false), finalize: yes(flags.finalize, false), manage: yes(flags.manage, false) },
     });
@@ -125,7 +128,7 @@ export function stageGroups(ctx: Ctx, st: MasterState, gs: GroupState, rows: { K
     const wanted = splitList(r.v.positions);
     const ids: string[] = [];
     for (const w of wanted.length ? wanted : [BASE_POSITION]) {
-      const p = g.positions.get(k(w));
+      const p = g.positions.get(pk(w));
       if (!p || p.deleted) errs.push(`Jabatan "${w}" belum ada di kelompok ${g.name} (daftarkan di sheet JabatanKelompok).`);
       else if (!ids.includes(p.id)) ids.push(p.id);
     }

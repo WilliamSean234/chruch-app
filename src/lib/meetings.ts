@@ -243,7 +243,7 @@ async function toDto(u: AuthUser, e: MeetingRow & { group: { id: string; name: s
       canWriteMinutes: full && member && (a.caps.canWriteMinutes || a.caps.canFinalize) && e.status !== "CANCELLED",
       canRecord: full && member && (a.caps.canSchedule || a.caps.canWriteMinutes) && e.status !== "CANCELLED", // undang dan hapus peserta
       personId: u.personId ?? null,
-      // kehadiran orang lain hanya boleh diubah anggota yang berhak "kelola anggota" (Admin Tim selalu); kehadiran sendiri boleh diubah oleh orangnya
+      // kehadiran orang lain hanya boleh diubah anggota yang berhak "kelola anggota" (Pengelola Kelompok selalu); kehadiran sendiri boleh diubah oleh orangnya
       canManageAttendance: full && member && a.caps.canManageMembers && e.status !== "CANCELLED",
       canMarkSelf: full && member && e.status !== "CANCELLED" && !!u.personId && people.participants.some((p) => p.personId === u.personId),
     },
@@ -552,7 +552,7 @@ export async function cancelMeeting(u: AuthUser, id: string, reason: string, sco
 }
 
 // ───────── Tautan lampiran (hanya anggota) ─────────
-const ATTENDANCE_RULE = "Kehadiran hanya bisa diubah oleh orangnya sendiri, atau anggota yang berhak kelola anggota (Admin Tim selalu berhak).";
+const ATTENDANCE_RULE = "Kehadiran hanya bisa diubah oleh orangnya sendiri, atau anggota yang berhak kelola anggota (Pengelola Kelompok selalu berhak).";
 /** Anggota kelompok pada rapat lengkap yang belum dibatalkan. Hak lebih jauh (lampiran, undangan, kehadiran orang lain) diperiksa pemanggil. */
 async function requireMeetingMember(u: AuthUser, id: string) {
   const cur = await loadMeeting(u, id);

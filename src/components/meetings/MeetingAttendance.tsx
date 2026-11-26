@@ -100,7 +100,7 @@ export default function MeetingAttendance({ groupId, groupName, rows, attendance
           )}
 
           {!cancelled && !canManageAttendance && live.some((p) => !!me && p.personId === me) && (
-            <p className="text-[12.5px] font-medium text-[var(--ink-2)]">Anda hanya bisa mengubah kehadiran Anda sendiri. Kehadiran anggota lain diubah oleh Admin Tim atau anggota yang berhak kelola anggota.</p>
+            <p className="text-[12.5px] font-medium text-[var(--ink-2)]">Anda hanya bisa mengubah kehadiran Anda sendiri. Kehadiran anggota lain diubah oleh Pengelola Kelompok atau anggota yang berhak kelola anggota.</p>
           )}
           {canRecord && (
             <div className="flex flex-wrap gap-2.5">
