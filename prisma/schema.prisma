@@ -41,8 +41,23 @@ model User {
   person       Person?    @relation(fields: [personId], references: [id])
   roles        UserRole[]
   pushSubscriptions PushSubscription[]
+  presence     Presence[]
 
   @@unique([tenantId, email])
+}
+
+/// Tanda "sedang membuka aplikasi": satu baris per tab/perangkat yang terbuka dan terlihat, diperbarui tiap beberapa detik (lib/presence).
+/// Pengguna dianggap online selama ada baris yang belum kedaluwarsa; baris dihapus saat tab ditutup.
+model Presence {
+  id       String   @id @default(uuid())
+  tenantId String
+  userId   String
+  clientId String // acak per tab, dibuat di browser
+  seenAt   DateTime
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clientId])
+  @@index([tenantId, seenAt])
 }
 
 /// Perangkat (HP/browser yang memasang aplikasi) milik akun yang mau menerima notifikasi (Web Push).

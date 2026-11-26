@@ -1,7 +1,8 @@
 import Link from "next/link";
 import AppShell, { currentUser, visibleNav } from "@/components/AppShell";
 import { LiveNavBadge } from "@/components/ui/LiveBadges";
-import { auth, signOut } from "@/lib/auth";
+import { auth } from "@/lib/auth";
+import { logoutAction } from "@/lib/logoutAction";
 import { prisma } from "@/lib/prisma";
 import { isSuperadmin } from "@/lib/rbac";
 import { getChurchProfile } from "@/lib/church";
@@ -51,7 +52,7 @@ export default async function ProfilPage() {
       <section className="flex flex-col gap-3">
         {isSuperadmin(u) && <Link href="/profil/keamanan" className="flex h-12 items-center justify-center rounded-xl border border-[#D0D3E8] bg-white text-sm font-bold text-[var(--primary-ink)] hover:bg-[#f3f4f9]">Keamanan akun (verifikasi 2 langkah)</Link>}
         <Link href="/ganti-password" className="flex h-12 items-center justify-center rounded-xl border border-[#D0D3E8] bg-white text-sm font-bold text-[var(--primary-ink)] hover:bg-[#f3f4f9]">Ganti kata sandi</Link>
-        <form action={async () => { "use server"; await signOut({ redirectTo: "/login" }); }}>
+        <form action={logoutAction}>
           <button type="submit" className="h-12 w-full rounded-xl border border-[#F2C9C9] bg-white text-sm font-bold text-[#9B1C1C] hover:bg-[#FFF5F5]">Keluar</button>
         </form>
       </section>

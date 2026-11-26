@@ -1,9 +1,11 @@
 import { badgeCounts } from "@/lib/badges";
+import { PresenceBeat } from "@/components/ui/Presence";
+import { logoutAction } from "@/lib/logoutAction";
 import { BadgeLive, LiveNavBadge, LiveNavDot } from "@/components/ui/LiveBadges";
 import Link from "next/link";
 import { getChurchProfile } from "@/lib/church";
 import { redirect } from "next/navigation";
-import { auth, signOut } from "@/lib/auth";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { liveUser } from "@/lib/liveUser";
 import { can, isSuperadmin, type AuthUser } from "@/lib/rbac";
@@ -100,6 +102,7 @@ export default async function AppShell({ active, title, subtitle, actions, back,
   return (
     <div className="flex min-h-screen flex-wrap bg-[var(--bg)]">
       <BadgeLive initial={initialBadges} watch={watchBadges} />
+      <PresenceBeat />
       <aside className="relative hidden w-full flex-none flex-col gap-7 overflow-hidden border-r border-[var(--line)] bg-white px-[18px] pb-6 pt-7 md:sticky md:top-0 md:flex md:h-screen md:w-60 md:self-start">
         <div className="flex items-center gap-3 px-2">
           <BrandMark />
@@ -148,7 +151,7 @@ export default async function AppShell({ active, title, subtitle, actions, back,
               </span>
               <Link href="/ganti-password" className="ml-1 whitespace-nowrap rounded-lg px-2 py-1 text-xs font-bold text-[var(--ink-2)] hover:bg-[#ecedf8]">Ganti sandi</Link>
               {isSuperadmin(user) && <Link href="/profil/keamanan" className="whitespace-nowrap rounded-lg px-2 py-1 text-xs font-bold text-[var(--ink-2)] hover:bg-[#ecedf8]">Keamanan</Link>}
-              <form action={async () => { "use server"; await signOut({ redirectTo: "/login" }); }}>
+              <form action={logoutAction}>
                 <button className="rounded-lg rounded-lg px-2 py-1 text-xs font-bold text-[var(--ink-2)] hover:bg-[#ecedf8]" type="submit">Keluar</button>
               </form>
             </div>

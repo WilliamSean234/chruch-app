@@ -13,6 +13,7 @@ import MembershipChips from "@/components/ui/MembershipChips";
 import Pager from "@/components/ui/Pager";
 import { CompactList, CompactRow, Detail, useOpenRows } from "@/components/ui/CompactList";
 import { useDebounced, usePagedList } from "@/components/ui/usePagedList";
+import { OnlineDot, useOnlinePeople } from "@/components/ui/Presence";
 import { initials, ROLE_LABEL } from "@/lib/ui";
 import { teamKind } from "@/lib/seatRules";
 import { patchMinistries } from "./ministryApi";
@@ -61,6 +62,7 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
   const [gender, setGender] = useState("");
   const [origin, setOrigin] = useState("");
   const [groupId, setGroupId] = useState("");
+  const [onlineF, setOnlineF] = useState(""); // "", "ON", "OFF"
   const [groups, setGroups] = useState<Opt[]>([]);
   const [ageMin, setAgeMin] = useState("");
   const [ageMax, setAgeMax] = useState("");
@@ -86,12 +88,17 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
   const dAgeMin = useDebounced(ageMin, 500);
   const dAgeMax = useDebounced(ageMax, 500);
   const list = usePagedList<PersonDto>("/api/v1/persons", {
-    search, ministryId, positionId, communityId: commId, role: roleF, cgGroupId: cgId, gender, origin, ageMin: dAgeMin, ageMax: dAgeMax, groupId,
+    search, ministryId, positionId, communityId: commId, role: roleF, cgGroupId: cgId, gender, origin, ageMin: dAgeMin, ageMax: dAgeMax, groupId, online: onlineF,
   });
   const { items, total, error } = list;
   const reload = list.reload;
-  const dirty = !!(q || ministryId || positionId || commId || roleF || cgId || gender || origin || ageMin || ageMax || groupId);
-  const resetFilters = () => { setQ(""); setMinistryId(""); setPositionId(""); setCommId(""); setRoleF(""); setCgId(""); setGender(""); setOrigin(""); setAgeMin(""); setAgeMax(""); setGroupId(""); };
+  // Status online langsung (cek tiap 4 detik selama halaman terlihat). Saat tabel sedang disaring Online/Offline, daftarnya ikut dimuat ulang bila ada yang masuk atau keluar.
+  const onlineRef = useRef(onlineF);
+  useEffect(() => { onlineRef.current = onlineF; });
+  const live = useOnlinePeople(true, useCallback(() => { if (onlineRef.current) list.reload(); }, [list.reload])); // eslint-disable-line react-hooks/exhaustive-deps
+  const isOn = (p: PersonDto) => (live ? live.has(p.id) : !!p.account?.online);
+  const dirty = !!(q || ministryId || positionId || commId || roleF || cgId || gender || origin || ageMin || ageMax || groupId || onlineF);
+  const resetFilters = () => { setQ(""); setMinistryId(""); setPositionId(""); setCommId(""); setRoleF(""); setCgId(""); setGender(""); setOrigin(""); setAgeMin(""); setAgeMax(""); setGroupId(""); setOnlineF(""); };
 
   useEffect(() => {
     const open = () => setForm({ person: null });
@@ -167,6 +174,8 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
           {lookups?.teams.map((t) => <optgroup key={t.id} label={t.name}>{t.ministries.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</optgroup>)}
         </FSelect>
         <FSelect label="Posisi" value={positionId} onChange={setPositionId} allLabel="Semua posisi" options={lookups?.positions.map((p) => ({ value: p.id, label: p.name }))} />
+        <FSelect label="Status" value={onlineF} onChange={setOnlineF} allLabel="Semua status"
+          options={[{ value: "ON", label: live ? `Online (${live.size})` : "Online" }, { value: "OFF", label: "Offline (punya akun)" }]} />
       </FilterBar>
       </div>
       {error && <Alert>{error}</Alert>}
@@ -182,7 +191,7 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
             <CompactList label="Daftar orang">
               {items.map((p) => (
                 <CompactRow key={p.id} id={p.id} open={rows.open.has(p.id)} onToggle={rows.toggle}
-                  lead={<span className={`grid size-9 place-items-center rounded-full text-xs font-bold ${p.origin === "LUAR" ? "bg-[var(--gold-soft)] text-[var(--gold-ink)]" : "bg-[var(--primary-soft)] text-[var(--primary-ink)]"}`} aria-hidden="true">{initials(p.name)}</span>}
+                  lead={<span className="relative"><span className={`grid size-9 place-items-center rounded-full text-xs font-bold ${p.origin === "LUAR" ? "bg-[var(--gold-soft)] text-[var(--gold-ink)]" : "bg-[var(--primary-soft)] text-[var(--primary-ink)]"}`} aria-hidden="true">{initials(p.name)}</span>{p.account && <OnlineDot online={isOn(p)} />}</span>}
                   title={fullName(p)}
                   sub={[p.position.name, p.age != null ? `${p.age} th` : null, p.gender].filter(Boolean).join(" · ")}>
                   <div className="flex flex-wrap gap-1.5">
@@ -225,7 +234,10 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
                         className={`cursor-pointer border-t border-[var(--line-2)] align-middle ${on ? "bg-[var(--primary-soft)]/60" : "hover:bg-[var(--bg)]"}`}>
                         <td className="px-4 py-3">
                           <span className="flex items-center gap-3">
-                            <span className={`grid size-9 flex-none place-items-center rounded-full text-xs font-bold ${p.origin === "LUAR" ? "bg-[var(--gold-soft)] text-[var(--gold-ink)]" : "bg-[var(--primary-soft)] text-[var(--primary-ink)]"}`} aria-hidden="true">{initials(p.name)}</span>
+                            <span className="relative flex-none">
+                              <span className={`grid size-9 place-items-center rounded-full text-xs font-bold ${p.origin === "LUAR" ? "bg-[var(--gold-soft)] text-[var(--gold-ink)]" : "bg-[var(--primary-soft)] text-[var(--primary-ink)]"}`} aria-hidden="true">{initials(p.name)}</span>
+                              {p.account && <OnlineDot online={isOn(p)} />}
+                            </span>
                             <span className="font-bold">{fullName(p)}</span>
                           </span>
                         </td>
@@ -265,7 +277,7 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
         {/* Detail */}
         {selected && lookups && (
           <div className="contents max-md:hidden">
-            <PersonDetail key={selected.id} canAccount={canAccount} person={selected} teams={lookups.teams} cgs={lookups.cgs} scope={scope} canManagePeople={canManagePeople} createTeams={lookups.teams.filter((t) => createTeamIds.includes(t.id))} onLookups={loadLookups} onEdit={() => setForm({ person: selected })} onChanged={() => void reload()} />
+            <PersonDetail key={selected.id} online={isOn(selected)} canAccount={canAccount} person={selected} teams={lookups.teams} cgs={lookups.cgs} scope={scope} canManagePeople={canManagePeople} createTeams={lookups.teams.filter((t) => createTeamIds.includes(t.id))} onLookups={loadLookups} onEdit={() => setForm({ person: selected })} onChanged={() => void reload()} />
           </div>
         )}
       </div>
@@ -283,7 +295,7 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
         const sp = items.find((x) => x.id === sheetId)!;
         return (
           <Modal title={fullName(sp)} onClose={() => setSheetId(null)} footer={<button type="button" className={btnPrimary} onClick={() => setSheetId(null)}>Tutup</button>}>
-            <PersonDetail bare canAccount={canAccount} person={sp} teams={lookups.teams} cgs={lookups.cgs} scope={scope} canManagePeople={canManagePeople} createTeams={lookups.teams.filter((t) => createTeamIds.includes(t.id))} onLookups={loadLookups} onEdit={() => { setSheetId(null); setForm({ person: sp }); }} onChanged={() => void reload()} />
+            <PersonDetail bare online={isOn(sp)} canAccount={canAccount} person={sp} teams={lookups.teams} cgs={lookups.cgs} scope={scope} canManagePeople={canManagePeople} createTeams={lookups.teams.filter((t) => createTeamIds.includes(t.id))} onLookups={loadLookups} onEdit={() => { setSheetId(null); setForm({ person: sp }); }} onChanged={() => void reload()} />
           </Modal>
         );
       })()}
@@ -302,7 +314,7 @@ export default function PeopleView({ scope, canAccount, canMaster, isSuper, canG
 }
 
 /** Kartu ringkasan di kanan: data orang yang dipilih, plus tambah/cabut pelayanan dengan cepat. */
-function PersonDetail({ person: p, bare, canAccount, teams, cgs, scope, canManagePeople, createTeams, onLookups, onEdit, onChanged }: { bare?: boolean; person: PersonDto; canAccount: boolean; teams: Team[]; cgs: CgOpt[]; scope: string[] | null; canManagePeople: boolean; createTeams: Team[]; onLookups: () => Promise<void>; onEdit: () => void; onChanged: () => void }) {
+function PersonDetail({ person: p, online, bare, canAccount, teams, cgs, scope, canManagePeople, createTeams, onLookups, onEdit, onChanged }: { bare?: boolean; online?: boolean; person: PersonDto; canAccount: boolean; teams: Team[]; cgs: CgOpt[]; scope: string[] | null; canManagePeople: boolean; createTeams: Team[]; onLookups: () => Promise<void>; onEdit: () => void; onChanged: () => void }) {
   const [newMinistry, setNewMinistry] = useState(false);
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -365,6 +377,7 @@ function PersonDetail({ person: p, bare, canAccount, teams, cgs, scope, canManag
           </div>
         )}
         {row("Akun login", p.account ? (p.account.isActive ? (p.account.mustChangePassword ? "Terhubung · belum ganti sandi" : "Terhubung") : "Nonaktif") : "Belum ada")}
+        {p.account?.isActive && row("Status", <span className="inline-flex items-center gap-2"><span className={`size-2.5 rounded-full transition-colors duration-300 ${online ? "bg-[#22A559]" : "bg-[#B9BDCB]"}`} aria-hidden="true" />{online ? "Online" : "Offline"}</span>)}
       </div>
 
       <div className="flex flex-col gap-2.5">

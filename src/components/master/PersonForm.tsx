@@ -12,7 +12,7 @@ export type Team = { id: string; name: string; ministries: Opt[] };
 export type PersonDto = {
   id: string; name: string; title: string | null; nickname?: string | null; aliases?: string[]; birthDate: string | null; age: number | null; gender: "L" | "P"; origin: "DALAM" | "LUAR"; originChurch: string | null;
   position: Opt; cgGroup: Opt | null; communities: Opt[]; ministries: { id: string; name: string; teamTypeId: string; teamName: string }[];
-  account: { email: string; isActive: boolean; isOwner?: boolean; mustChangePassword?: boolean; roleCodes?: string[]; teamTypeId?: string | null } | null;
+  account: { email: string; isActive: boolean; isOwner?: boolean; online?: boolean; mustChangePassword?: boolean; roleCodes?: string[]; teamTypeId?: string | null } | null;
   /** Kelompok rapat + jabatan; hanya dikirim server untuk Superadmin. */
   memberships?: { groupId: string; groupName: string; positions: string[] }[];
 };

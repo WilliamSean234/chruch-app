@@ -1,4 +1,6 @@
 import { Prisma } from "@prisma/client";
+import { onlineAmong } from "./presence";
+import { presenceCutoff } from "./presenceRules";
 import { z } from "zod";
 import { prisma } from "./prisma";
 import { ApiError, badRequest, conflict, forbidden, notFound } from "./errors";
@@ -49,7 +51,8 @@ const include = {
 
 type PersonFull = Prisma.PersonGetPayload<{ include: typeof include }>;
 
-export const toDto = (p: PersonFull) => ({
+/** `online` (id akun yang sedang online) hanya diisi untuk daftar orang; di tempat lain status online tidak ikut dikirim. */
+export const toDto = (p: PersonFull, online?: Set<string>) => ({
   id: p.id,
   name: p.name,
   title: p.title,
@@ -69,6 +72,7 @@ export const toDto = (p: PersonFull) => ({
         email: p.user.email,
         isActive: p.user.isActive,
         isOwner: p.user.isOwner,
+        ...(online ? { online: online.has(p.user.id) } : {}),
         mustChangePassword: p.user.mustChangePassword,
         roleCodes: p.user.roles.map((r) => r.role.code),
         teamTypeId: p.user.roles.find((r) => r.role.code === "ADMIN_TIM")?.teamTypeId ?? null,
@@ -116,13 +120,14 @@ const bornOnOrBefore = (years: number) => { const d = new Date(); return new Dat
 
 export type PersonListQuery = PagingInput & {
   search?: string; ministryId?: string; communityId?: string; teamTypeId?: string; positionId?: string; cgGroupId?: string; role?: string;
+  online?: "ON" | "OFF"; // ON = akunnya sedang online, OFF = punya akun tapi tidak online
   gender?: "L" | "P"; origin?: "DALAM" | "LUAR"; ageMin?: number; ageMax?: number;
   groupId?: string; // kelompok rapat (atau NONE = tidak di kelompok mana pun); untuk yang berhak mengelola data orang
 };
 
 export async function listPersons(u: AuthUser, q: PersonListQuery) {
   const pg = resolvePaging(q);
-  if (q.role) requirePermission(u, "person.write"); // peran akun tidak untuk umum
+  if (q.role || q.online) requirePermission(u, "person.write"); // peran dan status online akun tidak untuk umum
   const seesGroups = can(u, "person.write"); // yang boleh melihat tabel Orang juga melihat kelompok dan jabatannya
   if (q.groupId && !seesGroups) throw new ApiError(403, "FORBIDDEN", "Anda tidak berhak memfilter kelompok.");
   const scope = teamScope(u);
@@ -148,6 +153,8 @@ export async function listPersons(u: AuthUser, q: PersonListQuery) {
     ...(q.role === "NO_ACCOUNT" ? { user: { is: null } } : {}),
     ...(q.role === "NO_ROLE" ? { user: { is: { deletedAt: null, roles: { none: {} } } } } : {}),
     ...(q.role && q.role !== "NO_ACCOUNT" && q.role !== "NO_ROLE" ? { user: { is: { deletedAt: null, roles: { some: { role: { code: q.role } } } } } } : {}),
+    // status online dipisah lewat AND supaya bisa dipakai bersama filter role
+    ...(q.online ? { AND: [{ user: { is: { deletedAt: null, isActive: true, ...(q.online === "ON" ? { presence: { some: { seenAt: { gt: presenceCutoff() } } } } : { presence: { none: { seenAt: { gt: presenceCutoff() } } } }) } } }] } : {}),
   };
   const [total, rows] = await Promise.all([
     prisma.person.count({ where }),
@@ -155,7 +162,8 @@ export async function listPersons(u: AuthUser, q: PersonListQuery) {
   ]);
   // kelompok + jabatan disertakan untuk yang berhak mengelola data orang
   const mem = seesGroups ? await membershipsOf(u.tenantId, rows.map((r) => r.id)) : null;
-  return pageOf(rows.map((r) => ({ ...toDto(r), ...(mem ? { memberships: mem.get(r.id) ?? [] } : {}) })), total, pg);
+  const online = seesGroups ? await onlineAmong(rows.flatMap((r) => (r.user ? [r.user.id] : []))) : undefined; // titik hijau hanya untuk yang berhak melihat tabel Orang
+  return pageOf(rows.map((r) => ({ ...toDto(r, online), ...(mem ? { memberships: mem.get(r.id) ?? [] } : {}) })), total, pg);
 }
 
 export async function getPerson(tenantId: string, id: string) {
